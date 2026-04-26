@@ -1,26 +1,87 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --display: 'Instrument Serif', Georgia, serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --ui: 'Inter', -apple-system, system-ui, sans-serif;
+
+  --bg: oklch(0.97 0.008 80);
+  --bg-blur: oklch(0.97 0.008 80 / 0.85);
+  --surface: oklch(0.94 0.01 80);
+  --ink: oklch(0.20 0.012 60);
+  --ink-muted: oklch(0.50 0.012 60);
+  --rule: oklch(0.86 0.012 70);
+  --accent: oklch(0.62 0.17 35);
+  --verified: oklch(0.55 0.13 155);
+  --verified-soft: oklch(0.93 0.04 155);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+[data-theme="dark"] {
+  --bg: oklch(0.18 0.008 60);
+  --bg-blur: oklch(0.18 0.008 60 / 0.85);
+  --surface: oklch(0.24 0.01 60);
+  --ink: oklch(0.96 0.005 80);
+  --ink-muted: oklch(0.65 0.012 70);
+  --rule: oklch(0.32 0.012 60);
+  --verified-soft: oklch(0.30 0.05 155);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html, body {
+  margin: 0; padding: 0;
+  background: oklch(0.94 0.008 80);
+  font-family: var(--ui);
+  color: var(--ink);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+* { box-sizing: border-box; }
+button { font: inherit; }
+
+.stage {
+  width: 100vw; height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at top, oklch(0.96 0.01 80) 0%, oklch(0.92 0.012 60) 100%);
+  position: relative;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.device-shell { transform-origin: center; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 700ms linear infinite; }
+
+.screen { position: absolute; inset: 0; background: var(--bg); }
+.screen-enter { animation: fadeIn 240ms ease; }
+.modal-enter { animation: slideUp 320ms cubic-bezier(0.32, 0.72, 0, 1); }
+
+::-webkit-scrollbar { width: 0; height: 0; }
+
+.label {
+  position: absolute; top: 18px; left: 24px;
+  font-family: var(--mono); font-size: 11px;
+  color: oklch(0.45 0.01 60); letter-spacing: 1.2px;
+  text-transform: uppercase;
+  z-index: 100;
+}
+.label .accent { color: var(--accent); }
+
+.tagline {
+  position: absolute; bottom: 28px; right: 28px;
+  font-family: var(--display); font-style: italic; font-size: 22px;
+  color: oklch(0.42 0.012 60); letter-spacing: -0.3px;
+  z-index: 100;
+  text-align: right; line-height: 1.1;
+}
+.tagline small {
+  display: block; font-family: var(--mono); font-style: normal;
+  font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  color: oklch(0.55 0.01 60); margin-top: 6px;
 }
