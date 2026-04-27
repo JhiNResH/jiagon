@@ -32,6 +32,7 @@ const authStorageKey = "jiagon:privy-session";
 const etherfiStorageKey = "jiagon:etherfi-sync";
 const reviewsStorageKey = "jiagon:published-reviews";
 const reviewedReceiptsStorageKey = "jiagon:reviewed-receipts";
+const receiptCredentialsStorageKey = "jiagon:receipt-credentials";
 
 type EtherfiReceipt = {
   id: string;
@@ -60,6 +61,24 @@ type EtherfiSyncState = {
   error?: string;
 };
 
+type ReceiptCredential = {
+  receiptId: string;
+  reviewId: string;
+  status: string;
+  network: string;
+  chainId: number;
+  credentialChain: string;
+  credentialId: string;
+  credentialTx?: string | null;
+  explorerUrl?: string | null;
+  storageLayer: string;
+  storageUri: string;
+  sourceReceiptHash?: string;
+  dataHash: string;
+  proofLevel: string;
+  mintedAt: string;
+};
+
 const emptyEtherfiSync: EtherfiSyncState = {
   status: "idle",
   receipts: [],
@@ -81,6 +100,7 @@ export default function Home() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [publishedReviews, setPublishedReviews] = useState<any[]>([]);
   const [reviewedReceiptIds, setReviewedReceiptIds] = useState<string[]>([]);
+  const [receiptCredentials, setReceiptCredentials] = useState<Record<string, ReceiptCredential>>({});
   const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -121,6 +141,15 @@ export default function Home() {
         window.localStorage.removeItem(reviewedReceiptsStorageKey);
       }
     }
+
+    const storedCredentials = window.localStorage.getItem(receiptCredentialsStorageKey);
+    if (storedCredentials) {
+      try {
+        setReceiptCredentials(JSON.parse(storedCredentials));
+      } catch {
+        window.localStorage.removeItem(receiptCredentialsStorageKey);
+      }
+    }
   }, []);
 
   const verifyStyle: VerifyStyle = "chip";
@@ -153,10 +182,12 @@ export default function Home() {
       setEtherfiSync(emptyEtherfiSync);
       setPublishedReviews([]);
       setReviewedReceiptIds([]);
+      setReceiptCredentials({});
       window.localStorage.removeItem(authStorageKey);
       window.localStorage.removeItem(etherfiStorageKey);
       window.localStorage.removeItem(reviewsStorageKey);
       window.localStorage.removeItem(reviewedReceiptsStorageKey);
+      window.localStorage.removeItem(receiptCredentialsStorageKey);
     },
   };
 
@@ -241,16 +272,71 @@ export default function Home() {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const publishReview = (review: any) => {
-    const nextReviews = [review, ...publishedReviews.filter((item) => item.id !== review.id)];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mintReceiptCredential = async (review: any, receipt: any) => {
+    const response = await fetch("/api/receipts/mint", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        owner: authSession?.walletAddress || authSession?.walletLabel || "privy-user",
+        receipt,
+        review,
+      }),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(payload?.error || "Unable to mint BNB testnet receipt credential.");
+    }
+
+    const credential: ReceiptCredential = {
+      receiptId: receipt.id,
+      reviewId: review.id,
+      status: payload.status,
+      network: payload.network,
+      chainId: payload.chainId,
+      credentialChain: payload.credentialChain,
+      credentialId: payload.credentialId,
+      credentialTx: payload.credentialTx,
+      explorerUrl: payload.explorerUrl,
+      storageLayer: payload.storageLayer,
+      storageUri: payload.storageUri,
+      sourceReceiptHash: payload.sourceReceiptHash,
+      dataHash: payload.dataHash,
+      proofLevel: payload.proofLevel,
+      mintedAt: new Date().toISOString(),
+    };
+
+    return credential;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const publishReview = async (review: any, receipt: any) => {
+    const credential = await mintReceiptCredential(review, receipt);
+    const reviewWithCredential = {
+      ...review,
+      credential,
+      proofLevel: `${credential.proofLevel} · BNB ready`,
+      credentialTx: credential.credentialTx
+        ? `${credential.credentialTx.slice(0, 6)}…${credential.credentialTx.slice(-4)}`
+        : credential.credentialId,
+      storageLayer: credential.storageLayer,
+    };
+    const nextReviews = [reviewWithCredential, ...publishedReviews.filter((item) => item.id !== review.id)];
     const nextReviewedReceiptIds = Array.from(new Set([review.receiptId, ...reviewedReceiptIds]));
+    const nextCredentials = {
+      ...receiptCredentials,
+      [receipt.id]: credential,
+    };
 
     setPublishedReviews(nextReviews);
     setReviewedReceiptIds(nextReviewedReceiptIds);
+    setReceiptCredentials(nextCredentials);
     window.localStorage.setItem(reviewsStorageKey, JSON.stringify(nextReviews));
     window.localStorage.setItem(reviewedReceiptsStorageKey, JSON.stringify(nextReviewedReceiptIds));
-    setReviewing(null);
+    window.localStorage.setItem(receiptCredentialsStorageKey, JSON.stringify(nextCredentials));
     setTab("feed");
+    return credential;
   };
 
   // Apply theme + accent
@@ -287,10 +373,11 @@ export default function Home() {
         auth={auth}
         etherfi={etherfi}
         reviewedReceiptIds={reviewedReceiptIds}
+        receiptCredentials={receiptCredentials}
       />
     ),
     discover: <DiscoverScreen />,
-    profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} etherfi={etherfi} userReviews={publishedReviews} />,
+    profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} etherfi={etherfi} userReviews={publishedReviews} receiptCredentials={receiptCredentials} />,
   };
 
   return (

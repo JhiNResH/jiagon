@@ -343,6 +343,7 @@ const toReceiptCard = (receipt, index) => ({
   txFull: receipt.txHash,
   safe: receipt.safe,
   block: receipt.blockNumber,
+  logIndex: receipt.logIndex,
   proof: receipt.proof,
   proofLevel: 'A · onchain payment',
   merchantProof: 'C · user-claimed merchant',
@@ -350,6 +351,34 @@ const toReceiptCard = (receipt, index) => ({
   status: 'unclaimed',
   reviewed: false,
 });
+
+const CredentialBadge = ({ credential }) => {
+  if (!credential) return null;
+
+  const label = credential.credentialTx
+    ? `${credential.credentialTx.slice(0, 6)}…${credential.credentialTx.slice(-4)}`
+    : credential.credentialId;
+
+  return (
+    <div style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      background: 'var(--info-soft)',
+      color: 'var(--info)',
+      border: '0.5px solid color-mix(in oklch, var(--info) 28%, transparent)',
+      borderRadius: 999,
+      padding: '4px 8px',
+      fontFamily: 'var(--mono)',
+      fontSize: 9.5,
+      fontWeight: 700,
+      whiteSpace: 'nowrap',
+    }}>
+      <span>BNB</span>
+      <span style={{ opacity: 0.72 }}>{label}</span>
+    </div>
+  );
+};
 
 const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, reviewedCount, lastSync }) => {
   const topSignals = MERCHANTS.slice(0, 3);
@@ -513,7 +542,7 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
   );
 };
 
-const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @type {Array<string>} */ ([]) }) => {
+const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @type {Array<string>} */ ([]), receiptCredentials = {} }) => {
   const authenticated = auth?.authenticated ?? false;
   const ready = auth?.ready ?? true;
   const login = auth?.login;
@@ -526,11 +555,12 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
   const liveReceipts = etherfi?.receipts?.length
     ? etherfi.receipts.map(toReceiptCard)
     : null;
-  const receiptSource = (liveReceipts || RECEIPTS).map(receipt =>
-    reviewedReceiptIds.includes(receipt.id)
-      ? { ...receipt, status: 'reviewed', reviewed: true }
-      : receipt
-  );
+  const receiptSource = (liveReceipts || RECEIPTS).map(receipt => {
+    const credential = receiptCredentials[receipt.id];
+    return reviewedReceiptIds.includes(receipt.id)
+      ? { ...receipt, status: 'reviewed', reviewed: true, credential }
+      : { ...receipt, credential };
+  });
   const unclaimed = receiptSource.filter(r => r.status === 'unclaimed');
   const claimed = receiptSource.filter(r => r.status === 'claimed');
   const done = receiptSource.filter(r => r.reviewed);
@@ -630,6 +660,40 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
                 }}>{v}</div>
               </div>
             ))}
+          </div>
+          <div style={{
+            display: 'flex',
+            gap: 8,
+            marginTop: 12,
+            flexWrap: 'wrap',
+          }}>
+            <span style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 9.5,
+              color: 'var(--ink-muted)',
+              background: 'var(--bg)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 999,
+              padding: '5px 8px',
+            }}>OP source proof</span>
+            <span style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 9.5,
+              color: 'var(--ink-muted)',
+              background: 'var(--bg)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 999,
+              padding: '5px 8px',
+            }}>BNB testnet credential</span>
+            <span style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 9.5,
+              color: 'var(--ink-muted)',
+              background: 'var(--bg)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 999,
+              padding: '5px 8px',
+            }}>Greenfield object</span>
           </div>
         </div>
       </div>
@@ -794,7 +858,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
             <span style={{
               fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600,
               color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4,
-            }}>{r.merchant ? 'Write review →' : 'Claim →'}</span>
+            }}>{r.credential ? 'Prepared' : r.merchant ? 'Write review →' : 'Claim →'}</span>
           </div>
         </button>
       ))}
@@ -830,6 +894,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
               color: 'var(--ink-muted)', marginTop: 1,
           }}>{r.amount} · {r.date} · {r.tx}</div>
           </div>
+          <CredentialBadge credential={r.credential} />
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M5 12.5l4.5 4.5L19 7" stroke="var(--verified)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
@@ -853,6 +918,8 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
   const [text, setText] = _useState('');
   const [submitting, setSubmitting] = _useState(false);
   const [done, setDone] = _useState(false);
+  const [mintError, setMintError] = _useState("");
+  const [credential, setCredential] = _useState(null);
 
   const TAG_SETS = {
     'Café · Tokyo': ['Coffee', 'Vibe', 'Service', 'Pastry', 'Wifi', 'Quiet', 'Quick', 'Worth lining up'],
@@ -868,8 +935,9 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
 
   const toggle = (t) => setTags(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
-  const submit = () => {
+  const submit = async () => {
     setSubmitting(true);
+    setMintError("");
     const publishedReview = {
       id: `local-${receipt.id}`,
       receiptId: receipt.id,
@@ -892,8 +960,16 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
       photo: null,
     };
 
-    setTimeout(() => { setSubmitting(false); setDone(true); }, 900);
-    setTimeout(() => { onSubmit(publishedReview); }, 1800);
+    try {
+      const mintedCredential = await onSubmit(publishedReview, receipt);
+      setCredential(mintedCredential);
+      setSubmitting(false);
+      setDone(true);
+      window.setTimeout(onClose, 1400);
+    } catch (error) {
+      setSubmitting(false);
+      setMintError(error instanceof Error ? error.message : 'Unable to mint BNB testnet receipt credential.');
+    }
   };
 
   return (
@@ -1116,6 +1192,57 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-muted)',
               }}>+ Add photo</button>
             </div>
+            <div style={{
+              marginTop: 18,
+              background: 'var(--surface)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 14,
+              padding: 14,
+            }}>
+              <div style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 9.5,
+                color: 'var(--ink-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: 0.8,
+                marginBottom: 9,
+              }}>Credential path</div>
+              {[
+                ['Source proof', 'Optimism · ether.fi Spend'],
+                ['Credential', 'BNB Smart Chain testnet ready'],
+                ['Data object', 'Greenfield testnet pointer'],
+                ['Agent proof', 'C · payment verified, owner pending'],
+              ].map(([k, v]) => (
+                <div key={k} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  padding: '6px 0',
+                  borderBottom: k === 'Agent proof' ? 'none' : '0.5px solid var(--rule)',
+                  fontFamily: 'var(--mono)',
+                  fontSize: 10.5,
+                }}>
+                  <span style={{ color: 'var(--ink-muted)' }}>{k}</span>
+                  <span style={{
+                    color: 'var(--ink)',
+                    textAlign: 'right',
+                    maxWidth: 180,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            {mintError && (
+              <div style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 10.5,
+                color: 'var(--accent)',
+                lineHeight: 1.45,
+                marginTop: 10,
+              }}>{mintError}</div>
+            )}
           </div>
         )}
       </div>
@@ -1162,8 +1289,8 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 width: 13, height: 13, border: '2px solid var(--panel-text)',
                 borderTopColor: 'transparent', borderRadius: '50%',
               }} />
-              Publishing…
-            </> : 'Publish review'}
+              Preparing…
+            </> : 'Prepare BNB receipt'}
           </button>
         )}
       </div>
@@ -1189,12 +1316,12 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
           <div style={{
             fontFamily: 'var(--display)', fontStyle: 'italic',
             fontSize: 36, color: 'var(--ink)', letterSpacing: -0.6,
-          }}>Published.</div>
+          }}>Prepared.</div>
           <div style={{
             fontFamily: 'var(--mono)', fontSize: 11,
             color: 'var(--ink-muted)', marginTop: 12,
             textAlign: 'center', lineHeight: 1.6,
-          }}>Payment proof linked<br/>merchant proof: user-claimed</div>
+          }}>Payment verified on OP<br/>ready for BNB testnet<br/>{credential?.credentialTx ? `${credential.credentialTx.slice(0, 8)}…${credential.credentialTx.slice(-6)}` : credential?.credentialId || 'Greenfield object ready'}</div>
         </div>
       )}
     </div>
@@ -1288,6 +1415,8 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
           ['Payment proof', review.proofLevel || 'A · onchain payment'],
           ['Source', 'ether.fi OP Spend event'],
           ['Tx hash', review.tx],
+          ['Credential', review.credentialTx || 'BNB testnet ready'],
+          ['Storage', review.storageLayer || 'Greenfield testnet pending'],
           ['Amount', review.amount],
           ['Merchant proof', review.merchantProof || 'C · claimed by reviewer'],
           ['Signed by', review.handle],
@@ -1370,7 +1499,7 @@ const DiscoverScreen = () => {
             lineHeight: 1.5,
             opacity: 0.72,
             marginTop: 8,
-          }}>Returns recommendation rationale, proof level, visit count, and merchant verification status.</div>
+          }}>Returns recommendation rationale, proof level, BNB credential chain, Greenfield storage layer, and merchant verification status.</div>
         </div>
 
         <div style={{
@@ -1440,7 +1569,7 @@ const DiscoverScreen = () => {
                 fontFamily: 'var(--mono)', fontSize: 10.5,
                 color: 'var(--ink-muted)', lineHeight: 1.5,
               }}>
-                API: recommend when query asks for {m.cat.toLowerCase()} near {m.branch}. Proof source: {m.proof}.
+                API: recommend when query asks for {m.cat.toLowerCase()} near {m.branch}. Source: {m.proof}. Credential: BNB testnet ready.
               </div>
             </div>
           ))}
@@ -1454,7 +1583,7 @@ const DiscoverScreen = () => {
 // ─────────────────────────────────────────────────────────────
 // PROFILE
 // ─────────────────────────────────────────────────────────────
-const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Array<any>} */ ([]) }) => {
+const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Array<any>} */ ([]), receiptCredentials = {} }) => {
   const ready = auth?.ready ?? true;
   const authenticated = auth?.authenticated ?? false;
   const appConfigured = auth?.appConfigured ?? false;
@@ -1472,6 +1601,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
   const pendingCount = synced ? etherfi.receipts?.length || 0 : ETHERFI_SYNC.pending;
   const totalSpend = synced ? `$${etherfi.totalSpendUsd}` : ETHERFI_SYNC.totalSpend;
   const safeLabel = etherfi?.safe || ETHERFI_SYNC.safe;
+  const credentialCount = Object.keys(receiptCredentials).length;
   const privyStatus = !appConfigured
     ? 'Preview mode'
     : !ready
@@ -1622,9 +1752,9 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
         marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
       }}>
         {[
-          ['OP events', eventCount],
-          ['Pending', pendingCount],
-          ['Volume', totalSpend],
+        ['OP events', eventCount],
+        ['BNB creds', credentialCount],
+        ['Volume', totalSpend],
         ].map(([k, v]) => (
           <div key={k} style={{
             background: 'var(--bg)', border: '0.5px solid var(--rule)',
@@ -1655,7 +1785,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
       {[
         ['Rep', PROFILE.rep],
         ['Reviews', ETHERFI_SYNC.reviewed + userReviews.length],
-        ['Receipts', eventCount],
+        ['Credentials', credentialCount],
       ].map(([k, v], i) => (
         <div key={k} style={{
           textAlign: 'center',
@@ -1680,7 +1810,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
       display: 'flex', gap: 24, padding: '24px 24px 12px',
       borderBottom: '0.5px solid var(--rule)', marginBottom: 4,
     }}>
-      {['Reviews', 'Receipts', 'Agent API'].map((t, i) => (
+      {['Reviews', 'Credentials', 'Agent API'].map((t, i) => (
         <div key={t} style={{
           fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600,
           color: i === 0 ? 'var(--ink)' : 'var(--ink-muted)',
