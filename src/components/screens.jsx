@@ -1354,6 +1354,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 ? 'existing BNB credential found'
                 : 'BNB testnet credential minted'
               : 'BNB payload prepared'}<br/>
+            {credential?.persistence?.persisted ? 'saved to Jiagon API' : 'local receipt view saved'}<br/>
             {credential?.credentialTx ? `${credential.credentialTx.slice(0, 8)}…${credential.credentialTx.slice(-6)}` : credential?.credentialId || 'Greenfield object ready'}
             {credential?.dataMatchesRequest === false && <><br/>submitted review differs from onchain data</>}
           </div>

@@ -1,3 +1,8 @@
+import { listAgentMerchantSignals } from "@/server/receiptStore";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const DEMO_MERCHANTS = [
   {
     id: "85c-irvine",
@@ -73,7 +78,16 @@ const DEMO_MERCHANTS = [
   },
 ];
 
-const scoreMerchant = (query: string, merchant: (typeof DEMO_MERCHANTS)[number]) => {
+type RecommendationMerchant = {
+  name: string;
+  branch: string;
+  category: string;
+  averageRating: number;
+  verifiedVisits: number;
+  verifiedWallets: number;
+};
+
+const scoreMerchant = (query: string, merchant: RecommendationMerchant) => {
   const normalized = query.toLowerCase();
   let score = merchant.averageRating * 10 + merchant.verifiedVisits + merchant.verifiedWallets;
 
@@ -90,8 +104,44 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("query") || "";
   const limit = Math.min(5, Math.max(1, Number(searchParams.get("limit") || 3)));
+  const persisted = await listAgentMerchantSignals(50);
 
-  const recommendations = DEMO_MERCHANTS
+  if (persisted.configured && persisted.error) {
+    return Response.json(
+      {
+        error: "Unable to load Jiagon receipt memory.",
+        persistence: {
+          configured: true,
+          error: persisted.error,
+        },
+      },
+      { status: 503 },
+    );
+  }
+
+  const merchantSource =
+    persisted.merchants.length > 0
+      ? persisted.merchants.map((merchant) => ({
+          ...merchant,
+          proofLevel: {
+            payment: "A",
+            merchant: "C",
+            source: "ether.fi Cash OP Spend event",
+            credentialChain: "BNB Smart Chain testnet",
+            storageLayer: "BNB Greenfield testnet pointer",
+            caveat: "Payment is onchain-verified; merchant identity is reviewer-claimed until an official card API or uploaded receipt verifies it.",
+          },
+          reasons: [
+            "Built from persisted receipt-backed Jiagon reviews.",
+            `Recent verified visit signal: ${merchant.lastVerifiedVisit}.`,
+            merchant.latestReview
+              ? `Latest review note: ${merchant.latestReview.slice(0, 120)}${merchant.latestReview.length > 120 ? "..." : ""}`
+              : "No long-form review text was published.",
+          ],
+        }))
+      : DEMO_MERCHANTS;
+
+  const recommendations = merchantSource
     .map((merchant) => ({
       ...merchant,
       agentScore: scoreMerchant(query, merchant),
@@ -102,7 +152,12 @@ export async function GET(request: Request) {
   return Response.json({
     query,
     product: "Jiagon verified local memory layer",
-    privacy: "Demo response only includes published or aggregate signals. Private receipts should require user consent.",
+    privacy: "Response includes published or aggregate receipt review signals. Private receipt inbox data should stay user-scoped.",
+    dataSource: persisted.merchants.length > 0 ? "postgres-merchant-signals" : "demo-fixture",
+    persistence: {
+      configured: persisted.configured,
+      error: persisted.error,
+    },
     architecture: {
       sourceChain: "optimism",
       credentialChain: "bnb-testnet",
