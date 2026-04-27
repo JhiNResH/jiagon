@@ -32,7 +32,7 @@ const RECEIPTS = [
     branch: 'Irvine',
     cat: 'Bakery · Irvine',
     glyph: '8',
-    tint: 'oklch(0.92 0.04 60)',
+    tint: 'var(--place-warm)',
     amount: '$4.95',
     token: 'OP USDC',
     date: 'Apr 25 · 12:16',
@@ -50,7 +50,7 @@ const RECEIPTS = [
     branch: null,
     cat: 'Merchant not claimed',
     glyph: '$',
-    tint: 'oklch(0.90 0.02 80)',
+    tint: 'var(--place-paper)',
     amount: '$30.40',
     token: 'OP USDC',
     date: 'Apr 25 · 00:56',
@@ -68,7 +68,7 @@ const RECEIPTS = [
     branch: null,
     cat: 'Merchant not claimed',
     glyph: '$',
-    tint: 'oklch(0.90 0.02 80)',
+    tint: 'var(--place-paper)',
     amount: '$14.25',
     token: 'OP USDC',
     date: 'Apr 24 · 07:27',
@@ -86,7 +86,7 @@ const RECEIPTS = [
     branch: 'San Francisco',
     cat: 'Bakery · SF',
     glyph: '◐',
-    tint: 'oklch(0.90 0.05 80)',
+    tint: 'var(--place-warm)',
     amount: '$21.54',
     token: 'OP USDC',
     date: 'Apr 24 · 19:11',
@@ -104,7 +104,7 @@ const RECEIPTS = [
     branch: 'Tokyo',
     cat: 'Café · Tokyo',
     glyph: '☕',
-    tint: 'oklch(0.92 0.04 60)',
+    tint: 'var(--place-fresh)',
     amount: '$7.00',
     token: 'OP USDC',
     date: 'Apr 24 · 20:35',
@@ -120,7 +120,7 @@ const RECEIPTS = [
 const FEED = [
   {
     id: 'f1', author: 'mira.eth', handle: '0x8a2…f01',
-    rep: 412, avatar: 'oklch(0.78 0.10 30)',
+    rep: 412, avatar: 'var(--avatar-warm)',
     merchant: '85C Bakery Cafe', branch: 'Irvine', cat: 'Bakery · Irvine',
     rating: 5, time: '2h',
     text: 'Fast pastry stop before a drive. The sea salt coffee was consistent and the line moved in under five minutes.',
@@ -128,11 +128,11 @@ const FEED = [
     proofLevel: 'A · onchain payment',
     merchantProof: 'C · claimed merchant',
     verifiedVisits: 12,
-    photo: 'oklch(0.86 0.06 50)',
+    photo: 'var(--place-warm)',
   },
   {
     id: 'f2', author: 'kenji.lens', handle: '0x4f1…22d',
-    rep: 1280, avatar: 'oklch(0.72 0.09 200)',
+    rep: 1280, avatar: 'var(--avatar-cool)',
     merchant: 'Tartine', branch: 'San Francisco', cat: 'Bakery · SF',
     rating: 4, time: '6h',
     text: 'Morning bun still hits. Crowded, but this visit was quick enough to recommend for pickup, not a sit-down.',
@@ -144,7 +144,7 @@ const FEED = [
   },
   {
     id: 'f3', author: 'luca.pay', handle: '0x21c…9e8',
-    rep: 87, avatar: 'oklch(0.80 0.08 130)',
+    rep: 87, avatar: 'var(--avatar-fresh)',
     merchant: 'Fuglen Coffee', branch: 'Tokyo', cat: 'Café · Tokyo',
     rating: 5, time: '1d',
     text: 'The hand-drip Ethiopia was clean and bright. Worth routing here if the agent is optimizing for quiet coffee.',
@@ -152,7 +152,7 @@ const FEED = [
     proofLevel: 'A · onchain payment',
     merchantProof: 'C · claimed merchant',
     verifiedVisits: 5,
-    photo: 'oklch(0.84 0.04 90)',
+    photo: 'var(--place-fresh)',
   },
 ];
 
@@ -162,7 +162,7 @@ const MERCHANTS = [
     name: '85C Bakery Cafe',
     branch: 'Irvine',
     cat: 'Bakery',
-    tint: 'oklch(0.92 0.04 60)',
+    tint: 'var(--place-warm)',
     glyph: '8',
     rating: 4.5,
     visits: 12,
@@ -176,7 +176,7 @@ const MERCHANTS = [
     name: 'Tartine',
     branch: 'San Francisco',
     cat: 'Bakery',
-    tint: 'oklch(0.90 0.05 80)',
+    tint: 'var(--place-warm)',
     glyph: '◐',
     rating: 4.2,
     visits: 8,
@@ -190,7 +190,7 @@ const MERCHANTS = [
     name: 'Fuglen Coffee',
     branch: 'Tokyo',
     cat: 'Café',
-    tint: 'oklch(0.88 0.04 220)',
+    tint: 'var(--place-cool)',
     glyph: '☕',
     rating: 4.8,
     visits: 5,
@@ -208,7 +208,7 @@ const PROFILE = {
   reviews: 18,
   receipts: 73,
   joined: 'Mar 2025',
-  avatar: 'oklch(0.78 0.12 40)',
+  avatar: 'var(--avatar-warm)',
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ const VerifiedChip = ({ tx, amount, style: vStyle = 'chip' }) => {
     }}>
       <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
         <circle cx="6" cy="6" r="5.5" fill="var(--verified)"/>
-        <path d="M3.2 6.2l1.8 1.8 3.8-4.4" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+        <path d="M3.2 6.2l1.8 1.8 3.8-4.4" stroke="var(--panel-text)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
       </svg>
       <span>A payment · {amount}</span>
       {tx && <span style={{ opacity: 0.6 }}>· {tx}</span>}

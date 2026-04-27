@@ -86,8 +86,8 @@ function AuthFlow() {
       minHeight: "100vh",
       display: "grid",
       placeItems: "center",
-      background: "#eeebe5",
-      color: "#2f2a24",
+      background: "oklch(0.965 0.008 92)",
+      color: "oklch(0.235 0.018 135)",
       fontFamily: "Inter, -apple-system, system-ui, sans-serif",
     }}>
       <div style={{ textAlign: "center" }}>
@@ -131,7 +131,7 @@ export default function AuthPage() {
         loginMethods: ["email", "google"],
         appearance: {
           theme: "light",
-          accentColor: "#B95432",
+          accentColor: "#A9573D",
           showWalletLoginFirst: false,
           walletList: [],
         },

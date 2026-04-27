@@ -65,7 +65,7 @@ const OnboardingScreen = ({ onDone, auth, etherfi }) => {
       </div>
 
       <div style={{
-        marginTop: 34, background: '#fff', padding: '22px 22px 30px',
+        marginTop: 34, background: 'var(--receipt)', padding: '22px 22px 30px',
         borderRadius: 2,
         boxShadow: '0 12px 40px rgba(0,0,0,0.08), 0 0 0 0.5px rgba(0,0,0,0.06)',
         position: 'relative', fontFamily: 'var(--mono)', fontSize: 11,
@@ -188,7 +188,7 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
           width: 28, height: 28, borderRadius: 6, background: 'var(--accent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontFamily: 'var(--display)', fontStyle: 'italic',
-          fontSize: 18, color: '#fff', fontWeight: 500,
+          fontSize: 18, color: 'var(--panel-text)', fontWeight: 500,
         }}>J</div>}
         right={<>
           <IconBtn>
@@ -333,7 +333,7 @@ const toReceiptCard = (receipt, index) => ({
   branch: null,
   cat: 'Merchant not claimed',
   glyph: '$',
-  tint: 'oklch(0.90 0.02 80)',
+  tint: 'var(--place-paper)',
   amount: `$${receipt.amountUsd}`,
   token: 'OP USDC',
   date: receipt.timestamp
@@ -367,8 +367,8 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
   return (
     <div style={{ padding: '0 18px 14px' }}>
       <div style={{
-        background: 'var(--ink)',
-        color: 'var(--bg)',
+        background: 'var(--panel)',
+        color: 'var(--panel-text)',
         borderRadius: 18,
         padding: 16,
         boxShadow: '0 10px 32px rgba(0,0,0,0.12)',
@@ -393,7 +393,7 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
           fontSize: 13.5,
           lineHeight: 1.45,
           marginTop: 10,
-          color: 'oklch(0.92 0.008 80)',
+          color: 'var(--panel-muted)',
         }}>{agentReadiness}</div>
 
         <div style={{
@@ -503,10 +503,10 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
           marginTop: 14,
           fontFamily: 'var(--mono)',
           fontSize: 10,
-          color: 'oklch(0.82 0.008 80)',
+          color: 'var(--panel-muted)',
         }}>
           <span>{lastSync}</span>
-          <span style={{ color: 'var(--bg)', fontWeight: 700 }}>{nextAction} →</span>
+          <span style={{ color: 'var(--panel-text)', fontWeight: 700 }}>{nextAction} →</span>
         </div>
       </div>
     </div>
@@ -876,7 +876,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
       author: 'you',
       handle: receipt.safe ? `${receipt.safe.slice(0, 6)}…${receipt.safe.slice(-4)}` : 'privy user',
       rep: 0,
-      avatar: 'oklch(0.78 0.12 40)',
+      avatar: 'var(--avatar-warm)',
       merchant: merchantName.trim(),
       branch: merchantCity.trim(),
       cat: merchantCity.trim() ? `Local · ${merchantCity.trim()}` : 'Local',
@@ -1151,7 +1151,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
             disabled={text.trim().length < 10 || submitting}
             style={{
               flex: 1, padding: '15px 24px', borderRadius: 999,
-              background: 'var(--accent)', color: '#fff',
+              background: 'var(--accent)', color: 'var(--panel-text)',
               border: 'none', cursor: 'pointer',
               fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600,
               opacity: text.trim().length < 10 || submitting ? 0.5 : 1,
@@ -1159,7 +1159,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
             }}>
             {submitting ? <>
               <span className="spin" style={{
-                width: 13, height: 13, border: '2px solid #fff',
+                width: 13, height: 13, border: '2px solid var(--panel-text)',
                 borderTopColor: 'transparent', borderRadius: '50%',
               }} />
               Publishing…
@@ -1699,9 +1699,9 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
     {[
       ...userReviews,
       { merchant: 'Apotheke Spa', cat: 'Service · Brooklyn', rating: 5, time: '2w', amount: '$120 USDC',
-        text: 'Best deep-tissue I\'ve had in years. Booked again on the way out.', tint: 'oklch(0.90 0.04 30)' },
+        text: 'Best deep-tissue I\'ve had in years. Booked again on the way out.', tint: 'var(--place-fresh)' },
       { merchant: 'Tartine', cat: 'Bakery · SF', rating: 4, time: '1mo', amount: '$14 USDC',
-        text: 'The morning bun is the morning bun. Crowded.', tint: 'oklch(0.90 0.05 80)' },
+        text: 'The morning bun is the morning bun. Crowded.', tint: 'var(--place-warm)' },
     ].map((r, i) => (
       <article key={i} style={{
         padding: '16px 20px',

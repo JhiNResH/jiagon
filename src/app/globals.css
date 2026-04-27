@@ -7,15 +7,30 @@
   --mono: 'JetBrains Mono', ui-monospace, monospace;
   --ui: 'Inter', -apple-system, system-ui, sans-serif;
 
-  --bg: oklch(0.97 0.008 80);
-  --bg-blur: oklch(0.97 0.008 80 / 0.85);
-  --surface: oklch(0.94 0.01 80);
-  --ink: oklch(0.20 0.012 60);
-  --ink-muted: oklch(0.50 0.012 60);
-  --rule: oklch(0.86 0.012 70);
-  --accent: oklch(0.62 0.17 35);
-  --verified: oklch(0.55 0.13 155);
-  --verified-soft: oklch(0.93 0.04 155);
+  --bg: oklch(0.965 0.008 92);
+  --bg-blur: oklch(0.965 0.008 92 / 0.88);
+  --surface: oklch(0.985 0.005 95);
+  --surface-raised: oklch(0.995 0.003 95);
+  --receipt: oklch(0.992 0.004 100);
+  --ink: oklch(0.235 0.018 135);
+  --ink-muted: oklch(0.50 0.018 115);
+  --rule: oklch(0.865 0.012 92);
+  --accent: oklch(0.58 0.14 34);
+  --accent-soft: oklch(0.92 0.045 42);
+  --verified: oklch(0.48 0.12 158);
+  --verified-soft: oklch(0.93 0.045 158);
+  --info: oklch(0.47 0.09 228);
+  --info-soft: oklch(0.92 0.035 228);
+  --panel: oklch(0.27 0.032 135);
+  --panel-text: oklch(0.97 0.006 95);
+  --panel-muted: oklch(0.78 0.012 105);
+  --place-warm: oklch(0.90 0.04 62);
+  --place-paper: oklch(0.91 0.018 96);
+  --place-fresh: oklch(0.88 0.045 150);
+  --place-cool: oklch(0.88 0.035 225);
+  --avatar-warm: oklch(0.78 0.09 36);
+  --avatar-cool: oklch(0.74 0.075 222);
+  --avatar-fresh: oklch(0.78 0.075 150);
 }
 
 [data-theme="dark"] {
@@ -31,7 +46,7 @@
 html, body {
   margin: 0; padding: 0;
   color-scheme: light;
-  background: oklch(0.94 0.008 80);
+  background: oklch(0.91 0.014 105);
   font-family: var(--ui);
   color: var(--ink);
   overflow: hidden;
@@ -44,7 +59,8 @@ button { font: inherit; }
 .stage {
   width: 100vw; height: 100vh;
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at top, oklch(0.96 0.01 80) 0%, oklch(0.92 0.012 60) 100%);
+  background:
+    linear-gradient(135deg, oklch(0.93 0.018 120) 0%, oklch(0.90 0.012 84) 58%, oklch(0.88 0.018 135) 100%);
   position: relative;
 }
 
@@ -70,7 +86,7 @@ button { font: inherit; }
 .label {
   position: absolute; top: 18px; left: 24px;
   font-family: var(--mono); font-size: 11px;
-  color: oklch(0.45 0.01 60); letter-spacing: 1.2px;
+  color: oklch(0.43 0.016 115); letter-spacing: 1.2px;
   text-transform: uppercase;
   z-index: 100;
 }
@@ -79,14 +95,14 @@ button { font: inherit; }
 .tagline {
   position: absolute; bottom: 28px; right: 28px;
   font-family: var(--display); font-style: italic; font-size: 22px;
-  color: oklch(0.42 0.012 60); letter-spacing: -0.3px;
+  color: oklch(0.38 0.018 115); letter-spacing: -0.3px;
   z-index: 100;
   text-align: right; line-height: 1.1;
 }
 .tagline small {
   display: block; font-family: var(--mono); font-style: normal;
   font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
-  color: oklch(0.55 0.01 60); margin-top: 6px;
+  color: oklch(0.50 0.016 115); margin-top: 6px;
 }
 
 @media (max-width: 920px), (max-height: 760px) {
