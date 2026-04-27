@@ -16,7 +16,9 @@ shown as `minted` after a real BNB testnet transaction is broadcast and confirme
 - Credential chain: BNB Smart Chain testnet.
 - Receipt registry: `0xd2162803d5C893d1D8Ce317B674625beC4Ad18E5`.
 - Registry admin / initial minter: `0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9`.
-- API mode: `prepare-only`; server-side BNB mint broadcasting is not integrated yet.
+- Server minter: configurable with `BNB_MINTER_PRIVATE_KEY`.
+- Mint authorization: protected by `JIAGON_MINT_API_TOKEN`.
+- API mode: real BNB testnet mint when registry, minter key, and mint token are configured; otherwise `prepare-only`.
 
 ## User Flow
 
@@ -67,6 +69,8 @@ NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
 BNB_TESTNET_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
 BNB_TESTNET_ADMIN=0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9
 BNB_RECEIPT_CONTRACT_ADDRESS=0xd2162803d5C893d1D8Ce317B674625beC4Ad18E5
+# BNB_MINTER_PRIVATE_KEY=never-commit-real-private-keys
+# JIAGON_MINT_API_TOKEN=use-a-random-32-plus-character-server-token
 ```
 
 Run the dev server:
@@ -127,9 +131,11 @@ Expected results:
 - `POST /api/receipts/mint`: verifies an OP spend and prepares a BNB receipt credential.
 - `POST /api/agent/recommendations`: returns recommendation-oriented review data.
 
-`/api/receipts/mint` currently returns `status: "prepared"` and `mode:
-"prepare-only"`. Do not label these credentials as `minted` until the API
-broadcasts and confirms an onchain BNB transaction.
+`/api/receipts/mint` returns `status: "minted"` only after the API broadcasts
+and confirms a BNB testnet transaction. A real mint requires a server minter key
+and a matching `x-jiagon-mint-token` or `Authorization: Bearer ...` token. If
+the registry address, minter key, or mint authorization is missing, it falls back
+to `status: "prepared"` and `mode: "prepare-only"`.
 
 ## Development Workflow
 
@@ -145,8 +151,7 @@ For contract, proof, credential, auth, or minting changes:
 
 ## Next Milestones
 
-- Add server-side BNB mint broadcasting.
-- Verify deployed registry code, owner, and minter before minting.
+- Replace temporary mint token gating with Privy server verification and safe ownership binding.
 - Persist receipt metadata to Greenfield or a temporary storage layer.
 - Build receipt inbox / profile / review feed persistence.
 - Reduce manual tx submission by adding safer account-linked spend discovery.
