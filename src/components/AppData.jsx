@@ -14,6 +14,7 @@ const ETHERFI_SYNC = {
   auth: 'Privy',
   wallet: '0x3e9a…a04f',
   safe: '0x8745…9d0b',
+  safeFull: '0x874525d36afad840ac44e5d66e62f18f49439d0b',
   chain: 'Optimism',
   emitter: '0x380b…1acb',
   detected: 73,
@@ -125,6 +126,7 @@ const FEED = [
     text: 'Fast pastry stop before a drive. The sea salt coffee was consistent and the line moved in under five minutes.',
     tx: '0x61b4…d63', amount: '$4.95 OP USDC',
     proofLevel: 'A · onchain payment',
+    merchantProof: 'C · claimed merchant',
     verifiedVisits: 12,
     photo: 'oklch(0.86 0.06 50)',
   },
@@ -136,6 +138,7 @@ const FEED = [
     text: 'Morning bun still hits. Crowded, but this visit was quick enough to recommend for pickup, not a sit-down.',
     tx: '0xf82b…0158', amount: '$21.54 OP USDC',
     proofLevel: 'A · onchain payment',
+    merchantProof: 'C · claimed merchant',
     verifiedVisits: 8,
     photo: null,
   },
@@ -147,6 +150,7 @@ const FEED = [
     text: 'The hand-drip Ethiopia was clean and bright. Worth routing here if the agent is optimizing for quiet coffee.',
     tx: '0xdb3c…8d9b', amount: '$7.00 OP USDC',
     proofLevel: 'A · onchain payment',
+    merchantProof: 'C · claimed merchant',
     verifiedVisits: 5,
     photo: 'oklch(0.84 0.04 90)',
   },
@@ -252,7 +256,7 @@ const VerifiedChip = ({ tx, amount, style: vStyle = 'chip' }) => {
         <circle cx="6" cy="6" r="5.5" fill="var(--verified)"/>
         <path d="M3.2 6.2l1.8 1.8 3.8-4.4" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
       </svg>
-      <span>Payment verified · {amount}</span>
+      <span>A payment · {amount}</span>
       {tx && <span style={{ opacity: 0.6 }}>· {tx}</span>}
     </div>
   );
@@ -340,7 +344,7 @@ const IconBtn = ({ children, onClick }) => (
 // ─────────────────────────────────────────────────────────────
 const TabBar = ({ active, onChange }) => {
   const tabs = [
-    { id: 'feed', label: 'Feed', icon: (
+    { id: 'feed', label: 'Memory', icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <path d="M3 7h18M3 12h18M3 17h12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
       </svg>
@@ -351,7 +355,7 @@ const TabBar = ({ active, onChange }) => {
         <path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
       </svg>
     )},
-    { id: 'discover', label: 'Discover', icon: (
+    { id: 'discover', label: 'Agent', icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.7"/>
         <path d="M16 16l5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>

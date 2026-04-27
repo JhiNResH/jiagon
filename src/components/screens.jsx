@@ -11,29 +11,20 @@ const _useState = React.useState;
 // ─────────────────────────────────────────────────────────────
 // ONBOARDING
 // ─────────────────────────────────────────────────────────────
-const OnboardingScreen = ({ onDone, auth }) => {
-  const [step, setStep] = _useState(0);
+const OnboardingScreen = ({ onDone, auth, etherfi }) => {
   const [connecting, setConnecting] = _useState(false);
   const [authError, setAuthError] = _useState("");
-  const [hasSynced, setHasSynced] = _useState(false);
+  const [proofInput, setProofInput] = _useState(etherfi?.sourceTx || RECEIPTS[0].txFull);
   const ready = auth?.ready ?? true;
   const authenticated = auth?.authenticated ?? false;
   const userLabel = auth?.userLabel;
   const walletLabel = auth?.walletLabel;
   const login = auth?.login;
-
-  React.useEffect(() => {
-    if (!ready || !authenticated || hasSynced || step !== 0) return;
-
-    setConnecting(true);
-    const timer = window.setTimeout(() => {
-      setConnecting(false);
-      setHasSynced(true);
-      setStep(1);
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-  }, [authenticated, hasSynced, ready, step]);
+  const synced = etherfi?.status === "synced";
+  const scanning = etherfi?.status === "scanning";
+  const detected = synced ? etherfi.count : ETHERFI_SYNC.detected;
+  const totalSpend = synced ? `$${etherfi.totalSpendUsd}` : ETHERFI_SYNC.totalSpend;
+  const pending = synced ? etherfi.receipts?.length || 0 : ETHERFI_SYNC.pending;
 
   const connect = async () => {
     setAuthError("");
@@ -41,12 +32,8 @@ const OnboardingScreen = ({ onDone, auth }) => {
     if (!ready || connecting) return;
 
     if (authenticated) {
-      setConnecting(true);
-      window.setTimeout(() => {
-        setConnecting(false);
-        setHasSynced(true);
-        setStep(1);
-      }, 700);
+      etherfi?.scan?.(proofInput).catch(() => {});
+      onDone();
       return;
     }
 
@@ -93,10 +80,10 @@ const OnboardingScreen = ({ onDone, auth }) => {
           Ether.fi import
         </div>
         {[
-          ['01', 'Sign in with Privy', 'email, social, or wallet'],
-          ['02', 'Detect your account', walletLabel || userLabel || ETHERFI_SYNC.safe],
-          ['03', 'Scan OP Spend events', '73 payments found'],
-          ['04', 'Claim a merchant', 'one receipt, one review'],
+          ['01', 'Sign in with Privy', 'email or social login'],
+          ['02', 'Start with one spend tx', walletLabel || userLabel || 'paste from ether.fi Cash'],
+          ['03', 'Scan OP Spend events', synced ? `${detected} payments found` : 'from one spend tx'],
+          ['04', 'Build private memory', 'claim merchant, then publish if useful'],
         ].map(([n, t, s]) => (
           <div key={n} style={{ display: 'flex', gap: 12, padding: '7px 0', alignItems: 'baseline' }}>
             <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{n}</span>
@@ -106,9 +93,41 @@ const OnboardingScreen = ({ onDone, auth }) => {
             </div>
           </div>
         ))}
+        {authenticated && (
+          <div style={{
+            borderTop: '1px dashed var(--rule)',
+            paddingTop: 10,
+            marginTop: 8,
+          }}>
+            <label style={{
+              display: 'block',
+              color: 'var(--ink-muted)',
+              marginBottom: 6,
+              textTransform: 'uppercase',
+              letterSpacing: 0.7,
+            }}>Spend transaction</label>
+            <input
+              value={proofInput}
+              onChange={e => setProofInput(e.target.value)}
+              spellCheck={false}
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                border: '0.5px solid var(--rule)',
+                borderRadius: 8,
+                padding: '9px 10px',
+                fontFamily: 'var(--mono)',
+                fontSize: 10.5,
+                outline: 'none',
+              }}
+            />
+          </div>
+        )}
         <div style={{ borderTop: '1px dashed var(--rule)', paddingTop: 10, marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ color: 'var(--ink-muted)' }}>proof</span>
-          <span>OP · Base receipt</span>
+          <span>A payment · C merchant</span>
         </div>
         <div style={{
           position: 'absolute', bottom: -8, left: 0, right: 0, height: 8,
@@ -124,89 +143,31 @@ const OnboardingScreen = ({ onDone, auth }) => {
             lineHeight: 1.45, marginBottom: 12,
           }}>{authError}</div>
         )}
-        <button onClick={connect} disabled={!ready || connecting} style={{
+        <button onClick={connect} disabled={!ready || connecting || scanning} style={{
           width: '100%', background: 'var(--ink)', color: 'var(--bg)',
           border: 'none', borderRadius: 999,
           padding: '17px 24px', fontSize: 16, fontWeight: 600,
           fontFamily: 'var(--ui)', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          opacity: !ready || connecting ? 0.7 : 1,
+          opacity: !ready || connecting || scanning ? 0.7 : 1,
         }}>
-          {!ready ? 'Loading Privy…' : connecting ? (
+          {!ready ? 'Loading Privy…' : connecting || scanning ? (
             <>
               <span className="spin" style={{
                 width: 14, height: 14, border: '2px solid var(--bg)',
                 borderTopColor: 'transparent', borderRadius: '50%',
                 display: 'inline-block',
               }} />
-              Syncing ether.fi safe…
+              Starting receipt sync…
             </>
-          ) : authenticated ? 'Sync ether.fi receipts' : 'Continue with Privy'}
+          ) : authenticated ? 'Import from spend tx' : 'Continue with Privy'}
         </button>
         <button onClick={onDone} style={{
           width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
           marginTop: 14, fontSize: 13, color: 'var(--ink-muted)',
           fontFamily: 'var(--ui)',
-        }}>Explore verified feed</button>
+        }}>Explore receipt memory</button>
       </div>
-
-      {step === 1 && (
-        <div style={{
-          position: 'absolute', inset: 0, background: 'var(--bg)',
-          padding: '86px 28px 40px',
-          display: 'flex', flexDirection: 'column',
-          animation: 'fadeIn 300ms ease',
-        }}>
-          <div style={{ textAlign: 'center', marginTop: 22 }}>
-            <div style={{
-              width: 72, height: 72, borderRadius: '50%',
-              background: 'var(--verified-soft)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 18px',
-            }}>
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-                <path d="M5 12.5l4.5 4.5L19 7" stroke="var(--verified)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <div style={{
-              fontFamily: 'var(--display)', fontStyle: 'italic',
-              fontSize: 32, color: 'var(--ink)', letterSpacing: -0.5,
-            }}>Receipts synced</div>
-            <div style={{
-              fontFamily: 'var(--mono)', fontSize: 11, marginTop: 10,
-              color: 'var(--ink-muted)', letterSpacing: 0.2,
-            }}>{walletLabel || userLabel || ETHERFI_SYNC.safe}</div>
-          </div>
-
-          <div style={{
-            marginTop: 28, background: 'var(--surface)', border: '0.5px solid var(--rule)',
-            borderRadius: 16, padding: 18,
-          }}>
-            {[
-              ['Spend events', ETHERFI_SYNC.detected],
-              ['Ready to claim', ETHERFI_SYNC.pending],
-              ['Verified spend', ETHERFI_SYNC.totalSpend],
-            ].map(([k, v]) => (
-              <div key={k} style={{
-                display: 'flex', justifyContent: 'space-between',
-                padding: '9px 0', borderBottom: k === 'Verified spend' ? 'none' : '0.5px solid var(--rule)',
-                fontFamily: 'var(--mono)', fontSize: 12,
-              }}>
-                <span style={{ color: 'var(--ink-muted)' }}>{k}</span>
-                <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{v}</span>
-              </div>
-            ))}
-          </div>
-
-          <button onClick={onDone} style={{
-            background: 'var(--accent)', color: '#fff',
-            border: 'none', borderRadius: 999,
-            padding: '17px 24px', fontSize: 16, fontWeight: 600,
-            fontFamily: 'var(--ui)', cursor: 'pointer',
-            marginTop: 'auto',
-          }}>Review pending receipts</button>
-        </div>
-      )}
     </div>
   );
 };
@@ -214,13 +175,15 @@ const OnboardingScreen = ({ onDone, auth }) => {
 // ─────────────────────────────────────────────────────────────
 // FEED
 // ─────────────────────────────────────────────────────────────
-const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
+const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @type {Array<any>} */ ([]) }) => {
   const pad = density === 'comfy' ? 22 : 16;
+  const reviews = [...userReviews, ...FEED];
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
-        title="Verified"
-        sub="Receipt-backed reviews for agents"
+        title="Memory"
+        sub="Published taste signals for agents"
         left={<div style={{
           width: 28, height: 28, borderRadius: 6, background: 'var(--accent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -242,7 +205,7 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
         display: 'flex', gap: 8, padding: '8px 18px 14px',
         overflowX: 'auto',
       }}>
-        {['Agent picks', 'Nearby', 'A proof', 'Cafés', 'Bakeries', 'Recent'].map((c, i) => (
+        {['My signals', 'Agent picks', 'A proof', 'C merchant', 'Cafés', 'Recent'].map((c, i) => (
           <div key={c} style={{
             padding: '7px 14px', borderRadius: 999,
             background: i === 0 ? 'var(--ink)' : 'var(--surface)',
@@ -254,7 +217,7 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
         ))}
       </div>
 
-      {FEED.map((r, i) => (
+      {reviews.map((r, i) => (
         <article key={r.id} onClick={() => onOpenReview(r)} style={{
           padding: `${pad}px 20px`, cursor: 'pointer',
           borderTop: i === 0 ? '0.5px solid var(--rule)' : 'none',
@@ -306,7 +269,7 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
             {[
               ['Proof', r.proofLevel],
               ['Visits', `${r.verifiedVisits} verified`],
-              ['Source', 'ether.fi'],
+              ['Merchant', r.merchantProof || 'C · claimed'],
             ].map(([k, v]) => (
               <div key={k} style={{
                 background: 'var(--surface)', border: '0.5px solid var(--rule)',
@@ -363,16 +326,80 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
 // ─────────────────────────────────────────────────────────────
 // INBOX (receipts)
 // ─────────────────────────────────────────────────────────────
-const InboxScreen = ({ onOpenReceipt }) => {
-  const unclaimed = RECEIPTS.filter(r => r.status === 'unclaimed');
-  const claimed = RECEIPTS.filter(r => r.status === 'claimed');
-  const done = RECEIPTS.filter(r => r.reviewed);
+const toReceiptCard = (receipt, index) => ({
+  id: receipt.id || `chain-${index}`,
+  provider: 'ether.fi',
+  merchant: null,
+  branch: null,
+  cat: 'Merchant not claimed',
+  glyph: '$',
+  tint: 'oklch(0.90 0.02 80)',
+  amount: `$${receipt.amountUsd}`,
+  token: 'OP USDC',
+  date: receipt.timestamp
+    ? new Date(receipt.timestamp * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : `Block ${receipt.blockNumber}`,
+  tx: receipt.txShort,
+  txFull: receipt.txHash,
+  safe: receipt.safe,
+  block: receipt.blockNumber,
+  proof: receipt.proof,
+  proofLevel: 'A · onchain payment',
+  merchantProof: 'C · user-claimed merchant',
+  privacy: 'Private until published',
+  status: 'unclaimed',
+  reviewed: false,
+});
+
+const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @type {Array<string>} */ ([]) }) => {
+  const authenticated = auth?.authenticated ?? false;
+  const ready = auth?.ready ?? true;
+  const login = auth?.login;
+  const [latestTx, setLatestTx] = _useState(etherfi?.sourceTx || RECEIPTS[0].txFull);
+  const [importError, setImportError] = _useState("");
+  React.useEffect(() => {
+    if (etherfi?.sourceTx) setLatestTx(etherfi.sourceTx);
+  }, [etherfi?.sourceTx]);
+
+  const liveReceipts = etherfi?.receipts?.length
+    ? etherfi.receipts.map(toReceiptCard)
+    : null;
+  const receiptSource = (liveReceipts || RECEIPTS).map(receipt =>
+    reviewedReceiptIds.includes(receipt.id)
+      ? { ...receipt, status: 'reviewed', reviewed: true }
+      : receipt
+  );
+  const unclaimed = receiptSource.filter(r => r.status === 'unclaimed');
+  const claimed = receiptSource.filter(r => r.status === 'claimed');
+  const done = receiptSource.filter(r => r.reviewed);
+  const eventCount = etherfi?.status === 'synced' ? etherfi.count : ETHERFI_SYNC.detected;
+  const totalSpend = etherfi?.status === 'synced' ? `$${etherfi.totalSpendUsd}` : ETHERFI_SYNC.totalSpend;
+  const safeLabel = etherfi?.safe || ETHERFI_SYNC.safe;
+  const lastSync = etherfi?.scannedAt
+    ? new Date(etherfi.scannedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : ETHERFI_SYNC.lastSync;
+  const scanning = etherfi?.status === 'scanning';
+
+  const importLatestTx = async () => {
+    setImportError("");
+
+    if (!authenticated) {
+      await login?.();
+      return;
+    }
+
+    try {
+      await etherfi?.scan?.(latestTx);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Unable to import latest spend transaction.');
+    }
+  };
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
         title="Receipts"
-        sub={`${ETHERFI_SYNC.detected} OP spends synced`}
+        sub={`${eventCount} private OP spends synced`}
         left={<div style={{ width: 28 }} />}
         right={<IconBtn>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -401,7 +428,7 @@ const InboxScreen = ({ onOpenReceipt }) => {
                 fontFamily: 'var(--mono)', fontSize: 10,
                 color: 'var(--ink-muted)', marginTop: 3,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>{ETHERFI_SYNC.safe} · {ETHERFI_SYNC.lastSync}</div>
+              }}>{safeLabel} · {lastSync}</div>
             </div>
             <div style={{
               fontFamily: 'var(--mono)', fontSize: 11,
@@ -413,9 +440,9 @@ const InboxScreen = ({ onOpenReceipt }) => {
             gap: 8, marginTop: 14,
           }}>
             {[
-              ['Spends', ETHERFI_SYNC.detected],
-              ['Pending', ETHERFI_SYNC.pending],
-              ['Volume', ETHERFI_SYNC.totalSpend],
+              ['Spends', eventCount],
+              ['Pending', unclaimed.length],
+              ['Volume', totalSpend],
             ].map(([k, v]) => (
               <div key={k} style={{
                 background: 'var(--bg)', border: '0.5px solid var(--rule)',
@@ -436,12 +463,112 @@ const InboxScreen = ({ onOpenReceipt }) => {
         </div>
       </div>
 
+      <div style={{ padding: '0 18px 14px' }}>
+        <div style={{
+          background: 'var(--bg)',
+          border: '0.5px solid var(--rule)',
+          borderRadius: 16,
+          padding: 14,
+          boxShadow: '0 1px 0 rgba(0,0,0,0.02)',
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: authenticated ? 10 : 0,
+          }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                fontWeight: 700,
+                color: 'var(--ink)',
+              }}>Latest spend tx</div>
+              <div style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 9.5,
+                color: 'var(--ink-muted)',
+                marginTop: 3,
+              }}>{authenticated ? 'Refresh private receipt memory' : 'Privy required'}</div>
+            </div>
+            {!authenticated && (
+              <button
+                onClick={importLatestTx}
+                disabled={!ready}
+                style={{
+                  border: 'none',
+                  background: 'var(--ink)',
+                  color: 'var(--bg)',
+                  borderRadius: 999,
+                  padding: '9px 13px',
+                  fontFamily: 'var(--mono)',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: ready ? 'pointer' : 'default',
+                  opacity: ready ? 1 : 0.6,
+                }}
+              >LOGIN</button>
+            )}
+          </div>
+
+          {authenticated && (
+            <>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={latestTx}
+                  onChange={e => setLatestTx(e.target.value)}
+                  spellCheck={false}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    background: 'var(--surface)',
+                    color: 'var(--ink)',
+                    border: '0.5px solid var(--rule)',
+                    borderRadius: 10,
+                    padding: '10px 11px',
+                    fontFamily: 'var(--mono)',
+                    fontSize: 10.5,
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={importLatestTx}
+                  disabled={scanning}
+                  style={{
+                    border: 'none',
+                    background: 'var(--ink)',
+                    color: 'var(--bg)',
+                    borderRadius: 10,
+                    padding: '0 12px',
+                    fontFamily: 'var(--mono)',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: scanning ? 'default' : 'pointer',
+                    opacity: scanning ? 0.65 : 1,
+                  }}
+                >{scanning ? 'SCAN' : 'IMPORT'}</button>
+              </div>
+              {(importError || etherfi?.error) && (
+                <div style={{
+                  fontFamily: 'var(--mono)',
+                  fontSize: 10,
+                  color: 'var(--accent)',
+                  marginTop: 8,
+                  lineHeight: 1.45,
+                }}>{importError || etherfi.error}</div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
       <div style={{ padding: '4px 20px 6px' }}>
         <div style={{
           fontFamily: 'var(--mono)', fontSize: 10.5,
           color: 'var(--ink-muted)', textTransform: 'uppercase',
           letterSpacing: 0.8, marginBottom: 12,
-        }}>Claim merchant details</div>
+        }}>Private receipts · claim merchant when ready</div>
       </div>
 
       {[...claimed, ...unclaimed].map(r => (
@@ -471,7 +598,7 @@ const InboxScreen = ({ onOpenReceipt }) => {
                 fontFamily: 'var(--mono)', fontSize: 10.5,
                 color: 'var(--ink-muted)', marginTop: 2,
                 textTransform: 'uppercase', letterSpacing: 0.5,
-              }}>{r.merchant ? `${r.cat} · ${r.branch}` : 'Needs merchant name / city'}</div>
+              }}>{r.merchant ? `${r.cat} · ${r.branch}` : 'Payment verified · merchant unverified'}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{
@@ -492,7 +619,7 @@ const InboxScreen = ({ onOpenReceipt }) => {
             <div style={{
               fontFamily: 'var(--mono)', fontSize: 10.5,
               color: 'var(--ink-muted)',
-            }}>{r.tx} · #{r.block}</div>
+            }}>{r.tx} · #{r.block} · private</div>
             <span style={{
               fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600,
               color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4,
@@ -572,8 +699,30 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
 
   const submit = () => {
     setSubmitting(true);
-    setTimeout(() => { setSubmitting(false); setDone(true); }, 1400);
-    setTimeout(() => { onSubmit(); }, 2700);
+    const publishedReview = {
+      id: `local-${receipt.id}`,
+      receiptId: receipt.id,
+      author: 'you',
+      handle: receipt.safe ? `${receipt.safe.slice(0, 6)}…${receipt.safe.slice(-4)}` : 'privy user',
+      rep: 0,
+      avatar: 'oklch(0.78 0.12 40)',
+      merchant: merchantName.trim(),
+      branch: merchantCity.trim(),
+      cat: merchantCity.trim() ? `Local · ${merchantCity.trim()}` : 'Local',
+      rating,
+      time: 'now',
+      text: text.trim(),
+      tags,
+      tx: receipt.tx,
+      amount: `${receipt.amount} ${receipt.token || ''}`.trim(),
+      proofLevel: receipt.proofLevel || 'A · onchain payment',
+      merchantProof: 'C · user claimed',
+      verifiedVisits: 1,
+      photo: null,
+    };
+
+    setTimeout(() => { setSubmitting(false); setDone(true); }, 900);
+    setTimeout(() => { onSubmit(publishedReview); }, 1800);
   };
 
   return (
@@ -651,13 +800,14 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
             <p style={{
               fontFamily: 'var(--ui)', fontSize: 14, color: 'var(--ink-muted)',
               margin: '0 0 18px', lineHeight: 1.5,
-            }}>The payment is verified on OP. Add the merchant details from ether.fi Cash.</p>
+            }}>The payment is verified on OP. Merchant identity stays user-claimed until an official card API or uploaded receipt confirms it.</p>
             <div style={{
               background: 'var(--surface)', border: '0.5px solid var(--rule)',
               borderRadius: 14, padding: 14, marginBottom: 16,
             }}>
               {[
-                ['Proof', receipt.proof],
+                ['Payment proof', receipt.proofLevel || receipt.proof],
+                ['Merchant proof', receipt.merchantProof || 'C · user claimed'],
                 ['Amount', `${receipt.amount} ${receipt.token}`],
                 ['Tx', receipt.tx],
               ].map(([k, v]) => (
@@ -841,8 +991,8 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 width: 13, height: 13, border: '2px solid #fff',
                 borderTopColor: 'transparent', borderRadius: '50%',
               }} />
-              Signing…
-            </> : 'Publish verified review'}
+              Publishing…
+            </> : 'Publish review'}
           </button>
         )}
       </div>
@@ -873,7 +1023,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
             fontFamily: 'var(--mono)', fontSize: 11,
             color: 'var(--ink-muted)', marginTop: 12,
             textAlign: 'center', lineHeight: 1.6,
-          }}>Base receipt minted<br/>source: {receipt.tx}</div>
+          }}>Payment proof linked<br/>merchant proof: user-claimed</div>
         </div>
       )}
     </div>
@@ -968,7 +1118,7 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
           ['Source', 'ether.fi OP Spend event'],
           ['Tx hash', review.tx],
           ['Amount', review.amount],
-          ['Merchant', 'claimed by reviewer'],
+          ['Merchant proof', review.merchantProof || 'C · claimed by reviewer'],
           ['Signed by', review.handle],
         ].map(([k, v]) => (
           <div key={k} style={{
@@ -1022,6 +1172,36 @@ const DiscoverScreen = () => {
       </div>
 
       <div style={{ padding: '0 18px 16px' }}>
+        <div style={{
+          background: 'var(--ink)',
+          color: 'var(--bg)',
+          borderRadius: 16,
+          padding: 16,
+          marginBottom: 14,
+        }}>
+          <div style={{
+            fontFamily: 'var(--mono)',
+            fontSize: 10,
+            textTransform: 'uppercase',
+            letterSpacing: 0.8,
+            opacity: 0.72,
+            marginBottom: 8,
+          }}>Agent endpoint</div>
+          <div style={{
+            fontFamily: 'var(--ui)',
+            fontSize: 14,
+            lineHeight: 1.45,
+            fontWeight: 600,
+          }}>/api/agent/recommendations?query=bakery%20irvine</div>
+          <div style={{
+            fontFamily: 'var(--mono)',
+            fontSize: 10.5,
+            lineHeight: 1.5,
+            opacity: 0.72,
+            marginTop: 8,
+          }}>Returns recommendation rationale, proof level, visit count, and merchant verification status.</div>
+        </div>
+
         <div style={{
           fontFamily: 'var(--mono)', fontSize: 10.5,
           color: 'var(--ink-muted)', textTransform: 'uppercase',
@@ -1103,7 +1283,7 @@ const DiscoverScreen = () => {
 // ─────────────────────────────────────────────────────────────
 // PROFILE
 // ─────────────────────────────────────────────────────────────
-const ProfileScreen = ({ verifyStyle, auth }) => {
+const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Array<any>} */ ([]) }) => {
   const ready = auth?.ready ?? true;
   const authenticated = auth?.authenticated ?? false;
   const appConfigured = auth?.appConfigured ?? false;
@@ -1111,8 +1291,16 @@ const ProfileScreen = ({ verifyStyle, auth }) => {
   const walletLabel = auth?.walletLabel;
   const login = auth?.login;
   const logout = auth?.logout;
+  const [proofInput, setProofInput] = _useState(etherfi?.sourceTx || RECEIPTS[0].txFull);
+  const [scanError, setScanError] = _useState("");
   const displayName = authenticated ? (userLabel || PROFILE.name) : PROFILE.name;
   const avatarLabel = (displayName || 'Y').slice(0, 1).toUpperCase();
+  const scanning = etherfi?.status === 'scanning';
+  const synced = etherfi?.status === 'synced';
+  const eventCount = synced ? etherfi.count : ETHERFI_SYNC.detected;
+  const pendingCount = synced ? etherfi.receipts?.length || 0 : ETHERFI_SYNC.pending;
+  const totalSpend = synced ? `$${etherfi.totalSpendUsd}` : ETHERFI_SYNC.totalSpend;
+  const safeLabel = etherfi?.safe || ETHERFI_SYNC.safe;
   const privyStatus = !appConfigured
     ? 'Preview mode'
     : !ready
@@ -1120,6 +1308,17 @@ const ProfileScreen = ({ verifyStyle, auth }) => {
       : authenticated
         ? 'Privy verified'
         : 'Not signed in';
+  const scanSafe = async () => {
+    if (!authenticated || scanning) return;
+
+    setScanError("");
+
+    try {
+      await etherfi?.scan?.(proofInput);
+    } catch (error) {
+      setScanError(error instanceof Error ? error.message : "Unable to import ether.fi Cash receipt.");
+    }
+  };
 
   return (
   <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
@@ -1182,22 +1381,79 @@ const ProfileScreen = ({ verifyStyle, auth }) => {
         }}>e</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
-            {authenticated ? 'ether.fi Cash synced' : 'Sign in to sync ether.fi Cash'}
+            {synced ? 'ether.fi Cash scanned' : authenticated ? 'Import from spend tx' : 'Sign in to sync ether.fi Cash'}
           </div>
           <div style={{
             fontFamily: 'var(--mono)', fontSize: 10,
             color: 'var(--ink-muted)', marginTop: 3,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{authenticated ? ETHERFI_SYNC.safe : 'Privy required for account scan'}</div>
+          }}>{authenticated ? safeLabel : 'Privy required for account scan'}</div>
         </div>
       </div>
+      {authenticated && (
+        <div style={{ marginTop: 14 }}>
+          <label style={{
+            display: 'block',
+            fontFamily: 'var(--mono)',
+            fontSize: 9.5,
+            color: 'var(--ink-muted)',
+            textTransform: 'uppercase',
+            letterSpacing: 0.7,
+            marginBottom: 7,
+          }}>ether.fi spend transaction</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={proofInput}
+              onChange={e => setProofInput(e.target.value)}
+              spellCheck={false}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                padding: '10px 11px',
+                fontFamily: 'var(--mono)',
+                fontSize: 10.5,
+                outline: 'none',
+              }}
+            />
+            <button
+              onClick={scanSafe}
+              disabled={scanning}
+              style={{
+                border: 'none',
+                background: 'var(--ink)',
+                color: 'var(--bg)',
+                borderRadius: 10,
+                padding: '0 12px',
+                fontFamily: 'var(--mono)',
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: scanning ? 'default' : 'pointer',
+                opacity: scanning ? 0.65 : 1,
+              }}
+            >{scanning ? 'SCAN' : 'SYNC'}</button>
+          </div>
+          {(scanError || etherfi?.error) && (
+            <div style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              color: 'var(--accent)',
+              marginTop: 8,
+              lineHeight: 1.45,
+            }}>{scanError || etherfi.error}</div>
+          )}
+        </div>
+      )}
       <div style={{
         marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
       }}>
         {[
-          ['OP events', ETHERFI_SYNC.detected],
-          ['Pending', ETHERFI_SYNC.pending],
-          ['Volume', ETHERFI_SYNC.totalSpend],
+          ['OP events', eventCount],
+          ['Pending', pendingCount],
+          ['Volume', totalSpend],
         ].map(([k, v]) => (
           <div key={k} style={{
             background: 'var(--bg)', border: '0.5px solid var(--rule)',
@@ -1227,8 +1483,8 @@ const ProfileScreen = ({ verifyStyle, auth }) => {
     }}>
       {[
         ['Rep', PROFILE.rep],
-        ['Reviews', ETHERFI_SYNC.reviewed],
-        ['Receipts', ETHERFI_SYNC.detected],
+        ['Reviews', ETHERFI_SYNC.reviewed + userReviews.length],
+        ['Receipts', eventCount],
       ].map(([k, v], i) => (
         <div key={k} style={{
           textAlign: 'center',
@@ -1270,6 +1526,7 @@ const ProfileScreen = ({ verifyStyle, auth }) => {
 
     {/* user reviews */}
     {[
+      ...userReviews,
       { merchant: 'Apotheke Spa', cat: 'Service · Brooklyn', rating: 5, time: '2w', amount: '$120 USDC',
         text: 'Best deep-tissue I\'ve had in years. Booked again on the way out.', tint: 'oklch(0.90 0.04 30)' },
       { merchant: 'Tartine', cat: 'Bakery · SF', rating: 4, time: '1mo', amount: '$14 USDC',

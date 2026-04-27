@@ -6,6 +6,7 @@ import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
 type StoredSession = {
   userLabel?: string;
   walletLabel?: string;
+  walletAddress?: string;
 };
 
 const storageKey = "jiagon:privy-session";
@@ -73,6 +74,7 @@ function AuthFlow() {
     const session: StoredSession = {
       userLabel: getUserLabel(user, walletAddress),
       walletLabel: shortAddress(walletAddress),
+      walletAddress,
     };
 
     window.localStorage.setItem(storageKey, JSON.stringify(session));
@@ -126,10 +128,17 @@ export default function AuthPage() {
     <PrivyProvider
       appId={appId}
       config={{
-        loginMethods: ["email", "wallet", "google"],
+        loginMethods: ["email", "google"],
         appearance: {
           theme: "light",
           accentColor: "#B95432",
+          showWalletLoginFirst: false,
+          walletList: [],
+        },
+        embeddedWallets: {
+          ethereum: { createOnLogin: "off" },
+          solana: { createOnLogin: "off" },
+          showWalletUIs: false,
         },
       }}
     >
