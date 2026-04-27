@@ -16,7 +16,7 @@ Run this workflow when changing any of:
 ## Required order
 
 1. Create a scoped `codex/*` branch.
-2. Implement one atomic change.
+2. Implement one logical change per PR.
 3. Add unit tests and fuzz tests when contracts are touched.
 4. Run local verification:
    - `pnpm build`
@@ -25,9 +25,20 @@ Run this workflow when changing any of:
 6. Fix or document every credible audit finding.
 7. Ask another agent for code review.
 8. Fix or document every credible review finding.
-9. Create one atomic commit.
+9. Keep branch commits understandable; WIP/fix commits are acceptable during iteration.
 10. Push branch and open a PR.
-11. Merge only after explicit approval.
+11. Merge with squash so `main` receives one commit per PR.
+12. Merge only after explicit approval.
+
+## Commit and PR policy
+
+- Prefer **one PR = one logical change**.
+- Prefer **one squash commit on `main` per PR**.
+- Branch history may contain multiple commits while implementing, fixing audit findings, fixing code review, or updating docs.
+- Do not force every PR branch to contain exactly one commit if doing so hides useful review context.
+- Before merge, the PR must be coherent enough that a single squash commit message accurately describes the entire change.
+- If two changes cannot share one accurate squash commit message, split them into separate PRs.
+- Reverting should be possible by reverting the PR's squash commit from `main`.
 
 ## Pass criteria
 
@@ -36,6 +47,7 @@ Run this workflow when changing any of:
 - Pashov audit has no unresolved credible findings.
 - Independent code review has no unresolved blocking findings.
 - `git diff --check` passes.
+- PR contains one logical change and is intended to be squash-merged.
 - PR body lists verification and any residual risks.
 
 ## Fail criteria
