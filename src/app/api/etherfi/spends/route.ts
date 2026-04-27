@@ -312,15 +312,9 @@ export async function GET(request: Request) {
       if (blockDiff !== 0) return blockDiff;
       return Number.parseInt(b.logIndex, 16) - Number.parseInt(a.logIndex, 16);
     });
-    const seenTxHashes = new Set<string>();
-    const paymentLogs = sortedLogs.filter((log) => {
-      const txHash = log.transactionHash.toLowerCase();
-
-      if (seenTxHashes.has(txHash)) return false;
-
-      seenTxHashes.add(txHash);
-      return true;
-    });
+    // A single OP transaction can emit multiple ether.fi Cash Spend events.
+    // Each log is a separate receipt proof, so keep log-level granularity.
+    const paymentLogs = sortedLogs;
 
     const visibleLogs = paymentLogs.slice(0, limit);
     const blockNumbers = [...new Set(visibleLogs.map((log) => log.blockNumber))];
