@@ -26,9 +26,14 @@
 # misc
 .DS_Store
 *.pem
+AGENTS.md
+CLAUDE.md
 .claude/
 .vscode/
 .idea/
+
+# internal workflows
+/docs/workflows/
 
 # debug
 npm-debug.log*

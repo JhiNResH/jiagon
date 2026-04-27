@@ -133,9 +133,6 @@ broadcasts and confirms an onchain BNB transaction.
 
 ## Development Workflow
 
-Security-sensitive changes must follow
-[`docs/workflows/secure-ship.md`](docs/workflows/secure-ship.md).
-
 For contract, proof, credential, auth, or minting changes:
 
 - use a scoped `codex/*` branch;
