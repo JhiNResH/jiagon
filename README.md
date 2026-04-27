@@ -1,51 +1,155 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Jiagon
+
+Jiagon is a verified local review data layer for agents. The MVP starts with
+ether.fi Cash card spends: users prove a real payment happened, attach a review,
+and produce a receipt credential that can be consumed by recommendation agents.
+
+The current product is **prepare-first**. It verifies ether.fi Cash Optimism spend
+events and prepares BNB testnet receipt credentials. A credential should only be
+shown as `minted` after a real BNB testnet transaction is broadcast and confirmed.
+
+## Current Status
+
+- Web app: Next.js App Router.
+- Auth: Privy.
+- Payment proof source: ether.fi Cash `Spend` events on Optimism.
+- Credential chain: BNB Smart Chain testnet.
+- Receipt registry: `0xd2162803d5C893d1D8Ce317B674625beC4Ad18E5`.
+- Registry admin / initial minter: `0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9`.
+- API mode: `prepare-only`; server-side BNB mint broadcasting is not integrated yet.
+
+## User Flow
+
+1. User signs in with Privy.
+2. User submits an ether.fi Cash Optimism transaction hash.
+3. Jiagon verifies the transaction contains an ether.fi Cash `Spend` event.
+4. Jiagon derives the user's ether.fi Cash safe / wallet from the event.
+5. User adds merchant, branch, rating, tags, and review text.
+6. Jiagon prepares a receipt credential with:
+   - `sourceReceiptHash`
+   - `dataHash`
+   - `storageUri`
+   - proof level metadata
+   - BNB testnet registry metadata
+7. The prepared credential can power review feeds and agent recommendation APIs.
+8. Once mint broadcasting is added, the same flow can write the credential to BNB testnet.
+
+## Proof Model
+
+Jiagon separates payment proof, merchant claim, and review content.
+
+- Payment proof: verified from Optimism RPC against ether.fi Cash spend logs.
+- Merchant proof: user claim for MVP; currently not independently verified.
+- Review proof: tied to a verified payment receipt.
+- Onchain registry: stores hashes and storage pointers, not raw receipt metadata.
+
+Current prepare-only credentials should be treated as proof level `C` unless
+ownership and merchant binding are strengthened server-side.
 
 ## Getting Started
 
-Copy the example environment file and add your Privy app ID:
+Install dependencies:
+
+```bash
+pnpm install
+```
+
+Create local environment config:
 
 ```bash
 cp env.example .env.local
 ```
 
+Set at least:
+
 ```bash
 NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
+BNB_TESTNET_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
+BNB_TESTNET_ADMIN=0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9
+BNB_RECEIPT_CONTRACT_ADDRESS=0xd2162803d5C893d1D8Ce317B674625beC4Ad18E5
 ```
 
-BNB testnet receipt credentials use the development admin wallet documented in
-[`docs/deploy/bnb-testnet.md`](docs/deploy/bnb-testnet.md). The app prepares
-receipt credentials from verified ether.fi Cash Optimism Spend events; it should
-only show `minted` after a real BNB testnet transaction is broadcast and confirmed.
-
-First, run the development server:
+Run the dev server:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Verification
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run the web build:
 
-## Learn More
+```bash
+pnpm build
+```
 
-To learn more about Next.js, take a look at the following resources:
+Run contract tests:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+forge test -vvv
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Dry-run the BNB testnet deploy script:
 
-## Deploy on Vercel
+```bash
+BNB_TESTNET_ADMIN=0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9 \
+forge script script/DeployReceiptCredentialRegistry.s.sol:DeployReceiptCredentialRegistry \
+  --rpc-url https://data-seed-prebsc-1-s1.bnbchain.org:8545
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## BNB Testnet Registry
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deployment docs live in [`docs/deploy/bnb-testnet.md`](docs/deploy/bnb-testnet.md).
+
+The deployed testnet registry has been verified locally with:
+
+```bash
+cast call 0xd2162803d5C893d1D8Ce317B674625beC4Ad18E5 \
+  "owner()(address)" \
+  --rpc-url https://data-seed-prebsc-1-s1.bnbchain.org:8545
+
+cast call 0xd2162803d5C893d1D8Ce317B674625beC4Ad18E5 \
+  "isMinter(address)(bool)" \
+  0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9 \
+  --rpc-url https://data-seed-prebsc-1-s1.bnbchain.org:8545
+```
+
+Expected results:
+
+- `owner()` returns `0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9`.
+- `isMinter(admin)` returns `true`.
+
+## API Surface
+
+- `POST /api/etherfi/spends`: scans or returns ether.fi Cash spend candidates.
+- `POST /api/receipts/mint`: verifies an OP spend and prepares a BNB receipt credential.
+- `POST /api/agent/recommendations`: returns recommendation-oriented review data.
+
+`/api/receipts/mint` currently returns `status: "prepared"` and `mode:
+"prepare-only"`. Do not label these credentials as `minted` until the API
+broadcasts and confirms an onchain BNB transaction.
+
+## Development Workflow
+
+Security-sensitive changes must follow
+[`docs/workflows/secure-ship.md`](docs/workflows/secure-ship.md).
+
+For contract, proof, credential, auth, or minting changes:
+
+- use a scoped `codex/*` branch;
+- run `pnpm build`;
+- run `forge test -vvv`;
+- run Solidity audit review for contract changes;
+- request independent code review;
+- open a PR;
+- squash merge only after explicit approval.
+
+## Next Milestones
+
+- Add server-side BNB mint broadcasting.
+- Verify deployed registry code, owner, and minter before minting.
+- Persist receipt metadata to Greenfield or a temporary storage layer.
+- Build receipt inbox / profile / review feed persistence.
+- Reduce manual tx submission by adding safer account-linked spend discovery.
