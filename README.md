@@ -18,6 +18,7 @@ reviews to Postgres when `DATABASE_URL` is configured.
 - Registry admin / initial minter: `0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9`.
 - Server minter: configurable with `BNB_MINTER_PRIVATE_KEY`.
 - Mint authorization: protected by `JIAGON_MINT_API_TOKEN`.
+- App mint endpoint: `/api/receipts/publish` can mint with the server token for local-only demos when `JIAGON_APP_MINT_ENABLED=true`.
 - API mode: real BNB testnet mint when registry, minter key, and mint token are configured; otherwise `prepare-only`.
 - Review persistence: optional Postgres via `DATABASE_URL`; minting still works when persistence is not configured.
 
@@ -73,6 +74,7 @@ BNB_TESTNET_ADMIN=0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9
 BNB_RECEIPT_CONTRACT_ADDRESS=0xd2162803d5C893d1D8Ce317B674625beC4Ad18E5
 # BNB_MINTER_PRIVATE_KEY=never-commit-real-private-keys
 # JIAGON_MINT_API_TOKEN=use-a-random-32-plus-character-server-token
+# JIAGON_APP_MINT_ENABLED=true
 # DATABASE_URL=postgres://user:password@host:5432/database
 # DATABASE_SSL=true
 ```
@@ -133,6 +135,7 @@ Expected results:
 
 - `POST /api/etherfi/spends`: scans or returns ether.fi Cash spend candidates.
 - `POST /api/receipts/mint`: verifies an OP spend and prepares a BNB receipt credential.
+- `POST /api/receipts/publish`: app-facing endpoint that uses the server mint token without exposing it to the browser.
 - `GET /api/receipts/reviews`: returns persisted published receipt reviews.
 - `GET /api/agent/recommendations`: returns recommendation-oriented review data.
 
@@ -141,6 +144,12 @@ and confirms a BNB testnet transaction. A real mint requires a server minter key
 and a matching `x-jiagon-mint-token` or `Authorization: Bearer ...` token. If
 the registry address, minter key, or mint authorization is missing, it falls back
 to `status: "prepared"` and `mode: "prepare-only"`.
+
+The web app posts reviews to `/api/receipts/publish`, which injects
+`JIAGON_MINT_API_TOKEN` server-side. By default this endpoint only works on
+localhost when `JIAGON_APP_MINT_ENABLED=true`. Keep it disabled for hosted
+demos and public production until Privy server verification, rate limiting, and
+receipt ownership binding are added.
 
 When `DATABASE_URL` is configured, `/api/receipts/mint` also upserts the
 published review and public credential metadata. If no database is configured,
