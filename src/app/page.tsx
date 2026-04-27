@@ -289,8 +289,8 @@ export default function Home() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mintReceiptCredential = async (review: any, receipt: any) => {
-    const response = await fetch("/api/receipts/mint", {
+  const postReceiptCredential = (path: string, review: any, receipt: any) =>
+    fetch(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -299,6 +299,14 @@ export default function Home() {
         review,
       }),
     });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mintReceiptCredential = async (review: any, receipt: any) => {
+    let response = await postReceiptCredential("/api/receipts/publish", review, receipt);
+    if (response.status === 403) {
+      response = await postReceiptCredential("/api/receipts/mint", review, receipt);
+    }
+
     const payload = await response.json();
 
     if (!response.ok) {

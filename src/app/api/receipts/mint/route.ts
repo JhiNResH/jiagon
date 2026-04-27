@@ -433,7 +433,7 @@ async function verifyEtherfiSpend(sourceTx: string, expectedLogIndex?: number) {
   };
 }
 
-export async function POST(request: Request) {
+export async function handleMintReceiptRequest(request: Request, mintTokenOverride?: string) {
   let body: MintReceiptRequest;
 
   try {
@@ -506,7 +506,7 @@ export async function POST(request: Request) {
     const defaultRegistryAdmin = configuredAddress(DEFAULT_BNB_TESTNET_ADMIN);
     const minterPrivateKey = configuredPrivateKey(process.env.BNB_MINTER_PRIVATE_KEY);
     const mintApiToken = configuredSecret(process.env.JIAGON_MINT_API_TOKEN);
-    const submittedMintToken = requestMintToken(request);
+    const submittedMintToken = mintTokenOverride || requestMintToken(request);
     const mintAuthorized = Boolean(
       mintApiToken && submittedMintToken && safeTokenEqual(submittedMintToken, mintApiToken),
     );
@@ -666,4 +666,8 @@ export async function POST(request: Request) {
       { status: 502 },
     );
   }
+}
+
+export async function POST(request: Request) {
+  return handleMintReceiptRequest(request);
 }

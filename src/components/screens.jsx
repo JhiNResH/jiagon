@@ -417,18 +417,19 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
   return (
     <div style={{ padding: '0 18px 14px' }}>
       <div style={{
-        background: 'var(--panel)',
-        color: 'var(--panel-text)',
+        background: 'var(--surface-raised)',
+        color: 'var(--ink)',
+        border: '0.5px solid var(--rule)',
         borderRadius: 18,
         padding: 16,
-        boxShadow: '0 10px 32px rgba(0,0,0,0.12)',
+        boxShadow: '0 8px 28px rgba(49,44,36,0.06)',
       }}>
         <div style={{
           fontFamily: 'var(--mono)',
           fontSize: 10,
           textTransform: 'uppercase',
           letterSpacing: 0.9,
-          opacity: 0.7,
+          color: 'var(--ink-muted)',
         }}>Taste memory</div>
         <div style={{
           fontFamily: 'var(--display)',
@@ -437,13 +438,14 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
           lineHeight: 1.05,
           marginTop: 8,
           letterSpacing: -0.4,
+          color: 'var(--ink)',
         }}>Your receipts,<br/>usable by your agent.</div>
         <div style={{
           fontFamily: 'var(--ui)',
           fontSize: 13.5,
           lineHeight: 1.45,
           marginTop: 10,
-          color: 'var(--panel-muted)',
+          color: 'var(--ink-muted)',
         }}>{agentReadiness}</div>
 
         <div style={{
@@ -458,23 +460,24 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
             ['Reviews', reviewedCount],
           ].map(([k, v]) => (
             <div key={k} style={{
-              border: '0.5px solid rgba(255,255,255,0.16)',
+              border: '0.5px solid var(--rule)',
               borderRadius: 10,
               padding: '9px 8px',
-              background: 'rgba(255,255,255,0.055)',
+              background: 'var(--bg)',
             }}>
               <div style={{
                 fontFamily: 'var(--mono)',
                 fontSize: 8.5,
                 textTransform: 'uppercase',
                 letterSpacing: 0.7,
-                opacity: 0.62,
+                color: 'var(--ink-muted)',
               }}>{k}</div>
               <div style={{
                 fontFamily: 'var(--mono)',
                 fontSize: 11.5,
                 marginTop: 4,
                 fontWeight: 700,
+                color: 'var(--ink)',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -484,7 +487,7 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
         </div>
 
         <div style={{
-          borderTop: '0.5px solid rgba(255,255,255,0.14)',
+          borderTop: '0.5px solid var(--rule)',
           marginTop: 14,
           paddingTop: 12,
         }}>
@@ -493,18 +496,19 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
             fontSize: 9.5,
             textTransform: 'uppercase',
             letterSpacing: 0.8,
-            opacity: 0.58,
+            color: 'var(--ink-muted)',
             marginBottom: 8,
           }}>Agent can answer</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
             {['Where should I get coffee?', 'Find quick bakery stops', 'Places worth revisiting'].map(prompt => (
               <span key={prompt} style={{
-                border: '0.5px solid rgba(255,255,255,0.16)',
+                border: '0.5px solid color-mix(in oklch, var(--accent) 22%, var(--rule))',
                 borderRadius: 999,
                 padding: '7px 9px',
                 fontFamily: 'var(--ui)',
                 fontSize: 11.5,
-                background: 'rgba(255,255,255,0.055)',
+                color: 'var(--accent)',
+                background: 'var(--accent-soft)',
               }}>{prompt}</span>
             ))}
           </div>
@@ -520,16 +524,17 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
           {topSignals.map(signal => (
             <div key={signal.id} style={{
               minWidth: 136,
-              border: '0.5px solid rgba(255,255,255,0.14)',
+              border: '0.5px solid var(--rule)',
               borderRadius: 12,
               padding: 10,
-              background: 'rgba(255,255,255,0.05)',
+              background: 'var(--bg)',
             }}>
               <div style={{
                 fontFamily: 'var(--display)',
                 fontStyle: 'italic',
                 fontSize: 17,
                 lineHeight: 1.05,
+                color: 'var(--ink)',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -537,7 +542,7 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
               <div style={{
                 fontFamily: 'var(--mono)',
                 fontSize: 9,
-                opacity: 0.62,
+                color: 'var(--ink-muted)',
                 textTransform: 'uppercase',
                 letterSpacing: 0.5,
                 marginTop: 5,
@@ -553,10 +558,10 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
           marginTop: 14,
           fontFamily: 'var(--mono)',
           fontSize: 10,
-          color: 'var(--panel-muted)',
+          color: 'var(--ink-muted)',
         }}>
           <span>{lastSync}</span>
-          <span style={{ color: 'var(--panel-text)', fontWeight: 700 }}>{nextAction} →</span>
+          <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{nextAction} →</span>
         </div>
       </div>
     </div>
