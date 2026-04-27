@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { persistReceiptReview } from "@/server/receiptStore";
 import { createPublicClient, createWalletClient, http, parseEventLogs, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
@@ -539,6 +540,56 @@ export async function POST(request: Request) {
       logIndex: verifiedSpend.logIndex,
     };
 
+    const persistAndRespond = async (payload: Record<string, unknown>) => {
+      const persistence = await persistReceiptReview({
+        receiptId: body.receipt?.id || preparedCredentialId,
+        reviewId: body.review?.id || `review-${hash(`${sourceHash}:${dataHash}`).slice(0, 12)}`,
+        status: String(payload.status || "prepared"),
+        mode: typeof payload.mode === "string" ? payload.mode : null,
+        sourceChain: "optimism",
+        sourceTx,
+        sourceBlock: verifiedSpend.blockNumber || body.receipt?.block || body.receipt?.blockNumber || null,
+        logIndex: verifiedSpend.logIndex,
+        ownerSafe: owner,
+        wallet: verifiedSpend.wallet,
+        merchant,
+        branch,
+        rating,
+        tags: body.review?.tags || [],
+        reviewText: body.review?.text || "",
+        amount: body.receipt?.amount || (body.receipt?.amountUsd ? `$${body.receipt.amountUsd}` : null),
+        token: body.receipt?.token || "OP USDC",
+        proofLevel: "C",
+        sourceReceiptHash: sourceHash,
+        dataHash: String(payload.dataHash || dataHash),
+        requestedDataHash: typeof payload.requestedDataHash === "string" ? payload.requestedDataHash : dataHash,
+        dataMatchesRequest:
+          typeof payload.dataMatchesRequest === "boolean"
+            ? payload.dataMatchesRequest
+            : payload.status === "prepared"
+              ? true
+              : null,
+        storageUri: String(payload.storageUri || storageUri),
+        requestedStorageUri: typeof payload.requestedStorageUri === "string" ? payload.requestedStorageUri : storageUri,
+        credentialChain: "bnb-testnet",
+        chainId: BNB_TESTNET_CHAIN_ID,
+        credentialId: String(payload.credentialId || preparedCredentialId),
+        credentialTx: typeof payload.credentialTx === "string" ? payload.credentialTx : null,
+        explorerUrl: typeof payload.explorerUrl === "string" ? payload.explorerUrl : null,
+        registryAddress,
+        minter: typeof payload.minter === "string" ? payload.minter : null,
+        payload: {
+          ...payload,
+          dataObject,
+        },
+      });
+
+      return Response.json({
+        ...payload,
+        persistence,
+      });
+    };
+
     if (registryAddress && minterPrivateKey && mintAuthorized) {
       const mint = await mintReceiptCredential({
         receiptOwner: owner as Address,
@@ -550,7 +601,7 @@ export async function POST(request: Request) {
         minterPrivateKey,
       });
 
-      return Response.json({
+      return persistAndRespond({
         status: "minted",
         network: "BNB Smart Chain testnet",
         chainId: BNB_TESTNET_CHAIN_ID,
@@ -580,7 +631,7 @@ export async function POST(request: Request) {
       });
     }
 
-    return Response.json({
+    return persistAndRespond({
       status: "prepared",
       network: "BNB Smart Chain testnet",
       chainId: BNB_TESTNET_CHAIN_ID,

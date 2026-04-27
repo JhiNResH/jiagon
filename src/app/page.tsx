@@ -85,6 +85,12 @@ type ReceiptCredential = {
   preparedAt?: string;
   minter?: string;
   note?: string;
+  persistence?: {
+    configured: boolean;
+    persisted: boolean;
+    reason?: string;
+    error?: string;
+  };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onchain?: any;
 };
@@ -323,6 +329,7 @@ export default function Home() {
       preparedAt: payload.preparedAt,
       minter: payload.minter,
       note: payload.note,
+      persistence: payload.persistence,
       onchain: payload.onchain,
     };
 
