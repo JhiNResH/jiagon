@@ -116,7 +116,6 @@ export default function Home() {
   const [detail, setDetail] = useState<any>(null);
   const [showOnboard, setShowOnboard] = useState(true);
   const [scale, setScale] = useState(1);
-  const [authPreview, setAuthPreview] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authSession, setAuthSession] = useState<StoredSession | null>(null);
   const [etherfiSync, setEtherfiSync] = useState<EtherfiSyncState>(emptyEtherfiSync);
@@ -132,7 +131,12 @@ export default function Home() {
     const stored = window.localStorage.getItem(authStorageKey);
     if (stored) {
       try {
-        setAuthSession(JSON.parse(stored));
+        const session = JSON.parse(stored) as StoredSession;
+        if (session.userLabel === "preview@jiagon.local" || session.walletLabel === "0xpreview") {
+          window.localStorage.removeItem(authStorageKey);
+        } else {
+          setAuthSession(session);
+        }
       } catch {
         window.localStorage.removeItem(authStorageKey);
       }
@@ -182,24 +186,19 @@ export default function Home() {
 
   const auth: AuthState = {
     ready: !authBusy,
-    authenticated: authPreview || Boolean(authSession),
+    authenticated: Boolean(authSession),
     appConfigured: hasPrivyAppId,
-    userLabel: authSession?.userLabel || (authPreview ? "preview@jiagon.local" : undefined),
-    walletLabel: authSession?.walletLabel || (authPreview ? "0xpreview" : undefined),
+    userLabel: authSession?.userLabel,
+    walletLabel: authSession?.walletLabel,
     login: async () => {
       if (hasPrivyAppId) {
         window.location.href = "/auth";
         return;
       }
 
-      setAuthBusy(true);
-      window.setTimeout(() => {
-        setAuthPreview(true);
-        setAuthBusy(false);
-      }, hasPrivyAppId ? 350 : 0);
+      setAuthBusy(false);
     },
     logout: async () => {
-      setAuthPreview(false);
       setAuthSession(null);
       setAuthBusy(false);
       setEtherfiSync(emptyEtherfiSync);
@@ -433,7 +432,7 @@ export default function Home() {
         receiptCredentials={receiptCredentials}
       />
     ),
-    discover: <DiscoverScreen />,
+    discover: <DiscoverScreen userReviews={publishedReviews} />,
     profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} etherfi={etherfi} userReviews={publishedReviews} receiptCredentials={receiptCredentials} />,
   };
 
