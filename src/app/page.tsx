@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { IOSDevice } from "@/components/IOSFrame";
-import {
-  RECEIPTS, TabBar,
-} from "@/components/AppData";
+import { TabBar } from "@/components/AppData";
 import {
   OnboardingScreen, FeedScreen, InboxScreen, WriteReviewScreen,
   ReviewDetailScreen, DiscoverScreen, ProfileScreen,
@@ -21,7 +19,7 @@ export default function Home() {
   const [reviewing, setReviewing] = useState<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [detail, setDetail] = useState<any>(null);
-  const [showOnboard, setShowOnboard] = useState(false);
+  const [showOnboard, setShowOnboard] = useState(true);
   const [scale, setScale] = useState(1);
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -52,7 +50,7 @@ export default function Home() {
 
   const tabContent: Record<Tab, React.ReactNode> = {
     feed: <FeedScreen onOpenReview={(r: unknown) => setDetail(r)} density={density} verifyStyle={verifyStyle} />,
-    inbox: <InboxScreen onOpenReceipt={(r: unknown) => setReviewing(r)} verifyStyle={verifyStyle} />,
+    inbox: <InboxScreen onOpenReceipt={(r: unknown) => setReviewing(r)} />,
     discover: <DiscoverScreen />,
     profile: <ProfileScreen verifyStyle={verifyStyle} />,
   };
@@ -60,11 +58,7 @@ export default function Home() {
   return (
     <>
       <div className="label">
-        <span className="accent">●</span>&nbsp;&nbsp;JIAGON · iOS PROTOTYPE · v0.1
-      </div>
-      <div className="tagline">
-        Reviews you can trust<br />because you paid.
-        <small>tap-through demo</small>
+        <span className="accent">●</span>&nbsp;&nbsp;JIAGON · ETHER.FI RECEIPT MVP · v0.1
       </div>
 
       <div className="stage" ref={stageRef} suppressHydrationWarning>
@@ -98,25 +92,6 @@ export default function Home() {
           </IOSDevice>
         </div>
         )}
-      </div>
-
-      {/* Dev quick controls */}
-      <div style={{
-        position: "fixed", bottom: 16, left: 16, zIndex: 100,
-        display: "flex", gap: 8, fontFamily: "var(--mono)", fontSize: 11,
-      }}>
-        <button
-          onClick={() => setShowOnboard(true)}
-          style={{ background: "var(--surface)", border: "0.5px solid var(--rule)", color: "var(--ink)", padding: "6px 10px", borderRadius: 6, cursor: "pointer" }}
-        >
-          Onboarding
-        </button>
-        <button
-          onClick={() => { setReviewing(RECEIPTS[0]); }}
-          style={{ background: "var(--surface)", border: "0.5px solid var(--rule)", color: "var(--ink)", padding: "6px 10px", borderRadius: 6, cursor: "pointer" }}
-        >
-          Write review
-        </button>
       </div>
     </>
   );

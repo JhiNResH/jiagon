@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import {
-  RECEIPTS, FEED, PROFILE,
+  RECEIPTS, FEED, PROFILE, ETHERFI_SYNC, MERCHANTS,
   Stars, VerifiedChip, Avatar, Hatched, TopBar, IconBtn,
 } from "./AppData";
 
@@ -26,112 +26,93 @@ const OnboardingScreen = ({ onDone }) => {
       padding: '70px 28px 40px', background: 'var(--bg)',
       position: 'relative',
     }}>
-      {/* receipt-like header */}
-      <div style={{
-        textAlign: 'center', marginBottom: 'auto', marginTop: 40,
-      }}>
+      <div style={{ textAlign: 'center', marginTop: 34 }}>
         <div style={{
           fontFamily: 'var(--display)', fontStyle: 'italic',
-          fontSize: 64, lineHeight: 0.95, color: 'var(--ink)',
+          fontSize: 62, lineHeight: 0.95, color: 'var(--ink)',
           letterSpacing: -1.5,
         }}>Jiagon</div>
         <div style={{
           fontFamily: 'var(--mono)', fontSize: 11, marginTop: 14,
           color: 'var(--ink-muted)', textTransform: 'uppercase',
           letterSpacing: 1.2,
-        }}>Reviews you can trust ·</div>
-        <div style={{
-          fontFamily: 'var(--mono)', fontSize: 11, marginTop: 2,
-          color: 'var(--ink-muted)', textTransform: 'uppercase',
-          letterSpacing: 1.2,
-        }}>· because you paid for it</div>
+        }}>Verified local data for agents</div>
       </div>
 
-      {/* receipt artifact */}
       <div style={{
-        background: '#fff', padding: '22px 22px 30px',
-        borderRadius: '2px',
+        marginTop: 34, background: '#fff', padding: '22px 22px 30px',
+        borderRadius: 2,
         boxShadow: '0 12px 40px rgba(0,0,0,0.08), 0 0 0 0.5px rgba(0,0,0,0.06)',
-        position: 'relative', marginBottom: 36,
-        fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink)',
+        position: 'relative', fontFamily: 'var(--mono)', fontSize: 11,
+        color: 'var(--ink)',
         backgroundImage: 'repeating-linear-gradient(0deg, transparent 0 23px, rgba(0,0,0,0.025) 23px 24px)',
       }}>
-        {/* zigzag top */}
         <div style={{
           position: 'absolute', top: -8, left: 0, right: 0, height: 8,
           background: 'linear-gradient(-45deg, transparent 33%, var(--bg) 33%) 0 0/12px 12px, linear-gradient(45deg, transparent 33%, var(--bg) 33%) 0 0/12px 12px',
         }} />
         <div style={{ textAlign: 'center', borderBottom: '1px dashed var(--rule)', paddingBottom: 10, marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600 }}>
-          How it works
+          Ether.fi import
         </div>
         {[
-          ['01', 'Pay any merchant', 'using your wallet'],
-          ['02', 'Receipt arrives', 'tied to the tx hash'],
-          ['03', 'Review what you bought', 'no proof, no post'],
+          ['01', 'Sign in with Privy', 'email, social, or wallet'],
+          ['02', 'Detect your Cash safe', ETHERFI_SYNC.safe],
+          ['03', 'Scan OP Spend events', '73 payments found'],
+          ['04', 'Claim a merchant', 'one receipt, one review'],
         ].map(([n, t, s]) => (
-          <div key={n} style={{
-            display: 'flex', gap: 12, padding: '8px 0',
-            alignItems: 'baseline',
-          }}>
+          <div key={n} style={{ display: 'flex', gap: 12, padding: '7px 0', alignItems: 'baseline' }}>
             <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{n}</span>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>{t}</div>
-              <div style={{ color: 'var(--ink-muted)', marginTop: 1 }}>{s}</div>
+              <div style={{ color: 'var(--ink-muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s}</div>
             </div>
           </div>
         ))}
         <div style={{ borderTop: '1px dashed var(--rule)', paddingTop: 10, marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--ink-muted)' }}>chain</span>
-          <span>EVM · USDC / ETH</span>
+          <span style={{ color: 'var(--ink-muted)' }}>proof</span>
+          <span>OP · Base receipt</span>
         </div>
-        {/* zigzag bottom */}
         <div style={{
           position: 'absolute', bottom: -8, left: 0, right: 0, height: 8,
           background: 'linear-gradient(-135deg, transparent 33%, var(--bg) 33%) 0 0/12px 12px, linear-gradient(135deg, transparent 33%, var(--bg) 33%) 0 0/12px 12px',
         }} />
       </div>
 
-      <button onClick={connect} disabled={connecting} style={{
-        background: 'var(--ink)', color: 'var(--bg)',
-        border: 'none', borderRadius: 999,
-        padding: '17px 24px', fontSize: 16, fontWeight: 600,
-        fontFamily: 'var(--ui)', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-        opacity: connecting ? 0.7 : 1,
-      }}>
-        {connecting ? (
-          <>
-            <span className="spin" style={{
-              width: 14, height: 14, border: '2px solid var(--bg)',
-              borderTopColor: 'transparent', borderRadius: '50%',
-              display: 'inline-block',
-            }} />
-            Connecting wallet…
-          </>
-        ) : (
-          <>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="6" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-              <path d="M3 10h18M16 15h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-            Connect wallet to start
-          </>
-        )}
-      </button>
-      <button onClick={onDone} style={{
-        background: 'transparent', border: 'none', cursor: 'pointer',
-        marginTop: 14, fontSize: 13, color: 'var(--ink-muted)',
-        fontFamily: 'var(--ui)',
-      }}>Browse without connecting →</button>
+      <div style={{ marginTop: 'auto' }}>
+        <button onClick={connect} disabled={connecting} style={{
+          width: '100%', background: 'var(--ink)', color: 'var(--bg)',
+          border: 'none', borderRadius: 999,
+          padding: '17px 24px', fontSize: 16, fontWeight: 600,
+          fontFamily: 'var(--ui)', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          opacity: connecting ? 0.7 : 1,
+        }}>
+          {connecting ? (
+            <>
+              <span className="spin" style={{
+                width: 14, height: 14, border: '2px solid var(--bg)',
+                borderTopColor: 'transparent', borderRadius: '50%',
+                display: 'inline-block',
+              }} />
+              Syncing ether.fi safe…
+            </>
+          ) : 'Continue with Privy'}
+        </button>
+        <button onClick={onDone} style={{
+          width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
+          marginTop: 14, fontSize: 13, color: 'var(--ink-muted)',
+          fontFamily: 'var(--ui)',
+        }}>Explore verified feed</button>
+      </div>
 
       {step === 1 && (
         <div style={{
           position: 'absolute', inset: 0, background: 'var(--bg)',
-          padding: '90px 28px 40px',
+          padding: '86px 28px 40px',
           display: 'flex', flexDirection: 'column',
           animation: 'fadeIn 300ms ease',
         }}>
-          <div style={{ textAlign: 'center', marginTop: 30 }}>
+          <div style={{ textAlign: 'center', marginTop: 22 }}>
             <div style={{
               width: 72, height: 72, borderRadius: '50%',
               background: 'var(--verified-soft)',
@@ -145,24 +126,40 @@ const OnboardingScreen = ({ onDone }) => {
             <div style={{
               fontFamily: 'var(--display)', fontStyle: 'italic',
               fontSize: 32, color: 'var(--ink)', letterSpacing: -0.5,
-            }}>Connected</div>
+            }}>Receipts synced</div>
             <div style={{
-              fontFamily: 'var(--mono)', fontSize: 12, marginTop: 10,
-              color: 'var(--ink-muted)', letterSpacing: 0.4,
-            }}>0x3e9a · 7C04 · F1B2 · A04F</div>
-            <div style={{
-              fontFamily: 'var(--ui)', fontSize: 14, marginTop: 22,
-              color: 'var(--ink-muted)', lineHeight: 1.5,
-              padding: '0 14px',
-            }}>We found <strong style={{ color: 'var(--ink)' }}>4 reviewable receipts</strong> in your transaction history.</div>
+              fontFamily: 'var(--mono)', fontSize: 11, marginTop: 10,
+              color: 'var(--ink-muted)', letterSpacing: 0.2,
+            }}>{ETHERFI_SYNC.safe}</div>
           </div>
+
+          <div style={{
+            marginTop: 28, background: 'var(--surface)', border: '0.5px solid var(--rule)',
+            borderRadius: 16, padding: 18,
+          }}>
+            {[
+              ['Spend events', ETHERFI_SYNC.detected],
+              ['Ready to claim', ETHERFI_SYNC.pending],
+              ['Verified spend', ETHERFI_SYNC.totalSpend],
+            ].map(([k, v]) => (
+              <div key={k} style={{
+                display: 'flex', justifyContent: 'space-between',
+                padding: '9px 0', borderBottom: k === 'Verified spend' ? 'none' : '0.5px solid var(--rule)',
+                fontFamily: 'var(--mono)', fontSize: 12,
+              }}>
+                <span style={{ color: 'var(--ink-muted)' }}>{k}</span>
+                <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+
           <button onClick={onDone} style={{
             background: 'var(--accent)', color: '#fff',
             border: 'none', borderRadius: 999,
             padding: '17px 24px', fontSize: 16, fontWeight: 600,
             fontFamily: 'var(--ui)', cursor: 'pointer',
             marginTop: 'auto',
-          }}>See your receipts</button>
+          }}>Review pending receipts</button>
         </div>
       )}
     </div>
@@ -177,8 +174,8 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
-        title="Reviews"
-        sub="Verified by the chain"
+        title="Verified"
+        sub="Receipt-backed reviews for agents"
         left={<div style={{
           width: 28, height: 28, borderRadius: 6, background: 'var(--accent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -200,7 +197,7 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
         display: 'flex', gap: 8, padding: '8px 18px 14px',
         overflowX: 'auto',
       }}>
-        {['Following', 'Nearby', '5★ only', 'Cafés', 'Retail', 'Services'].map((c, i) => (
+        {['Agent picks', 'Nearby', 'A proof', 'Cafés', 'Bakeries', 'Recent'].map((c, i) => (
           <div key={c} style={{
             padding: '7px 14px', borderRadius: 999,
             background: i === 0 ? 'var(--ink)' : 'var(--surface)',
@@ -257,6 +254,33 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
             textTransform: 'uppercase', letterSpacing: 0.6,
           }}>{r.cat}</div>
 
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
+            marginBottom: 12,
+          }}>
+            {[
+              ['Proof', r.proofLevel],
+              ['Visits', `${r.verifiedVisits} verified`],
+              ['Source', 'ether.fi'],
+            ].map(([k, v]) => (
+              <div key={k} style={{
+                background: 'var(--surface)', border: '0.5px solid var(--rule)',
+                borderRadius: 10, padding: '8px 9px',
+              }}>
+                <div style={{
+                  fontFamily: 'var(--mono)', fontSize: 8.5,
+                  color: 'var(--ink-muted)', textTransform: 'uppercase',
+                  letterSpacing: 0.6,
+                }}>{k}</div>
+                <div style={{
+                  fontFamily: 'var(--mono)', fontSize: 10,
+                  color: 'var(--ink)', marginTop: 3,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
           {/* photo */}
           {r.photo && density !== 'compact' && (
             <div style={{ marginBottom: 12, marginTop: 4 }}>
@@ -279,9 +303,9 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
             display: 'flex', gap: 18, marginTop: 12,
             color: 'var(--ink-muted)', fontFamily: 'var(--ui)', fontSize: 13,
           }}>
-            <span>↑ {Math.floor(Math.random() * 80) + 12}</span>
-            <span>↓ {Math.floor(Math.random() * 6)}</span>
-            <span>💬 {Math.floor(Math.random() * 12)}</span>
+            <span>↑ {42 + i * 11}</span>
+            <span>↓ {i}</span>
+            <span>💬 {6 + i * 2}</span>
             <span style={{ marginLeft: 'auto' }}>↗</span>
           </div>
         </article>
@@ -294,34 +318,88 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle }) => {
 // ─────────────────────────────────────────────────────────────
 // INBOX (receipts)
 // ─────────────────────────────────────────────────────────────
-const InboxScreen = ({ onOpenReceipt, verifyStyle }) => {
-  const pending = RECEIPTS.filter(r => !r.reviewed);
+const InboxScreen = ({ onOpenReceipt }) => {
+  const unclaimed = RECEIPTS.filter(r => r.status === 'unclaimed');
+  const claimed = RECEIPTS.filter(r => r.status === 'claimed');
   const done = RECEIPTS.filter(r => r.reviewed);
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
         title="Receipts"
-        sub={`${pending.length} reviewable`}
+        sub={`${ETHERFI_SYNC.detected} OP spends synced`}
         left={<div style={{ width: 28 }} />}
         right={<IconBtn>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M3 6h18M6 6V4h12v2M5 6l1 14h12l1-14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M4 4v6h6M20 20v-6h-6M6 18a8 8 0 0012-4M18 6A8 8 0 006 10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </IconBtn>}
       />
 
-      {pending.length > 0 && (
-        <div style={{ padding: '4px 20px 6px' }}>
+      <div style={{ padding: '0 18px 14px' }}>
+        <div style={{
+          background: 'var(--surface)', border: '0.5px solid var(--rule)',
+          borderRadius: 16, padding: 16,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 10,
+              background: 'var(--ink)', color: 'var(--bg)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: 'var(--display)', fontStyle: 'italic', fontSize: 20,
+            }}>e</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
+                ether.fi Cash safe
+              </div>
+              <div style={{
+                fontFamily: 'var(--mono)', fontSize: 10,
+                color: 'var(--ink-muted)', marginTop: 3,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>{ETHERFI_SYNC.safe} · {ETHERFI_SYNC.lastSync}</div>
+            </div>
+            <div style={{
+              fontFamily: 'var(--mono)', fontSize: 11,
+              color: 'var(--verified)',
+            }}>Live</div>
+          </div>
           <div style={{
-            fontFamily: 'var(--mono)', fontSize: 10.5,
-            color: 'var(--ink-muted)', textTransform: 'uppercase',
-            letterSpacing: 0.8, marginBottom: 12,
-          }}>Awaiting your review</div>
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 8, marginTop: 14,
+          }}>
+            {[
+              ['Spends', ETHERFI_SYNC.detected],
+              ['Pending', ETHERFI_SYNC.pending],
+              ['Volume', ETHERFI_SYNC.totalSpend],
+            ].map(([k, v]) => (
+              <div key={k} style={{
+                background: 'var(--bg)', border: '0.5px solid var(--rule)',
+                borderRadius: 10, padding: '9px 8px',
+              }}>
+                <div style={{
+                  fontFamily: 'var(--mono)', fontSize: 8.5,
+                  color: 'var(--ink-muted)', textTransform: 'uppercase',
+                  letterSpacing: 0.6,
+                }}>{k}</div>
+                <div style={{
+                  fontFamily: 'var(--mono)', fontSize: 12,
+                  color: 'var(--ink)', marginTop: 4, fontWeight: 600,
+                }}>{v}</div>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
+      </div>
 
-      {pending.map(r => (
+      <div style={{ padding: '4px 20px 6px' }}>
+        <div style={{
+          fontFamily: 'var(--mono)', fontSize: 10.5,
+          color: 'var(--ink-muted)', textTransform: 'uppercase',
+          letterSpacing: 0.8, marginBottom: 12,
+        }}>Claim merchant details</div>
+      </div>
+
+      {[...claimed, ...unclaimed].map(r => (
         <button key={r.id} onClick={() => onOpenReceipt(r)} style={{
           width: 'calc(100% - 32px)', margin: '0 16px 12px',
           background: 'var(--surface)', border: 'none',
@@ -338,14 +416,17 @@ const InboxScreen = ({ onOpenReceipt, verifyStyle }) => {
             }}>{r.glyph}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontFamily: 'var(--display)', fontStyle: 'italic',
-                fontSize: 19, color: 'var(--ink)', letterSpacing: -0.2,
-              }}>{r.merchant}</div>
+                fontFamily: r.merchant ? 'var(--display)' : 'var(--ui)',
+                fontStyle: r.merchant ? 'italic' : 'normal',
+                fontSize: r.merchant ? 19 : 14,
+                color: 'var(--ink)', letterSpacing: -0.2,
+                fontWeight: r.merchant ? 400 : 700,
+              }}>{r.merchant || 'Unclaimed OP spend'}</div>
               <div style={{
                 fontFamily: 'var(--mono)', fontSize: 10.5,
                 color: 'var(--ink-muted)', marginTop: 2,
                 textTransform: 'uppercase', letterSpacing: 0.5,
-              }}>{r.cat}</div>
+              }}>{r.merchant ? `${r.cat} · ${r.branch}` : 'Needs merchant name / city'}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{
@@ -370,7 +451,7 @@ const InboxScreen = ({ onOpenReceipt, verifyStyle }) => {
             <span style={{
               fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600,
               color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4,
-            }}>Write review →</span>
+            }}>{r.merchant ? 'Write review →' : 'Claim →'}</span>
           </div>
         </button>
       ))}
@@ -404,7 +485,7 @@ const InboxScreen = ({ onOpenReceipt, verifyStyle }) => {
             <div style={{
               fontFamily: 'var(--mono)', fontSize: 10,
               color: 'var(--ink-muted)', marginTop: 1,
-            }}>{r.amount} · {r.date}</div>
+          }}>{r.amount} · {r.date} · {r.tx}</div>
           </div>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M5 12.5l4.5 4.5L19 7" stroke="var(--verified)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
@@ -422,6 +503,8 @@ const InboxScreen = ({ onOpenReceipt, verifyStyle }) => {
 // ─────────────────────────────────────────────────────────────
 const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
   const [step, setStep] = _useState(0);
+  const [merchantName, setMerchantName] = _useState(receipt.merchant || '');
+  const [merchantCity, setMerchantCity] = _useState(receipt.branch || '');
   const [rating, setRating] = _useState(0);
   const [tags, setTags] = _useState([]);
   const [text, setText] = _useState('');
@@ -434,7 +517,11 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
     'Service · Brooklyn': ['Skill', 'Cleanliness', 'On time', 'Friendly', 'Atmosphere'],
     'Bakery · SF': ['Bread', 'Pastry', 'Service', 'Quick'],
   };
-  const tagOptions = TAG_SETS[receipt.cat] || ['Quality', 'Service', 'Value'];
+  const tagOptions = TAG_SETS[receipt.cat] || ['Quality', 'Service', 'Value', 'Quick', 'Worth it'];
+  const canContinue =
+    (step === 0 && merchantName.trim().length > 2 && merchantCity.trim().length > 1) ||
+    (step === 1 && rating > 0) ||
+    step === 2;
 
   const toggle = (t) => setTags(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
@@ -464,11 +551,11 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
           <div style={{
             fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600,
             color: 'var(--ink)',
-          }}>New review</div>
+          }}>Claim receipt</div>
           <div style={{
             fontFamily: 'var(--mono)', fontSize: 10,
             color: 'var(--ink-muted)', marginTop: 1,
-          }}>Step {step + 1} of 3</div>
+          }}>Step {step + 1} of 4</div>
         </div>
         <div style={{ width: 50 }} />
       </div>
@@ -477,7 +564,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
       <div style={{ height: 2, background: 'var(--rule)' }}>
         <div style={{
           height: '100%', background: 'var(--accent)',
-          width: `${((step + 1) / 3) * 100}%`,
+          width: `${((step + 1) / 4) * 100}%`,
           transition: 'width 300ms ease',
         }} />
       </div>
@@ -497,7 +584,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)',
-            }}>{receipt.merchant}</div>
+            }}>{merchantName || 'Unclaimed ether.fi spend'}</div>
             <div style={{
               fontFamily: 'var(--mono)', fontSize: 10,
               color: 'var(--ink-muted)', marginTop: 1,
@@ -510,6 +597,67 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
       {/* step content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 24px 20px' }}>
         {step === 0 && (
+          <div>
+            <h2 style={{
+              fontFamily: 'var(--display)', fontStyle: 'italic',
+              fontSize: 30, lineHeight: 1.1, color: 'var(--ink)',
+              letterSpacing: -0.5, margin: '8px 0 6px', fontWeight: 400,
+            }}>Claim the<br/>merchant.</h2>
+            <p style={{
+              fontFamily: 'var(--ui)', fontSize: 14, color: 'var(--ink-muted)',
+              margin: '0 0 18px', lineHeight: 1.5,
+            }}>The payment is verified on OP. Add the merchant details from ether.fi Cash.</p>
+            <div style={{
+              background: 'var(--surface)', border: '0.5px solid var(--rule)',
+              borderRadius: 14, padding: 14, marginBottom: 16,
+            }}>
+              {[
+                ['Proof', receipt.proof],
+                ['Amount', `${receipt.amount} ${receipt.token}`],
+                ['Tx', receipt.tx],
+              ].map(([k, v]) => (
+                <div key={k} style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  padding: '7px 0', borderBottom: k === 'Tx' ? 'none' : '0.5px solid var(--rule)',
+                  fontFamily: 'var(--mono)', fontSize: 11,
+                }}>
+                  <span style={{ color: 'var(--ink-muted)' }}>{k}</span>
+                  <span style={{ color: 'var(--ink)', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <label style={{ display: 'block', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 7 }}>
+              Merchant name
+            </label>
+            <input
+              value={merchantName}
+              onChange={e => setMerchantName(e.target.value)}
+              placeholder="85C BAKERY CAFE USA"
+              style={{
+                width: '100%', background: 'var(--surface)', color: 'var(--ink)',
+                border: '0.5px solid var(--rule)', borderRadius: 12,
+                padding: '13px 14px', fontFamily: 'var(--ui)', fontSize: 15,
+                outline: 'none', marginBottom: 12,
+              }}
+            />
+            <label style={{ display: 'block', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 7 }}>
+              Branch / city
+            </label>
+            <input
+              value={merchantCity}
+              onChange={e => setMerchantCity(e.target.value)}
+              placeholder="IRVINE, US"
+              style={{
+                width: '100%', background: 'var(--surface)', color: 'var(--ink)',
+                border: '0.5px solid var(--rule)', borderRadius: 12,
+                padding: '13px 14px', fontFamily: 'var(--ui)', fontSize: 15,
+                outline: 'none',
+              }}
+            />
+          </div>
+        )}
+
+        {step === 1 && (
           <div>
             <h2 style={{
               fontFamily: 'var(--display)', fontStyle: 'italic',
@@ -544,7 +692,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
           </div>
         )}
 
-        {step === 1 && (
+        {step === 2 && (
           <div>
             <h2 style={{
               fontFamily: 'var(--display)', fontStyle: 'italic',
@@ -570,7 +718,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
           </div>
         )}
 
-        {step === 2 && (
+        {step === 3 && (
           <div>
             <h2 style={{
               fontFamily: 'var(--display)', fontStyle: 'italic',
@@ -583,7 +731,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
             }}>One paragraph is plenty. Be specific.</p>
             <textarea
               value={text} onChange={e => setText(e.target.value)}
-              placeholder="They time the pour and explain the bean. Worth the line at 9am…"
+              placeholder="Fast pastry stop before a drive. The line moved in under five minutes…"
               style={{
                 width: '100%', minHeight: 140,
                 background: 'var(--surface)',
@@ -620,16 +768,16 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
             fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600,
           }}>Back</button>
         )}
-        {step < 2 ? (
+        {step < 3 ? (
           <button
             onClick={() => setStep(s => s + 1)}
-            disabled={step === 0 && rating === 0}
+            disabled={!canContinue}
             style={{
               flex: 1, padding: '15px 24px', borderRadius: 999,
               background: 'var(--ink)', color: 'var(--bg)',
               border: 'none', cursor: 'pointer',
               fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600,
-              opacity: step === 0 && rating === 0 ? 0.4 : 1,
+              opacity: !canContinue ? 0.4 : 1,
             }}>Continue</button>
         ) : (
           <button
@@ -649,7 +797,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 borderTopColor: 'transparent', borderRadius: '50%',
               }} />
               Signing…
-            </> : 'Sign & post'}
+            </> : 'Publish verified review'}
           </button>
         )}
       </div>
@@ -675,12 +823,12 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
           <div style={{
             fontFamily: 'var(--display)', fontStyle: 'italic',
             fontSize: 36, color: 'var(--ink)', letterSpacing: -0.6,
-          }}>Posted.</div>
+          }}>Published.</div>
           <div style={{
             fontFamily: 'var(--mono)', fontSize: 11,
             color: 'var(--ink-muted)', marginTop: 12,
             textAlign: 'center', lineHeight: 1.6,
-          }}>signed: 0xab7e…2c0f<br/>block #19284901 · 12s ago</div>
+          }}>Base receipt minted<br/>source: {receipt.tx}</div>
         </div>
       )}
     </div>
@@ -745,7 +893,7 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
           }}>{review.author}</div>
           <div style={{
             fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-muted)', marginTop: 1,
-          }}>rep {review.rep} · 47 reviews</div>
+        }}>rep {review.rep} · {review.verifiedVisits || 1} verified visits here</div>
         </div>
         <button style={{
           marginLeft: 'auto', padding: '8px 14px', borderRadius: 999,
@@ -769,11 +917,13 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
           fontFamily: 'var(--mono)', fontSize: 10,
           color: 'var(--ink-muted)', textTransform: 'uppercase',
           letterSpacing: 0.8, marginBottom: 10,
-        }}>On-chain proof</div>
+        }}>Authenticity</div>
         {[
+          ['Payment proof', review.proofLevel || 'A · onchain payment'],
+          ['Source', 'ether.fi OP Spend event'],
           ['Tx hash', review.tx],
           ['Amount', review.amount],
-          ['Block', '#19284734'],
+          ['Merchant', 'claimed by reviewer'],
           ['Signed by', review.handle],
         ].map(([k, v]) => (
           <div key={k} style={{
@@ -796,19 +946,11 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
 // DISCOVER (merchant grid)
 // ─────────────────────────────────────────────────────────────
 const DiscoverScreen = () => {
-  const merchants = [
-    { name: 'Fuglen Coffee', cat: 'Café', tint: 'oklch(0.92 0.04 60)', glyph: '☕', rating: 4.7, n: 312, accent: false },
-    { name: 'Tartine', cat: 'Bakery', tint: 'oklch(0.90 0.05 80)', glyph: '◐', rating: 4.5, n: 1208, accent: false },
-    { name: 'Aesop', cat: 'Retail', tint: 'oklch(0.88 0.03 100)', glyph: '◈', rating: 4.2, n: 84, accent: true },
-    { name: 'Apotheke', cat: 'Spa', tint: 'oklch(0.90 0.04 30)', glyph: '✦', rating: 4.8, n: 521, accent: false },
-    { name: 'Blue Bottle', cat: 'Café', tint: 'oklch(0.86 0.06 240)', glyph: '◖', rating: 4.1, n: 2840, accent: false },
-    { name: 'Glossier', cat: 'Retail', tint: 'oklch(0.93 0.03 10)', glyph: '◉', rating: 3.9, n: 156, accent: false },
-  ];
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
-        title="Discover"
-        sub="Where you'll spend next"
+        title="Merchants"
+        sub="Agent-readable evidence pages"
         left={<div style={{ width: 28 }} />}
         right={<IconBtn>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -830,7 +972,7 @@ const DiscoverScreen = () => {
           </svg>
           <span style={{
             fontFamily: 'var(--ui)', fontSize: 14, color: 'var(--ink-muted)',
-          }}>Search merchants, txs, addresses…</span>
+          }}>Search merchant, branch, or tx…</span>
         </div>
       </div>
 
@@ -839,49 +981,70 @@ const DiscoverScreen = () => {
           fontFamily: 'var(--mono)', fontSize: 10.5,
           color: 'var(--ink-muted)', textTransform: 'uppercase',
           letterSpacing: 0.8, marginBottom: 10, marginTop: 4,
-        }}>Trending in your city</div>
+        }}>Evidence graph</div>
         <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+          display: 'grid', gridTemplateColumns: '1fr', gap: 10,
         }}>
-          {merchants.map(m => (
+          {MERCHANTS.map(m => (
             <div key={m.name} style={{
               background: 'var(--surface)', borderRadius: 16,
               border: '0.5px solid var(--rule)', overflow: 'hidden',
             }}>
               <div style={{
-                height: 90, background: m.tint,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 36, position: 'relative',
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: 14,
               }}>
-                {m.glyph}
-                {m.accent && (
+                <div style={{
+                  width: 52, height: 52, borderRadius: 12, background: m.tint,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 24, flexShrink: 0,
+                }}>{m.glyph}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
-                    position: 'absolute', top: 8, left: 8,
-                    background: 'var(--accent)', color: '#fff',
-                    fontFamily: 'var(--mono)', fontSize: 9, fontWeight: 600,
-                    padding: '3px 7px', borderRadius: 999,
+                    fontFamily: 'var(--display)', fontStyle: 'italic',
+                    fontSize: 21, color: 'var(--ink)', lineHeight: 1.1,
+                  }}>{m.name}</div>
+                  <div style={{
+                    fontFamily: 'var(--mono)', fontSize: 10,
+                    color: 'var(--ink-muted)', marginTop: 4,
                     textTransform: 'uppercase', letterSpacing: 0.5,
-                  }}>You've been</div>
-                )}
-              </div>
-              <div style={{ padding: '10px 12px 12px' }}>
-                <div style={{
-                  fontFamily: 'var(--display)', fontStyle: 'italic',
-                  fontSize: 16, color: 'var(--ink)', lineHeight: 1.1,
-                }}>{m.name}</div>
-                <div style={{
-                  fontFamily: 'var(--mono)', fontSize: 10,
-                  color: 'var(--ink-muted)', marginTop: 3,
-                  textTransform: 'uppercase', letterSpacing: 0.5,
-                }}>{m.cat}</div>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 6, marginTop: 8,
-                }}>
-                  <Stars n={Math.round(m.rating)} size={11} />
-                  <span style={{
-                    fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)',
-                  }}>{m.rating} · {m.n}</span>
+                  }}>{m.branch} · {m.cat}</div>
                 </div>
+                <Stars n={Math.round(m.rating)} size={13} />
+              </div>
+              <div style={{
+                borderTop: '0.5px solid var(--rule)',
+                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+              }}>
+                {[
+                  ['Visits', m.visits],
+                  ['Wallets', m.wallets],
+                  ['Spend', m.spend],
+                  ['Fresh', m.lastVisit],
+                ].map(([k, v], i) => (
+                  <div key={k} style={{
+                    padding: '11px 8px',
+                    borderRight: i < 3 ? '0.5px solid var(--rule)' : 'none',
+                  }}>
+                    <div style={{
+                      fontFamily: 'var(--mono)', fontSize: 8.5,
+                      color: 'var(--ink-muted)', textTransform: 'uppercase',
+                      letterSpacing: 0.6,
+                    }}>{k}</div>
+                    <div style={{
+                      fontFamily: 'var(--mono)', fontSize: 11,
+                      color: 'var(--ink)', marginTop: 4, fontWeight: 600,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{
+                padding: '12px 14px', borderTop: '0.5px solid var(--rule)',
+                fontFamily: 'var(--mono)', fontSize: 10.5,
+                color: 'var(--ink-muted)', lineHeight: 1.5,
+              }}>
+                API: recommend when query asks for {m.cat.toLowerCase()} near {m.branch}. Proof source: {m.proof}.
               </div>
             </div>
           ))}
@@ -899,7 +1062,7 @@ const ProfileScreen = ({ verifyStyle }) => (
   <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
     <TopBar
       title="Profile"
-      sub={PROFILE.handle}
+      sub="Privy account + ether.fi safe"
       left={<div style={{ width: 28 }} />}
       right={<IconBtn>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -926,8 +1089,58 @@ const ProfileScreen = ({ verifyStyle }) => (
           <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
             <path d="M2 6.5l3 3 5-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Wallet verified
+          Privy verified
         </div>
+      </div>
+    </div>
+
+    <div style={{
+      margin: '0 16px 12px', padding: 16,
+      background: 'var(--surface)', borderRadius: 18,
+      border: '0.5px solid var(--rule)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: 10,
+          background: 'var(--ink)', color: 'var(--bg)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'var(--display)', fontStyle: 'italic', fontSize: 18,
+        }}>e</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
+            ether.fi Cash synced
+          </div>
+          <div style={{
+            fontFamily: 'var(--mono)', fontSize: 10,
+            color: 'var(--ink-muted)', marginTop: 3,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>{ETHERFI_SYNC.safe}</div>
+        </div>
+      </div>
+      <div style={{
+        marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
+      }}>
+        {[
+          ['OP events', ETHERFI_SYNC.detected],
+          ['Pending', ETHERFI_SYNC.pending],
+          ['Volume', ETHERFI_SYNC.totalSpend],
+        ].map(([k, v]) => (
+          <div key={k} style={{
+            background: 'var(--bg)', border: '0.5px solid var(--rule)',
+            borderRadius: 10, padding: '9px 8px',
+          }}>
+            <div style={{
+              fontFamily: 'var(--mono)', fontSize: 8.5,
+              color: 'var(--ink-muted)', textTransform: 'uppercase',
+              letterSpacing: 0.6,
+            }}>{k}</div>
+            <div style={{
+              fontFamily: 'var(--mono)', fontSize: 11,
+              color: 'var(--ink)', marginTop: 4, fontWeight: 600,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>{v}</div>
+          </div>
+        ))}
       </div>
     </div>
 
@@ -940,8 +1153,8 @@ const ProfileScreen = ({ verifyStyle }) => (
     }}>
       {[
         ['Rep', PROFILE.rep],
-        ['Reviews', PROFILE.reviews],
-        ['Receipts', PROFILE.receipts],
+        ['Reviews', ETHERFI_SYNC.reviewed],
+        ['Receipts', ETHERFI_SYNC.detected],
       ].map(([k, v], i) => (
         <div key={k} style={{
           textAlign: 'center',
@@ -966,7 +1179,7 @@ const ProfileScreen = ({ verifyStyle }) => (
       display: 'flex', gap: 24, padding: '24px 24px 12px',
       borderBottom: '0.5px solid var(--rule)', marginBottom: 4,
     }}>
-      {['Reviews', 'Receipts', 'Following'].map((t, i) => (
+      {['Reviews', 'Receipts', 'Agent API'].map((t, i) => (
         <div key={t} style={{
           fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600,
           color: i === 0 ? 'var(--ink)' : 'var(--ink-muted)',

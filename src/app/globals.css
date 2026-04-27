@@ -85,3 +85,10 @@ button { font: inherit; }
   font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
   color: oklch(0.55 0.01 60); margin-top: 6px;
 }
+
+@media (max-width: 920px), (max-height: 760px) {
+  .label,
+  .tagline {
+    display: none;
+  }
+}
