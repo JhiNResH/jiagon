@@ -351,6 +351,168 @@ const toReceiptCard = (receipt, index) => ({
   reviewed: false,
 });
 
+const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, reviewedCount, lastSync }) => {
+  const topSignals = MERCHANTS.slice(0, 3);
+  const agentReadiness = synced
+    ? unclaimedCount > 0
+      ? `${eventCount} payment proofs ready. Claim merchants to unlock place-level recommendations.`
+      : `${eventCount} verified memories ready for agent recommendations.`
+    : 'Import one ether.fi spend tx to build a private local memory from real payments.';
+  const nextAction = synced
+    ? unclaimedCount > 0
+      ? `Claim ${Math.min(unclaimedCount, 3)} receipts`
+      : 'Ask for a recommendation'
+    : 'Import latest tx';
+
+  return (
+    <div style={{ padding: '0 18px 14px' }}>
+      <div style={{
+        background: 'var(--ink)',
+        color: 'var(--bg)',
+        borderRadius: 18,
+        padding: 16,
+        boxShadow: '0 10px 32px rgba(0,0,0,0.12)',
+      }}>
+        <div style={{
+          fontFamily: 'var(--mono)',
+          fontSize: 10,
+          textTransform: 'uppercase',
+          letterSpacing: 0.9,
+          opacity: 0.7,
+        }}>Taste memory</div>
+        <div style={{
+          fontFamily: 'var(--display)',
+          fontStyle: 'italic',
+          fontSize: 30,
+          lineHeight: 1.05,
+          marginTop: 8,
+          letterSpacing: -0.4,
+        }}>Your receipts,<br/>usable by your agent.</div>
+        <div style={{
+          fontFamily: 'var(--ui)',
+          fontSize: 13.5,
+          lineHeight: 1.45,
+          marginTop: 10,
+          color: 'oklch(0.92 0.008 80)',
+        }}>{agentReadiness}</div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 8,
+          marginTop: 14,
+        }}>
+          {[
+            ['Proofs', synced ? eventCount : '—'],
+            ['Spend', synced ? totalSpend : '—'],
+            ['Reviews', reviewedCount],
+          ].map(([k, v]) => (
+            <div key={k} style={{
+              border: '0.5px solid rgba(255,255,255,0.16)',
+              borderRadius: 10,
+              padding: '9px 8px',
+              background: 'rgba(255,255,255,0.055)',
+            }}>
+              <div style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 8.5,
+                textTransform: 'uppercase',
+                letterSpacing: 0.7,
+                opacity: 0.62,
+              }}>{k}</div>
+              <div style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 11.5,
+                marginTop: 4,
+                fontWeight: 700,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>{v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          borderTop: '0.5px solid rgba(255,255,255,0.14)',
+          marginTop: 14,
+          paddingTop: 12,
+        }}>
+          <div style={{
+            fontFamily: 'var(--mono)',
+            fontSize: 9.5,
+            textTransform: 'uppercase',
+            letterSpacing: 0.8,
+            opacity: 0.58,
+            marginBottom: 8,
+          }}>Agent can answer</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+            {['Where should I get coffee?', 'Find quick bakery stops', 'Places worth revisiting'].map(prompt => (
+              <span key={prompt} style={{
+                border: '0.5px solid rgba(255,255,255,0.16)',
+                borderRadius: 999,
+                padding: '7px 9px',
+                fontFamily: 'var(--ui)',
+                fontSize: 11.5,
+                background: 'rgba(255,255,255,0.055)',
+              }}>{prompt}</span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{
+          display: 'flex',
+          gap: 8,
+          marginTop: 14,
+          overflowX: 'auto',
+          paddingBottom: 1,
+        }}>
+          {topSignals.map(signal => (
+            <div key={signal.id} style={{
+              minWidth: 136,
+              border: '0.5px solid rgba(255,255,255,0.14)',
+              borderRadius: 12,
+              padding: 10,
+              background: 'rgba(255,255,255,0.05)',
+            }}>
+              <div style={{
+                fontFamily: 'var(--display)',
+                fontStyle: 'italic',
+                fontSize: 17,
+                lineHeight: 1.05,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>{signal.name}</div>
+              <div style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 9,
+                opacity: 0.62,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                marginTop: 5,
+              }}>{signal.visits} visits · {signal.branch}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: 14,
+          fontFamily: 'var(--mono)',
+          fontSize: 10,
+          color: 'oklch(0.82 0.008 80)',
+        }}>
+          <span>{lastSync}</span>
+          <span style={{ color: 'var(--bg)', fontWeight: 700 }}>{nextAction} →</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @type {Array<string>} */ ([]) }) => {
   const authenticated = auth?.authenticated ?? false;
   const ready = auth?.ready ?? true;
@@ -406,6 +568,15 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
             <path d="M4 4v6h6M20 20v-6h-6M6 18a8 8 0 0012-4M18 6A8 8 0 006 10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </IconBtn>}
+      />
+
+      <TasteMemoryPanel
+        synced={etherfi?.status === 'synced'}
+        eventCount={eventCount}
+        totalSpend={totalSpend}
+        unclaimedCount={unclaimed.length}
+        reviewedCount={done.length}
+        lastSync={lastSync}
       />
 
       <div style={{ padding: '0 18px 14px' }}>
