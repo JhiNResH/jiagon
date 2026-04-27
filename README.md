@@ -28,7 +28,7 @@ reviews to Postgres when `DATABASE_URL` is configured.
 2. User submits an ether.fi Cash Optimism transaction hash.
 3. Jiagon verifies the transaction contains an ether.fi Cash `Spend` event.
 4. Jiagon derives the user's ether.fi Cash safe / wallet from the event.
-5. User adds merchant, branch, rating, tags, and review text.
+5. User adds merchant, branch, rating, tags, structured visit signals, and review text.
 6. Jiagon prepares a receipt credential with:
    - `sourceReceiptHash`
    - `dataHash`
@@ -46,6 +46,8 @@ Jiagon separates payment proof, merchant claim, and review content.
 - Payment proof: verified from Optimism RPC against ether.fi Cash spend logs.
 - Merchant proof: user claim for MVP; currently not independently verified.
 - Review proof: tied to a verified payment receipt.
+- Review attributes: user-provided structured context such as visit type,
+  occasion, value rating, would-return intent, and best-for tags.
 - Onchain registry: stores hashes and storage pointers, not raw receipt metadata.
 
 Current prepare-only credentials should be treated as proof level `C` unless
@@ -138,6 +140,15 @@ Expected results:
 - `POST /api/receipts/publish`: app-facing endpoint that uses the server mint token without exposing it to the browser.
 - `GET /api/receipts/reviews`: returns persisted published receipt reviews.
 - `GET /api/agent/recommendations`: returns recommendation-oriented review data.
+
+Agent recommendations expose both human review text and machine-readable
+`agentSignals`. The API also includes a `proofBoundary` so agents can separate
+verified facts from user claims:
+
+- verified: payment happened on Optimism through an ether.fi Cash Spend event;
+- user-claimed: merchant / branch identity and review attributes;
+- minted: BNB testnet credential hash points to the submitted data object;
+- not yet solved: official card API merchant binding and production ownership checks.
 
 `/api/receipts/mint` returns `status: "minted"` only after the API broadcasts
 and confirms a BNB testnet transaction. A real mint requires a server minter key

@@ -40,6 +40,7 @@ export type ReceiptReviewRecord = {
   branch: string;
   rating: number;
   tags: string[];
+  reviewAttributes?: Record<string, unknown>;
   reviewText: string;
   amount?: string | null;
   token?: string | null;
@@ -71,6 +72,7 @@ export type PublicReceiptReview = {
   branch: string;
   rating: number;
   tags: string[];
+  reviewAttributes: Record<string, unknown>;
   reviewText: string;
   token: string | null;
   proofLevel: string;
@@ -98,6 +100,7 @@ export type AgentMerchantSignal = {
   totalVerifiedSpendUsd: string | null;
   lastVerifiedVisit: string;
   latestReview: string;
+  latestAttributes: Record<string, unknown>;
 };
 
 type ReceiptStoreGlobal = typeof globalThis & {
@@ -152,6 +155,7 @@ async function ensureSchema(pool: Pool) {
         branch text not null,
         rating integer not null check (rating between 1 and 5),
         tags jsonb not null default '[]'::jsonb,
+        review_attributes jsonb not null default '{}'::jsonb,
         review_text text not null default '',
         amount text,
         token text,
@@ -171,6 +175,9 @@ async function ensureSchema(pool: Pool) {
         minter text,
         payload jsonb not null
       );
+
+      alter table jiagon_receipt_reviews
+        add column if not exists review_attributes jsonb not null default '{}'::jsonb;
     `).then(() => undefined);
   }
 
@@ -223,6 +230,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           branch,
           rating,
           tags,
+          review_attributes,
           review_text,
           amount,
           token,
@@ -245,9 +253,9 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
         values (
           $1, $2, $3, $4, $5, $6, $7, $8,
           $9, $10, $11, $12, $13, $14::jsonb,
-          $15, $16, $17, $18, $19, $20, $21,
+          $15::jsonb, $16, $17, $18, $19, $20, $21,
           $22, $23, $24, $25, $26, $27, $28,
-          $29, $30, $31, $32::jsonb
+          $29, $30, $31, $32, $33::jsonb
         )
         on conflict (source_receipt_hash) do update set
           updated_at = now(),
@@ -262,6 +270,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           branch = excluded.branch,
           rating = excluded.rating,
           tags = excluded.tags,
+          review_attributes = excluded.review_attributes,
           review_text = excluded.review_text,
           amount = excluded.amount,
           token = excluded.token,
@@ -295,6 +304,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
         record.branch,
         record.rating,
         JSON.stringify(record.tags || []),
+        JSON.stringify(record.reviewAttributes || {}),
         record.reviewText || "",
         record.amount || null,
         record.token || null,
@@ -355,6 +365,7 @@ export async function listReceiptReviews(limit = 50): Promise<{
           branch,
           rating,
           tags,
+          review_attributes,
           review_text,
           token,
           proof_level,
@@ -390,6 +401,7 @@ export async function listReceiptReviews(limit = 50): Promise<{
         branch: row.branch,
         rating: row.rating,
         tags: Array.isArray(row.tags) ? row.tags : [],
+        reviewAttributes: row.review_attributes && typeof row.review_attributes === "object" ? row.review_attributes : {},
         reviewText: row.review_text,
         token: row.token,
         proofLevel: row.proof_level,
@@ -435,7 +447,8 @@ export async function listAgentMerchantSignals(limit = 25): Promise<{
           count(distinct coalesce(owner_safe, wallet))::integer as verified_wallets,
           round(avg(rating)::numeric, 1)::float as average_rating,
           max(created_at) as last_verified_visit,
-          (array_agg(review_text order by created_at desc))[1] as latest_review
+          (array_agg(review_text order by created_at desc))[1] as latest_review,
+          (array_agg(review_attributes order by created_at desc))[1] as latest_attributes
         from jiagon_receipt_reviews
         where status = 'minted' and data_matches_request is true
         group by merchant, branch
@@ -460,6 +473,7 @@ export async function listAgentMerchantSignals(limit = 25): Promise<{
           totalVerifiedSpendUsd: null,
           lastVerifiedVisit: row.last_verified_visit.toISOString().slice(0, 10),
           latestReview: row.latest_review || "",
+          latestAttributes: row.latest_attributes && typeof row.latest_attributes === "object" ? row.latest_attributes : {},
         };
       }),
     };
