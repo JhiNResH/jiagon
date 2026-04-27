@@ -113,27 +113,53 @@ export default function AuthPage() {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
   if (!appId) {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(storageKey, JSON.stringify({
-        userLabel: "preview@jiagon.local",
-        walletLabel: "0xpreview",
-      }));
-      window.location.replace("/");
-    }
-
-    return null;
+    return (
+      <main style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        background: "oklch(0.965 0.008 92)",
+        color: "oklch(0.235 0.018 135)",
+        fontFamily: "Inter, -apple-system, system-ui, sans-serif",
+      }}>
+        <div style={{ textAlign: "center", maxWidth: 320, padding: 24 }}>
+          <div style={{
+            fontFamily: "Georgia, serif",
+            fontStyle: "italic",
+            fontSize: 38,
+            marginBottom: 10,
+          }}>Jiagon</div>
+          <div style={{
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: 11,
+            letterSpacing: 1,
+            textTransform: "uppercase",
+            opacity: 0.65,
+            lineHeight: 1.6,
+          }}>Privy app id is required for wallet login.</div>
+        </div>
+      </main>
+    );
   }
 
   return (
     <PrivyProvider
       appId={appId}
       config={{
-        loginMethods: ["email", "google"],
+        loginMethods: ["wallet", "email", "google"],
         appearance: {
           theme: "light",
           accentColor: "#A9573D",
-          showWalletLoginFirst: false,
-          walletList: [],
+          showWalletLoginFirst: true,
+          walletChainType: "ethereum-only",
+          walletList: [
+            "detected_ethereum_wallets",
+            "metamask",
+            "coinbase_wallet",
+            "base_account",
+            "okx_wallet",
+            "wallet_connect",
+          ],
         },
         embeddedWallets: {
           ethereum: { createOnLogin: "off" },
