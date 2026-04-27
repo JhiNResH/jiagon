@@ -1,6 +1,9 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { createPublicClient, createWalletClient, http, parseEventLogs, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { bscTestnet } from "viem/chains";
 
 export const runtime = "nodejs";
 
@@ -59,7 +62,72 @@ const CASH_EVENT_EMITTER = "0x380b2e96799405be6e3d965f4044099891881acb";
 const SPEND_TOPIC = "0x89d3571a498b5d3d68599f5f00c3016f9604aafa7701c52c1b04109cd909a798";
 const BNB_TESTNET_CHAIN_ID = 97;
 const DEFAULT_BNB_TESTNET_ADMIN = "0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9";
+const BNB_TESTNET_EXPLORER_URL = "https://testnet.bscscan.com";
 const RPC_TIMEOUT_MS = 6_000;
+
+const RECEIPT_REGISTRY_ABI = [
+  {
+    type: "function",
+    name: "credentialIdBySourceReceiptHash",
+    stateMutability: "view",
+    inputs: [{ name: "sourceReceiptHash", type: "bytes32" }],
+    outputs: [{ name: "credentialId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "isMinter",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "enabled", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "getCredential",
+    stateMutability: "view",
+    inputs: [{ name: "credentialId", type: "uint256" }],
+    outputs: [
+      {
+        name: "credential",
+        type: "tuple",
+        components: [
+          { name: "owner", type: "address" },
+          { name: "sourceReceiptHash", type: "bytes32" },
+          { name: "dataHash", type: "bytes32" },
+          { name: "storageUri", type: "string" },
+          { name: "proofLevel", type: "uint8" },
+          { name: "issuedAt", type: "uint64" },
+          { name: "issuer", type: "address" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
+    name: "mintCredential",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "receiptOwner", type: "address" },
+      { name: "sourceReceiptHash", type: "bytes32" },
+      { name: "dataHash", type: "bytes32" },
+      { name: "storageUri", type: "string" },
+      { name: "proofLevel", type: "uint8" },
+    ],
+    outputs: [{ name: "credentialId", type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "ReceiptCredentialMinted",
+    inputs: [
+      { name: "credentialId", type: "uint256", indexed: true },
+      { name: "owner", type: "address", indexed: true },
+      { name: "sourceReceiptHash", type: "bytes32", indexed: true },
+      { name: "dataHash", type: "bytes32", indexed: false },
+      { name: "storageUri", type: "string", indexed: false },
+      { name: "proofLevel", type: "uint8", indexed: false },
+      { name: "issuer", type: "address", indexed: false },
+    ],
+  },
+] as const;
 
 function hash(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -93,6 +161,177 @@ function configuredAddress(value: string | undefined) {
   const address = (value || "").trim();
   if (!/^0x[a-fA-F0-9]{40}$/.test(address) || /^0x0{40}$/.test(address)) return null;
   return address;
+}
+
+function configuredPrivateKey(value: string | undefined) {
+  const privateKey = (value || "").trim();
+  if (/^0x[a-fA-F0-9]{64}$/.test(privateKey)) return privateKey as Hex;
+  if (/^[a-fA-F0-9]{64}$/.test(privateKey)) return `0x${privateKey}` as Hex;
+  return null;
+}
+
+function configuredSecret(value: string | undefined) {
+  const secret = (value || "").trim();
+  return secret.length >= 32 ? secret : null;
+}
+
+function safeTokenEqual(actual: string, expected: string) {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function requestMintToken(request: Request) {
+  const bearer = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  return (request.headers.get("x-jiagon-mint-token") || bearer || "").trim();
+}
+
+function bnbRpcUrl() {
+  return process.env.BNB_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.bnbchain.org:8545";
+}
+
+async function readExistingCredential({
+  publicClient,
+  registryAddress,
+  sourceHash,
+  minter,
+}: {
+  publicClient: ReturnType<typeof createPublicClient>;
+  registryAddress: Address;
+  sourceHash: Hex;
+  minter: Address;
+}) {
+  const credentialId = await publicClient.readContract({
+    address: registryAddress,
+    abi: RECEIPT_REGISTRY_ABI,
+    functionName: "credentialIdBySourceReceiptHash",
+    args: [sourceHash],
+  });
+
+  if (credentialId === BigInt(0)) return null;
+
+  const credential = await publicClient.readContract({
+    address: registryAddress,
+    abi: RECEIPT_REGISTRY_ABI,
+    functionName: "getCredential",
+    args: [credentialId],
+  });
+
+  return {
+    status: "already-minted" as const,
+    credentialId: credentialId.toString(),
+    credentialTx: null,
+    explorerUrl: `${BNB_TESTNET_EXPLORER_URL}/address/${registryAddress}`,
+    minter,
+    onchain: {
+      owner: credential.owner,
+      sourceReceiptHash: credential.sourceReceiptHash,
+      dataHash: credential.dataHash,
+      storageUri: credential.storageUri,
+      proofLevel: Number(credential.proofLevel),
+      issuedAt: credential.issuedAt.toString(),
+      issuer: credential.issuer,
+    },
+  };
+}
+
+async function mintReceiptCredential({
+  receiptOwner,
+  sourceHash,
+  dataHash,
+  storageUri,
+  proofLevel,
+  registryAddress,
+  minterPrivateKey,
+}: {
+  receiptOwner: Address;
+  sourceHash: Hex;
+  dataHash: Hex;
+  storageUri: string;
+  proofLevel: number;
+  registryAddress: Address;
+  minterPrivateKey: Hex;
+}) {
+  const account = privateKeyToAccount(minterPrivateKey);
+  const transport = http(bnbRpcUrl());
+  const publicClient = createPublicClient({ chain: bscTestnet, transport });
+  const walletClient = createWalletClient({ account, chain: bscTestnet, transport });
+
+  const chainId = await publicClient.getChainId();
+  if (chainId !== BNB_TESTNET_CHAIN_ID) {
+    throw new Error(`BNB RPC is connected to chain ${chainId}, expected ${BNB_TESTNET_CHAIN_ID}.`);
+  }
+
+  const registryCode = await publicClient.getCode({ address: registryAddress });
+  if (!registryCode || registryCode === "0x") {
+    throw new Error("BNB receipt registry address has no deployed contract code.");
+  }
+
+  const isMinter = await publicClient.readContract({
+    address: registryAddress,
+    abi: RECEIPT_REGISTRY_ABI,
+    functionName: "isMinter",
+    args: [account.address],
+  });
+
+  if (!isMinter) {
+    throw new Error("Configured BNB minter is not authorized by the receipt registry.");
+  }
+
+  const existingCredential = await readExistingCredential({ publicClient, registryAddress, sourceHash, minter: account.address });
+  if (existingCredential) return existingCredential;
+
+  let txHash: Hex;
+  try {
+    txHash = await walletClient.writeContract({
+      address: registryAddress,
+      abi: RECEIPT_REGISTRY_ABI,
+      functionName: "mintCredential",
+      args: [receiptOwner, sourceHash, dataHash, storageUri, proofLevel],
+    });
+  } catch (error) {
+    const racedCredential = await readExistingCredential({ publicClient, registryAddress, sourceHash, minter: account.address });
+    if (racedCredential) return racedCredential;
+    throw error;
+  }
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+  if (receipt.status !== "success") {
+    const racedCredential = await readExistingCredential({ publicClient, registryAddress, sourceHash, minter: account.address });
+    if (racedCredential) return racedCredential;
+    throw new Error("BNB receipt mint transaction reverted.");
+  }
+
+  const mintedEvents = parseEventLogs({
+    abi: RECEIPT_REGISTRY_ABI,
+    eventName: "ReceiptCredentialMinted",
+    logs: receipt.logs,
+  });
+  const mintedEvent = mintedEvents.find(
+    (event) => event.address.toLowerCase() === registryAddress.toLowerCase() && event.args.sourceReceiptHash === sourceHash,
+  );
+
+  if (!mintedEvent) {
+    throw new Error("BNB mint transaction succeeded but no receipt credential event was found.");
+  }
+
+  return {
+    status: "minted" as const,
+    credentialId: mintedEvent.args.credentialId.toString(),
+    credentialTx: txHash,
+    explorerUrl: `${BNB_TESTNET_EXPLORER_URL}/tx/${txHash}`,
+    minter: account.address,
+    onchain: {
+      owner: mintedEvent.args.owner,
+      sourceReceiptHash: mintedEvent.args.sourceReceiptHash,
+      dataHash: mintedEvent.args.dataHash,
+      storageUri: mintedEvent.args.storageUri,
+      proofLevel: Number(mintedEvent.args.proofLevel),
+      issuedAt: null,
+      issuer: mintedEvent.args.issuer,
+    },
+  };
 }
 
 async function postJson<T>(rpcUrl: string, body: unknown): Promise<T> {
@@ -259,25 +498,95 @@ export async function POST(request: Request) {
 
     const canonicalData = JSON.stringify(dataObject);
     const dataHash = `0x${hash(canonicalData)}`;
-    const credentialId = `bnb-testnet-ready-${hash(`${sourceHash}:${dataHash}:${owner}`).slice(0, 12)}`;
-    const storageUri = `greenfield-testnet://jiagon/receipts/${credentialId}.json`;
+    const preparedCredentialId = `bnb-testnet-ready-${hash(`${sourceHash}:${dataHash}:${owner}`).slice(0, 12)}`;
+    const storageUri = `greenfield-testnet://jiagon/receipts/${preparedCredentialId}.json`;
     const registryAddress = configuredAddress(process.env.BNB_RECEIPT_CONTRACT_ADDRESS);
     const configuredRegistryAdmin = configuredAddress(process.env.BNB_TESTNET_ADMIN);
     const defaultRegistryAdmin = configuredAddress(DEFAULT_BNB_TESTNET_ADMIN);
+    const minterPrivateKey = configuredPrivateKey(process.env.BNB_MINTER_PRIVATE_KEY);
+    const mintApiToken = configuredSecret(process.env.JIAGON_MINT_API_TOKEN);
+    const submittedMintToken = requestMintToken(request);
+    const mintAuthorized = Boolean(
+      mintApiToken && submittedMintToken && safeTokenEqual(submittedMintToken, mintApiToken),
+    );
+
+    if (process.env.BNB_MINTER_PRIVATE_KEY && !minterPrivateKey) {
+      return Response.json({ error: "Configured BNB minter private key is invalid." }, { status: 500 });
+    }
+    if (process.env.JIAGON_MINT_API_TOKEN && !mintApiToken) {
+      return Response.json({ error: "Configured Jiagon mint API token is invalid." }, { status: 500 });
+    }
+    if (submittedMintToken && !mintAuthorized) {
+      return Response.json({ error: "Invalid Jiagon mint authorization token." }, { status: 403 });
+    }
+
+    const registry = {
+      address: registryAddress,
+      admin: configuredRegistryAdmin,
+      adminConfigured: Boolean(configuredRegistryAdmin),
+      defaultAdmin: defaultRegistryAdmin,
+      configured: Boolean(registryAddress),
+      minterConfigured: Boolean(minterPrivateKey),
+      mintAuthConfigured: Boolean(mintApiToken),
+    };
+
+    const proof = {
+      payment: "A",
+      merchant: "C",
+      ownership: "event-safe-derived",
+      sourceChain: "optimism",
+      sourceTx,
+      logIndex: verifiedSpend.logIndex,
+    };
+
+    if (registryAddress && minterPrivateKey && mintAuthorized) {
+      const mint = await mintReceiptCredential({
+        receiptOwner: owner as Address,
+        sourceHash: sourceHash as Hex,
+        dataHash: dataHash as Hex,
+        storageUri,
+        proofLevel: 3,
+        registryAddress: registryAddress as Address,
+        minterPrivateKey,
+      });
+
+      return Response.json({
+        status: "minted",
+        network: "BNB Smart Chain testnet",
+        chainId: BNB_TESTNET_CHAIN_ID,
+        credentialChain: "bnb-testnet",
+        registry,
+        credentialId: mint.credentialId,
+        preparedCredentialId,
+        credentialTx: mint.credentialTx,
+        explorerUrl: mint.explorerUrl,
+        storageLayer: "greenfield-testnet",
+        storageUri: mint.onchain.storageUri,
+        requestedStorageUri: storageUri,
+        sourceReceiptHash: sourceHash,
+        dataHash: mint.onchain.dataHash,
+        requestedDataHash: dataHash,
+        dataMatchesRequest: mint.onchain.dataHash.toLowerCase() === dataHash.toLowerCase(),
+        mintedAt: mint.onchain.issuedAt ? new Date(Number(mint.onchain.issuedAt) * 1000).toISOString() : new Date().toISOString(),
+        proofLevel: "C",
+        proof,
+        mode: mint.status === "already-minted" ? "already-minted" : "minted",
+        minter: mint.minter,
+        onchain: mint.onchain,
+        note:
+          mint.status === "already-minted"
+            ? "OP spend verified. A BNB testnet receipt credential already exists for this source receipt."
+            : "OP spend verified and BNB testnet receipt credential minted.",
+      });
+    }
 
     return Response.json({
       status: "prepared",
       network: "BNB Smart Chain testnet",
       chainId: BNB_TESTNET_CHAIN_ID,
       credentialChain: "bnb-testnet",
-      registry: {
-        address: registryAddress,
-        admin: configuredRegistryAdmin,
-        adminConfigured: Boolean(configuredRegistryAdmin),
-        defaultAdmin: defaultRegistryAdmin,
-        configured: Boolean(registryAddress),
-      },
-      credentialId,
+      registry,
+      credentialId: preparedCredentialId,
       credentialTx: null,
       explorerUrl: null,
       storageLayer: "greenfield-testnet",
@@ -286,22 +595,23 @@ export async function POST(request: Request) {
       dataHash,
       preparedAt: new Date().toISOString(),
       proofLevel: "C",
-      proof: {
-        payment: "A",
-        merchant: "C",
-        ownership: "event-safe-derived",
-        sourceChain: "optimism",
-        sourceTx,
-        logIndex: verifiedSpend.logIndex,
-      },
+      proof,
       mode: "prepare-only",
-      note: registryAddress
-        ? "OP spend verified. BNB testnet registry is configured, but this API still runs prepare-only until broadcast signing is integrated."
-        : "OP spend verified. BNB testnet transaction is not broadcast until a registry contract and minter key are configured.",
+      note:
+        registryAddress && minterPrivateKey && mintApiToken
+          ? "OP spend verified. BNB testnet mint is configured, but this request is prepare-only because mint authorization was not provided."
+          : registryAddress
+            ? "OP spend verified. BNB testnet registry is configured, but this API remains prepare-only until a minter key and mint authorization token are configured."
+            : "OP spend verified. BNB testnet transaction is not broadcast until a registry contract, minter key, and mint authorization token are configured.",
     });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Unable to verify ether.fi Cash spend event." },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to verify ether.fi Cash spend event or mint BNB receipt credential.",
+      },
       { status: 502 },
     );
   }
