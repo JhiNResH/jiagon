@@ -34,6 +34,13 @@ const reviewsStorageKey = "jiagon:published-reviews";
 const reviewedReceiptsStorageKey = "jiagon:reviewed-receipts";
 const receiptCredentialsStorageKey = "jiagon:receipt-credentials";
 
+const proofBoundary = {
+  payment: "verified",
+  merchant: "user_claimed",
+  review: "published_after_verified_payment",
+  recommendationUse: "ranking signal, not an official merchant fact",
+};
+
 type EtherfiReceipt = {
   id: string;
   txHash: string;
@@ -347,8 +354,17 @@ export default function Home() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const publishReview = async (review: any, receipt: any) => {
     const credential = await mintReceiptCredential(review, receipt);
+    const agentSignals = {
+      visitType: review.visitType || null,
+      occasion: review.occasion || null,
+      valueRating: review.valueRating || null,
+      wouldReturn: typeof review.wouldReturn === "boolean" ? review.wouldReturn : null,
+      bestFor: Array.isArray(review.bestFor) ? review.bestFor : [],
+    };
     const reviewWithCredential = {
       ...review,
+      agentSignals,
+      proofBoundary,
       credential,
       proofLevel:
         credential.status === "minted"

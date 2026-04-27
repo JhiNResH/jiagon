@@ -8,6 +8,142 @@ import {
 // Jiagon screens
 const _useState = React.useState;
 
+const SIGNAL_LABELS = {
+  visitType: 'Visit',
+  occasion: 'Use case',
+  valueRating: 'Value',
+  wouldReturn: 'Return',
+  bestFor: 'Best for',
+};
+
+const PROOF_BOUNDARY_LABELS = {
+  payment: ['Payment', 'Verified OP Spend'],
+  merchant: ['Merchant', 'User claimed'],
+  review: ['Review', 'After verified payment'],
+  recommendationUse: ['Agent use', 'Ranking signal only'],
+};
+
+const titleizeSignal = (value) => String(value || '')
+  .replace(/[-_]+/g, ' ')
+  .replace(/\b\w/g, c => c.toUpperCase());
+
+const agentSignalsFor = (review = {}) => {
+  const signals = review.agentSignals || {};
+  return {
+    visitType: signals.visitType || review.visitType || null,
+    occasion: signals.occasion || review.occasion || null,
+    valueRating: signals.valueRating || review.valueRating || null,
+    wouldReturn:
+      typeof signals.wouldReturn === 'boolean'
+        ? signals.wouldReturn
+        : typeof review.wouldReturn === 'boolean'
+          ? review.wouldReturn
+          : null,
+    bestFor: Array.isArray(signals.bestFor)
+      ? signals.bestFor
+      : Array.isArray(review.bestFor)
+        ? review.bestFor
+        : [],
+  };
+};
+
+const signalChipsFor = (review, limit = 6) => {
+  const signals = agentSignalsFor(review);
+  return [
+    signals.visitType && titleizeSignal(signals.visitType),
+    signals.occasion && titleizeSignal(signals.occasion),
+    signals.valueRating && `Value ${signals.valueRating}/5`,
+    typeof signals.wouldReturn === 'boolean' && `Return ${signals.wouldReturn ? 'yes' : 'no'}`,
+    ...signals.bestFor.map(item => titleizeSignal(item)),
+  ].filter(Boolean).slice(0, limit);
+};
+
+const hasAgentSignals = (review) => signalChipsFor(review, 1).length > 0;
+
+const hasReviewProof = (review = {}) => Boolean(
+  review.proofBoundary ||
+  review.credential ||
+  review.credentialTx ||
+  review.tx ||
+  typeof review.dataMatchesRequest === 'boolean'
+);
+
+const AgentSignalChips = ({ review, limit = 6 }) => {
+  const chips = signalChipsFor(review, limit);
+  if (!chips.length) return null;
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+      {chips.map(chip => (
+        <span key={chip} style={{
+          border: '0.5px solid color-mix(in oklch, var(--verified) 24%, var(--rule))',
+          borderRadius: 999,
+          padding: '6px 9px',
+          background: 'var(--verified-soft)',
+          color: 'var(--verified)',
+          fontFamily: 'var(--mono)',
+          fontSize: 9.5,
+          fontWeight: 700,
+          whiteSpace: 'nowrap',
+        }}>{chip}</span>
+      ))}
+    </div>
+  );
+};
+
+const AgentSignalsBlock = ({ review }) => {
+  const signals = agentSignalsFor(review);
+  if (!hasAgentSignals(review)) return null;
+
+  const rows = [
+    [SIGNAL_LABELS.visitType, signals.visitType ? titleizeSignal(signals.visitType) : null],
+    [SIGNAL_LABELS.occasion, signals.occasion ? titleizeSignal(signals.occasion) : null],
+    [SIGNAL_LABELS.valueRating, signals.valueRating ? `${signals.valueRating}/5` : null],
+    [SIGNAL_LABELS.wouldReturn, typeof signals.wouldReturn === 'boolean' ? (signals.wouldReturn ? 'Yes' : 'No') : null],
+    [SIGNAL_LABELS.bestFor, signals.bestFor.length ? signals.bestFor.map(titleizeSignal).join(', ') : null],
+  ].filter(([, value]) => value);
+
+  return (
+    <div style={{
+      background: 'var(--surface)',
+      borderRadius: 16,
+      padding: 16,
+      border: '0.5px solid var(--rule)',
+      marginBottom: 14,
+    }}>
+      <div style={{
+        fontFamily: 'var(--mono)',
+        fontSize: 10,
+        color: 'var(--ink-muted)',
+        textTransform: 'uppercase',
+        letterSpacing: 0.8,
+        marginBottom: 10,
+      }}>Agent-readable signals</div>
+      {rows.map(([k, v], index) => (
+        <div key={k} style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: 12,
+          padding: '7px 0',
+          borderBottom: index === rows.length - 1 ? 'none' : '0.5px solid var(--rule)',
+          fontFamily: 'var(--mono)',
+          fontSize: 11,
+        }}>
+          <span style={{ color: 'var(--ink-muted)' }}>{k}</span>
+          <span style={{
+            color: 'var(--ink)',
+            textAlign: 'right',
+            maxWidth: 205,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>{v}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // ─────────────────────────────────────────────────────────────
 // ONBOARDING
 // ─────────────────────────────────────────────────────────────
@@ -261,6 +397,12 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
             color: 'var(--ink-muted)', marginTop: -4, marginBottom: 10,
             textTransform: 'uppercase', letterSpacing: 0.6,
           }}>{r.cat}</div>
+
+          {hasAgentSignals(r) && (
+            <div style={{ marginBottom: 12 }}>
+              <AgentSignalChips review={r} limit={5} />
+            </div>
+          )}
 
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
@@ -1042,7 +1184,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
       setCredential(mintedCredential);
       setSubmitting(false);
       setDone(true);
-      window.setTimeout(onClose, 1400);
+      window.setTimeout(onClose, 2200);
     } catch (error) {
       setSubmitting(false);
       setMintError(error instanceof Error ? error.message : 'Unable to mint BNB testnet receipt credential.');
@@ -1519,6 +1661,23 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
             {credential?.credentialTx ? `${credential.credentialTx.slice(0, 8)}…${credential.credentialTx.slice(-6)}` : credential?.credentialId || 'Greenfield object ready'}
             {credential?.dataMatchesRequest === false && <><br/>submitted review differs from onchain data</>}
           </div>
+          <div style={{
+            marginTop: 18,
+            maxWidth: 280,
+          }}>
+            <AgentSignalChips
+              review={{ visitType, occasion, valueRating, wouldReturn, bestFor }}
+              limit={5}
+            />
+          </div>
+          <div style={{
+            fontFamily: 'var(--mono)',
+            fontSize: 10,
+            color: 'var(--ink-muted)',
+            marginTop: 12,
+            textAlign: 'center',
+            lineHeight: 1.45,
+          }}>Payment verified. Merchant remains user-claimed.</div>
         </div>
       )}
     </div>
@@ -1598,6 +1757,8 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
         textWrap: 'pretty', letterSpacing: -0.1,
       }}>"{review.text}"</p>
 
+      <AgentSignalsBlock review={review} />
+
       {/* on-chain proof block */}
       <div style={{
         background: 'var(--surface)', borderRadius: 16,
@@ -1610,6 +1771,10 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
         }}>Authenticity</div>
         {[
           ['Payment proof', review.proofLevel || 'A · onchain payment'],
+          ['Payment boundary', PROOF_BOUNDARY_LABELS.payment[1]],
+          ['Merchant boundary', PROOF_BOUNDARY_LABELS.merchant[1]],
+          ['Review boundary', PROOF_BOUNDARY_LABELS.review[1]],
+          ['Agent use', PROOF_BOUNDARY_LABELS.recommendationUse[1]],
           ['Source', 'ether.fi OP Spend event'],
           ['Tx hash', review.tx],
           ['Credential', review.credentialTx || 'BNB testnet prepared'],
@@ -1618,10 +1783,10 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
           ['Amount', review.amount],
           ['Merchant proof', review.merchantProof || 'C · claimed by reviewer'],
           ['Signed by', review.handle],
-        ].map(([k, v]) => (
+        ].map(([k, v], index, rows) => (
           <div key={k} style={{
             display: 'flex', justifyContent: 'space-between',
-            padding: '7px 0', borderBottom: k === 'Signed by' ? 'none' : '0.5px solid var(--rule)',
+            padding: '7px 0', borderBottom: index === rows.length - 1 ? 'none' : '0.5px solid var(--rule)',
             fontFamily: 'var(--mono)', fontSize: 12,
           }}>
             <span style={{ color: 'var(--ink-muted)' }}>{k}</span>
@@ -2086,6 +2251,42 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
               }}>{credential.explorerUrl || credential.storageUri}</div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: 8,
+                marginTop: 11,
+              }}>
+                {[
+                  PROOF_BOUNDARY_LABELS.payment,
+                  PROOF_BOUNDARY_LABELS.merchant,
+                ].map(([k, v]) => (
+                  <div key={k} style={{
+                    border: '0.5px solid var(--rule)',
+                    borderRadius: 10,
+                    background: 'var(--bg)',
+                    padding: '8px 9px',
+                  }}>
+                    <div style={{
+                      fontFamily: 'var(--mono)',
+                      fontSize: 8.5,
+                      color: 'var(--ink-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.6,
+                    }}>{k}</div>
+                    <div style={{
+                      fontFamily: 'var(--mono)',
+                      fontSize: 10,
+                      color: k === 'Payment' ? 'var(--verified)' : 'var(--accent)',
+                      marginTop: 4,
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>{v}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           );
         })}
@@ -2119,7 +2320,63 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
           fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.5,
           color: 'var(--ink)', margin: '0 0 10px',
         }}>{r.text}</p>
-        <VerifiedChip tx="0xabc…123" amount={r.amount} style={verifyStyle} />
+        {hasAgentSignals(r) && (
+          <div style={{ marginBottom: 10 }}>
+            <AgentSignalChips review={r} limit={4} />
+          </div>
+        )}
+        {hasReviewProof(r) ? (
+          <>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 8,
+              marginBottom: 10,
+            }}>
+              {[
+                PROOF_BOUNDARY_LABELS.payment,
+                PROOF_BOUNDARY_LABELS.merchant,
+              ].map(([k, v]) => (
+                <div key={k} style={{
+                  background: 'var(--surface)',
+                  border: '0.5px solid var(--rule)',
+                  borderRadius: 10,
+                  padding: '7px 8px',
+                }}>
+                  <div style={{
+                    fontFamily: 'var(--mono)',
+                    fontSize: 8,
+                    color: 'var(--ink-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.6,
+                  }}>{k}</div>
+                  <div style={{
+                    fontFamily: 'var(--mono)',
+                    fontSize: 9.5,
+                    color: k === 'Payment' ? 'var(--verified)' : 'var(--accent)',
+                    marginTop: 3,
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <VerifiedChip tx={r.tx} amount={r.amount} style={verifyStyle} />
+          </>
+        ) : (
+          <span style={{
+            display: 'inline-flex',
+            border: '0.5px solid var(--rule)',
+            borderRadius: 999,
+            padding: '5px 9px',
+            fontFamily: 'var(--mono)',
+            fontSize: 9.5,
+            color: 'var(--ink-muted)',
+            background: 'var(--surface)',
+          }}>Demo memory · no receipt proof</span>
+        )}
       </article>
     ))}
 
