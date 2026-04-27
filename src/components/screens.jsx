@@ -1843,32 +1843,80 @@ const DiscoverScreen = () => {
 
       <div style={{ padding: '0 18px 16px' }}>
         <div style={{
-          background: 'var(--ink)',
-          color: 'var(--bg)',
+          background: 'var(--surface-raised)',
+          color: 'var(--ink)',
           borderRadius: 16,
           padding: 16,
           marginBottom: 14,
+          border: '0.5px solid var(--rule)',
+          boxShadow: '0 8px 28px rgba(49,44,36,0.05)',
         }}>
           <div style={{
             fontFamily: 'var(--mono)',
             fontSize: 10,
             textTransform: 'uppercase',
             letterSpacing: 0.8,
-            opacity: 0.72,
+            color: 'var(--ink-muted)',
             marginBottom: 8,
           }}>Agent endpoint</div>
           <div style={{
-            fontFamily: 'var(--ui)',
-            fontSize: 14,
+            fontFamily: 'var(--mono)',
+            fontSize: 11,
             lineHeight: 1.45,
-            fontWeight: 600,
+            fontWeight: 700,
+            color: 'var(--ink)',
+            background: 'var(--bg)',
+            border: '0.5px solid var(--rule)',
+            borderRadius: 10,
+            padding: '10px 11px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}>/api/agent/recommendations?query=bakery%20irvine</div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 8,
+            marginTop: 10,
+          }}>
+            {[
+              ['Payment', 'Verified OP', 'var(--verified)', 'var(--verified-soft)'],
+              ['Merchant', 'User claimed', 'var(--accent)', 'var(--accent-soft)'],
+              ['Storage', 'BNB testnet', 'var(--info)', 'var(--info-soft)'],
+            ].map(([k, v, color, bg]) => (
+              <div key={k} style={{
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                background: bg,
+                padding: '8px 7px',
+                minWidth: 0,
+              }}>
+                <div style={{
+                  fontFamily: 'var(--mono)',
+                  fontSize: 8,
+                  color: 'var(--ink-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.55,
+                }}>{k}</div>
+                <div style={{
+                  fontFamily: 'var(--mono)',
+                  fontSize: 9.5,
+                  color,
+                  marginTop: 4,
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>{v}</div>
+              </div>
+            ))}
+          </div>
           <div style={{
             fontFamily: 'var(--mono)',
             fontSize: 10.5,
             lineHeight: 1.5,
-            opacity: 0.72,
             marginTop: 8,
+            color: 'var(--ink-muted)',
           }}>Returns recommendation rationale, proof level, BNB credential chain, Greenfield storage layer, and merchant verification status.</div>
         </div>
 
@@ -1882,8 +1930,9 @@ const DiscoverScreen = () => {
         }}>
           {MERCHANTS.map(m => (
             <div key={m.name} style={{
-              background: 'var(--surface)', borderRadius: 16,
+              background: 'var(--surface-raised)', borderRadius: 16,
               border: '0.5px solid var(--rule)', overflow: 'hidden',
+              boxShadow: '0 8px 22px rgba(49,44,36,0.04)',
             }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 12,
@@ -1905,7 +1954,20 @@ const DiscoverScreen = () => {
                     textTransform: 'uppercase', letterSpacing: 0.5,
                   }}>{m.branch} · {m.cat}</div>
                 </div>
-                <Stars n={Math.round(m.rating)} size={13} />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                  <Stars n={Math.round(m.rating)} size={13} />
+                  <span style={{
+                    border: '0.5px solid color-mix(in oklch, var(--verified) 24%, var(--rule))',
+                    borderRadius: 999,
+                    padding: '4px 7px',
+                    background: 'var(--verified-soft)',
+                    color: 'var(--verified)',
+                    fontFamily: 'var(--mono)',
+                    fontSize: 8.5,
+                    fontWeight: 800,
+                    whiteSpace: 'nowrap',
+                  }}>A proof</span>
+                </div>
               </div>
               <div style={{
                 borderTop: '0.5px solid var(--rule)',
@@ -1919,6 +1981,7 @@ const DiscoverScreen = () => {
                 ].map(([k, v], i) => (
                   <div key={k} style={{
                     padding: '11px 8px',
+                    background: i === 0 ? 'var(--verified-soft)' : i === 2 ? 'var(--accent-soft)' : 'var(--surface)',
                     borderRight: i < 3 ? '0.5px solid var(--rule)' : 'none',
                   }}>
                     <div style={{
@@ -1928,7 +1991,8 @@ const DiscoverScreen = () => {
                     }}>{k}</div>
                     <div style={{
                       fontFamily: 'var(--mono)', fontSize: 11,
-                      color: 'var(--ink)', marginTop: 4, fontWeight: 600,
+                      color: i === 0 ? 'var(--verified)' : i === 2 ? 'var(--accent)' : 'var(--ink)',
+                      marginTop: 4, fontWeight: 700,
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>{v}</div>
                   </div>
@@ -1938,8 +2002,10 @@ const DiscoverScreen = () => {
                 padding: '12px 14px', borderTop: '0.5px solid var(--rule)',
                 fontFamily: 'var(--mono)', fontSize: 10.5,
                 color: 'var(--ink-muted)', lineHeight: 1.5,
+                background: 'var(--receipt)',
               }}>
-                API: recommend when query asks for {m.cat.toLowerCase()} near {m.branch}. Source: {m.proof}. Credential: BNB testnet ready.
+                <span style={{ color: 'var(--verified)', fontWeight: 800 }}>Payment verified</span>
+                <span> · merchant user-claimed · recommend when query asks for {m.cat.toLowerCase()} near {m.branch}. Credential: BNB testnet ready.</span>
               </div>
             </div>
           ))}
