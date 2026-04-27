@@ -12,6 +12,11 @@ cp env.example .env.local
 NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
 ```
 
+BNB testnet receipt credentials use the development admin wallet documented in
+[`docs/deploy/bnb-testnet.md`](docs/deploy/bnb-testnet.md). The app prepares
+receipt credentials from verified ether.fi Cash Optimism Spend events; it should
+only show `minted` after a real BNB testnet transaction is broadcast and confirmed.
+
 First, run the development server:
 
 ```bash

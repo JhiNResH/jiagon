@@ -58,6 +58,7 @@ const OPTIMISM_RPC_URLS = (
 const CASH_EVENT_EMITTER = "0x380b2e96799405be6e3d965f4044099891881acb";
 const SPEND_TOPIC = "0x89d3571a498b5d3d68599f5f00c3016f9604aafa7701c52c1b04109cd909a798";
 const BNB_TESTNET_CHAIN_ID = 97;
+const DEFAULT_BNB_TESTNET_ADMIN = "0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9";
 const RPC_TIMEOUT_MS = 6_000;
 
 function hash(value: string) {
@@ -86,6 +87,12 @@ function sourceReceiptHash(sourceTx: string, logIndex: number) {
 function wordToAddress(word?: string) {
   if (!word || word.length < 42) return undefined;
   return `0x${word.slice(-40)}`.toLowerCase();
+}
+
+function configuredAddress(value: string | undefined) {
+  const address = (value || "").trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(address) || /^0x0{40}$/.test(address)) return null;
+  return address;
 }
 
 async function postJson<T>(rpcUrl: string, body: unknown): Promise<T> {
@@ -254,12 +261,22 @@ export async function POST(request: Request) {
     const dataHash = `0x${hash(canonicalData)}`;
     const credentialId = `bnb-testnet-ready-${hash(`${sourceHash}:${dataHash}:${owner}`).slice(0, 12)}`;
     const storageUri = `greenfield-testnet://jiagon/receipts/${credentialId}.json`;
+    const registryAddress = configuredAddress(process.env.BNB_RECEIPT_CONTRACT_ADDRESS);
+    const configuredRegistryAdmin = configuredAddress(process.env.BNB_TESTNET_ADMIN);
+    const defaultRegistryAdmin = configuredAddress(DEFAULT_BNB_TESTNET_ADMIN);
 
     return Response.json({
       status: "prepared",
       network: "BNB Smart Chain testnet",
       chainId: BNB_TESTNET_CHAIN_ID,
       credentialChain: "bnb-testnet",
+      registry: {
+        address: registryAddress,
+        admin: configuredRegistryAdmin,
+        adminConfigured: Boolean(configuredRegistryAdmin),
+        defaultAdmin: defaultRegistryAdmin,
+        configured: Boolean(registryAddress),
+      },
       credentialId,
       credentialTx: null,
       explorerUrl: null,
@@ -278,7 +295,9 @@ export async function POST(request: Request) {
         logIndex: verifiedSpend.logIndex,
       },
       mode: "prepare-only",
-      note: "OP spend verified. BNB testnet transaction is not broadcast until a registry contract and minter key are configured.",
+      note: registryAddress
+        ? "OP spend verified. BNB testnet registry is configured, but this API still runs prepare-only until broadcast signing is integrated."
+        : "OP spend verified. BNB testnet transaction is not broadcast until a registry contract and minter key are configured.",
     });
   } catch (error) {
     return Response.json(
