@@ -22,8 +22,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Jiagon — verified reviews",
-  description: "Reviews you can trust because you paid.",
+  title: "Jiagon — receipt-backed reviews",
+  description: "Agent-ready local reviews backed by verified ether.fi Cash receipts.",
 };
 
 export default function RootLayout({
