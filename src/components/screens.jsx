@@ -352,21 +352,42 @@ const toReceiptCard = (receipt, index) => ({
   reviewed: false,
 });
 
+const credentialMode = (credential) => {
+  if (!credential) return null;
+  if (credential.mode) return credential.mode;
+  if (credential.status === 'minted' && !credential.credentialTx) return 'already-minted';
+  return credential.status;
+};
+
 const CredentialBadge = ({ credential }) => {
   if (!credential) return null;
 
+  const mismatch = credential.dataMatchesRequest === false;
+  const minted = credential.status === 'minted';
+  const mode = credentialMode(credential);
+  const alreadyMinted = mode === 'already-minted';
   const label = credential.credentialTx
     ? `${credential.credentialTx.slice(0, 6)}…${credential.credentialTx.slice(-4)}`
     : credential.credentialId;
+  const statusLabel = mismatch
+    ? 'DIFF'
+    : minted
+      ? alreadyMinted ? 'EXISTS' : 'MINTED'
+      : 'READY';
+  const tone = mismatch
+    ? ['var(--accent-soft)', 'var(--accent)']
+    : minted
+      ? ['var(--verified-soft)', 'var(--verified)']
+      : ['var(--info-soft)', 'var(--info)'];
 
   return (
     <div style={{
       display: 'inline-flex',
       alignItems: 'center',
       gap: 6,
-      background: 'var(--info-soft)',
-      color: 'var(--info)',
-      border: '0.5px solid color-mix(in oklch, var(--info) 28%, transparent)',
+      background: tone[0],
+      color: tone[1],
+      border: `0.5px solid color-mix(in oklch, ${tone[1]} 28%, transparent)`,
       borderRadius: 999,
       padding: '4px 8px',
       fontFamily: 'var(--mono)',
@@ -374,7 +395,7 @@ const CredentialBadge = ({ credential }) => {
       fontWeight: 700,
       whiteSpace: 'nowrap',
     }}>
-      <span>BNB</span>
+      <span>{statusLabel}</span>
       <span style={{ opacity: 0.72 }}>{label}</span>
     </div>
   );
@@ -858,7 +879,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
             <span style={{
               fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600,
               color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4,
-            }}>{r.credential ? 'Prepared' : r.merchant ? 'Write review →' : 'Claim →'}</span>
+            }}>{r.credential ? (credentialMode(r.credential) === 'already-minted' ? 'Exists' : r.credential.status === 'minted' ? 'Minted' : 'Prepared') : r.merchant ? 'Write review →' : 'Claim →'}</span>
           </div>
         </button>
       ))}
@@ -928,6 +949,11 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
     'Bakery · SF': ['Bread', 'Pastry', 'Service', 'Quick'],
   };
   const tagOptions = TAG_SETS[receipt.cat] || ['Quality', 'Service', 'Value', 'Quick', 'Worth it'];
+  const credentialStatus = credential?.dataMatchesRequest === false
+    ? 'Different onchain data'
+    : credential?.status === 'minted'
+      ? credentialMode(credential) === 'already-minted' ? 'Already minted' : 'Minted'
+      : 'Prepared';
   const canContinue =
     (step === 0 && merchantName.trim().length > 2 && merchantCity.trim().length > 1) ||
     (step === 1 && rating > 0) ||
@@ -1209,7 +1235,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
               }}>Credential path</div>
               {[
                 ['Source proof', 'Optimism · ether.fi Spend'],
-                ['Credential', 'BNB Smart Chain testnet ready'],
+                ['Credential', 'BNB mint when server authorized'],
                 ['Data object', 'Greenfield testnet pointer'],
                 ['Agent proof', 'C · payment verified, owner pending'],
               ].map(([k, v]) => (
@@ -1289,8 +1315,8 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 width: 13, height: 13, border: '2px solid var(--panel-text)',
                 borderTopColor: 'transparent', borderRadius: '50%',
               }} />
-              Preparing…
-            </> : 'Prepare BNB receipt'}
+              Creating…
+            </> : 'Create receipt credential'}
           </button>
         )}
       </div>
@@ -1316,12 +1342,21 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
           <div style={{
             fontFamily: 'var(--display)', fontStyle: 'italic',
             fontSize: 36, color: 'var(--ink)', letterSpacing: -0.6,
-          }}>Prepared.</div>
+          }}>{credentialStatus}.</div>
           <div style={{
             fontFamily: 'var(--mono)', fontSize: 11,
             color: 'var(--ink-muted)', marginTop: 12,
             textAlign: 'center', lineHeight: 1.6,
-          }}>Payment verified on OP<br/>ready for BNB testnet<br/>{credential?.credentialTx ? `${credential.credentialTx.slice(0, 8)}…${credential.credentialTx.slice(-6)}` : credential?.credentialId || 'Greenfield object ready'}</div>
+          }}>
+            Payment verified on OP<br/>
+            {credential?.status === 'minted'
+              ? credentialMode(credential) === 'already-minted'
+                ? 'existing BNB credential found'
+                : 'BNB testnet credential minted'
+              : 'BNB payload prepared'}<br/>
+            {credential?.credentialTx ? `${credential.credentialTx.slice(0, 8)}…${credential.credentialTx.slice(-6)}` : credential?.credentialId || 'Greenfield object ready'}
+            {credential?.dataMatchesRequest === false && <><br/>submitted review differs from onchain data</>}
+          </div>
         </div>
       )}
     </div>
@@ -1415,8 +1450,9 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
           ['Payment proof', review.proofLevel || 'A · onchain payment'],
           ['Source', 'ether.fi OP Spend event'],
           ['Tx hash', review.tx],
-          ['Credential', review.credentialTx || 'BNB testnet ready'],
+          ['Credential', review.credentialTx || 'BNB testnet prepared'],
           ['Storage', review.storageLayer || 'Greenfield testnet pending'],
+          ['Data match', review.dataMatchesRequest === true ? 'Current review payload' : review.dataMatchesRequest === false ? 'Different submitted payload' : 'Not checked'],
           ['Amount', review.amount],
           ['Merchant proof', review.merchantProof || 'C · claimed by reviewer'],
           ['Signed by', review.handle],
@@ -1427,7 +1463,14 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
             fontFamily: 'var(--mono)', fontSize: 12,
           }}>
             <span style={{ color: 'var(--ink-muted)' }}>{k}</span>
-            <span style={{ color: 'var(--ink)' }}>{v}</span>
+            <span style={{
+              color: 'var(--ink)',
+              maxWidth: 180,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              textAlign: 'right',
+            }}>{v}</span>
           </div>
         ))}
       </div>
@@ -1601,6 +1644,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
   const pendingCount = synced ? etherfi.receipts?.length || 0 : ETHERFI_SYNC.pending;
   const totalSpend = synced ? `$${etherfi.totalSpendUsd}` : ETHERFI_SYNC.totalSpend;
   const safeLabel = etherfi?.safe || ETHERFI_SYNC.safe;
+  const credentialEntries = Object.values(receiptCredentials);
   const credentialCount = Object.keys(receiptCredentials).length;
   const privyStatus = !appConfigured
     ? 'Preview mode'
@@ -1824,6 +1868,67 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
         </div>
       ))}
     </div>
+
+    {credentialEntries.length > 0 && (
+      <div style={{ padding: '14px 16px 8px' }}>
+        <div style={{
+          fontFamily: 'var(--mono)',
+          fontSize: 10.5,
+          color: 'var(--ink-muted)',
+          textTransform: 'uppercase',
+          letterSpacing: 0.8,
+          marginBottom: 9,
+        }}>Receipt credentials</div>
+        {credentialEntries.map(credential => {
+          const mismatch = credential.dataMatchesRequest === false;
+          const minted = credential.status === 'minted';
+          const mode = credentialMode(credential);
+          const statusText = mismatch
+            ? 'Payload differs'
+            : minted
+              ? mode === 'already-minted' ? 'Existing onchain credential' : 'Minted on BNB testnet'
+              : 'Prepared for BNB testnet';
+          return (
+            <div key={`${credential.receiptId}-${credential.credentialId}`} style={{
+              background: 'var(--surface)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 14,
+              padding: 13,
+              marginBottom: 8,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CredentialBadge credential={credential} />
+                <div style={{
+                  marginLeft: 'auto',
+                  fontFamily: 'var(--mono)',
+                  fontSize: 9.5,
+                  color: mismatch ? 'var(--accent)' : minted ? 'var(--verified)' : 'var(--info)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.6,
+                }}>{mode || credential.status}</div>
+              </div>
+              <div style={{
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                fontWeight: 700,
+                color: 'var(--ink)',
+                marginTop: 10,
+              }}>{statusText}</div>
+              <div style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 10,
+                color: 'var(--ink-muted)',
+                lineHeight: 1.5,
+                marginTop: 5,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>{credential.explorerUrl || credential.storageUri}</div>
+            </div>
+          );
+        })}
+      </div>
+    )}
 
     {/* user reviews */}
     {[

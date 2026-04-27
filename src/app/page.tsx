@@ -65,18 +65,28 @@ type ReceiptCredential = {
   receiptId: string;
   reviewId: string;
   status: string;
+  mode?: string;
   network: string;
   chainId: number;
   credentialChain: string;
   credentialId: string;
+  preparedCredentialId?: string;
   credentialTx?: string | null;
   explorerUrl?: string | null;
   storageLayer: string;
   storageUri: string;
+  requestedStorageUri?: string;
   sourceReceiptHash?: string;
   dataHash: string;
+  requestedDataHash?: string;
+  dataMatchesRequest?: boolean;
   proofLevel: string;
   mintedAt: string;
+  preparedAt?: string;
+  minter?: string;
+  note?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onchain?: any;
 };
 
 const emptyEtherfiSync: EtherfiSyncState = {
@@ -297,14 +307,23 @@ export default function Home() {
       chainId: payload.chainId,
       credentialChain: payload.credentialChain,
       credentialId: payload.credentialId,
+      preparedCredentialId: payload.preparedCredentialId,
       credentialTx: payload.credentialTx,
       explorerUrl: payload.explorerUrl,
       storageLayer: payload.storageLayer,
       storageUri: payload.storageUri,
+      requestedStorageUri: payload.requestedStorageUri,
       sourceReceiptHash: payload.sourceReceiptHash,
       dataHash: payload.dataHash,
+      requestedDataHash: payload.requestedDataHash,
+      dataMatchesRequest: payload.dataMatchesRequest,
       proofLevel: payload.proofLevel,
-      mintedAt: new Date().toISOString(),
+      mode: payload.mode,
+      mintedAt: payload.mintedAt || payload.preparedAt || new Date().toISOString(),
+      preparedAt: payload.preparedAt,
+      minter: payload.minter,
+      note: payload.note,
+      onchain: payload.onchain,
     };
 
     return credential;
@@ -316,11 +335,18 @@ export default function Home() {
     const reviewWithCredential = {
       ...review,
       credential,
-      proofLevel: `${credential.proofLevel} · BNB ready`,
+      proofLevel:
+        credential.status === "minted"
+          ? credential.mode === "already-minted"
+            ? `${credential.proofLevel} · BNB existing`
+            : `${credential.proofLevel} · BNB minted`
+          : `${credential.proofLevel} · prepared`,
       credentialTx: credential.credentialTx
         ? `${credential.credentialTx.slice(0, 6)}…${credential.credentialTx.slice(-4)}`
         : credential.credentialId,
       storageLayer: credential.storageLayer,
+      credentialMode: credential.mode,
+      dataMatchesRequest: credential.dataMatchesRequest,
     };
     const nextReviews = [reviewWithCredential, ...publishedReviews.filter((item) => item.id !== review.id)];
     const nextReviewedReceiptIds = Array.from(new Set([review.receiptId, ...reviewedReceiptIds]));
