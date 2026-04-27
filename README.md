@@ -145,8 +145,9 @@ For contract, proof, credential, auth, or minting changes:
 - run `pnpm build`;
 - run `forge test -vvv`;
 - run Solidity audit review for contract changes;
-- request independent code review;
+- request independent local code review, usually from another agent;
 - open a PR;
+- optionally trigger CodeRabbit with `@coderabbitai full review` when the GitHub App is installed;
 - squash merge only after explicit approval.
 
 ## Next Milestones
