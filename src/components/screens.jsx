@@ -401,7 +401,7 @@ const CredentialBadge = ({ credential }) => {
   );
 };
 
-const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, reviewedCount, lastSync }) => {
+const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, reviewedCount, lastSync, onAction }) => {
   const topSignals = MERCHANTS.slice(0, 3);
   const agentReadiness = synced
     ? unclaimedCount > 0
@@ -561,7 +561,19 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
           color: 'var(--ink-muted)',
         }}>
           <span>{lastSync}</span>
-          <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{nextAction} →</span>
+          <button
+            onClick={onAction}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--accent)',
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              fontWeight: 700,
+              padding: 0,
+              cursor: 'pointer',
+            }}
+          >{nextAction} →</button>
         </div>
       </div>
     </div>
@@ -633,6 +645,15 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
         unclaimedCount={unclaimed.length}
         reviewedCount={done.length}
         lastSync={lastSync}
+        onAction={() => {
+          if (!authenticated || etherfi?.status !== 'synced') {
+            importLatestTx();
+            return;
+          }
+
+          const nextReceipt = unclaimed[0] || claimed[0];
+          if (nextReceipt) onOpenReceipt(nextReceipt);
+        }}
       />
 
       <div style={{ padding: '0 18px 14px' }}>
