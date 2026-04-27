@@ -962,6 +962,11 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
   const [merchantCity, setMerchantCity] = _useState(receipt.branch || '');
   const [rating, setRating] = _useState(0);
   const [tags, setTags] = _useState([]);
+  const [visitType, setVisitType] = _useState('quick-stop');
+  const [occasion, setOccasion] = _useState('solo');
+  const [valueRating, setValueRating] = _useState(0);
+  const [wouldReturn, setWouldReturn] = _useState(true);
+  const [bestFor, setBestFor] = _useState([]);
   const [text, setText] = _useState('');
   const [submitting, setSubmitting] = _useState(false);
   const [done, setDone] = _useState(false);
@@ -975,6 +980,20 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
     'Bakery · SF': ['Bread', 'Pastry', 'Service', 'Quick'],
   };
   const tagOptions = TAG_SETS[receipt.cat] || ['Quality', 'Service', 'Value', 'Quick', 'Worth it'];
+  const visitTypeOptions = [
+    ['quick-stop', 'Quick stop'],
+    ['dine-in', 'Dine-in'],
+    ['takeout', 'Takeout'],
+    ['delivery', 'Delivery'],
+  ];
+  const occasionOptions = [
+    ['solo', 'Solo'],
+    ['work', 'Work'],
+    ['date', 'Date'],
+    ['group', 'Group'],
+    ['commute', 'Commute'],
+  ];
+  const bestForOptions = ['Coffee', 'Pastry', 'Quiet', 'Fast service', 'Good value', 'Groups', 'Work session', 'Late night'];
   const credentialStatus = credential?.dataMatchesRequest === false
     ? 'Different onchain data'
     : credential?.status === 'minted'
@@ -986,6 +1005,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
     step === 2;
 
   const toggle = (t) => setTags(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
+  const toggleBestFor = (t) => setBestFor(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
   const submit = async () => {
     setSubmitting(true);
@@ -1001,6 +1021,11 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
       branch: merchantCity.trim(),
       cat: merchantCity.trim() ? `Local · ${merchantCity.trim()}` : 'Local',
       rating,
+      visitType,
+      occasion,
+      valueRating: valueRating || undefined,
+      wouldReturn,
+      bestFor,
       time: 'now',
       text: text.trim(),
       tags,
@@ -1196,7 +1221,117 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
             <p style={{
               fontFamily: 'var(--ui)', fontSize: 14, color: 'var(--ink-muted)',
               margin: '0 0 24px', lineHeight: 1.5,
-            }}>Pick any that apply. Helps others scan.</p>
+            }}>Pick tags and agent-readable context. This is what downstream recommendation calls can rank on.</p>
+            <div style={{ marginBottom: 18 }}>
+              <div style={{
+                fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)',
+                textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8,
+              }}>Visit type</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {visitTypeOptions.map(([value, label]) => (
+                  <button key={value} onClick={() => setVisitType(value)} style={{
+                    padding: '9px 12px', borderRadius: 10,
+                    background: visitType === value ? 'var(--ink)' : 'var(--surface)',
+                    color: visitType === value ? 'var(--bg)' : 'var(--ink)',
+                    border: visitType === value ? 'none' : '0.5px solid var(--rule)',
+                    fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600,
+                    cursor: 'pointer',
+                  }}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={{
+                fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)',
+                textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8,
+              }}>Occasion</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {occasionOptions.map(([value, label]) => (
+                  <button key={value} onClick={() => setOccasion(value)} style={{
+                    padding: '9px 12px', borderRadius: 10,
+                    background: occasion === value ? 'var(--accent)' : 'var(--surface)',
+                    color: occasion === value ? 'var(--panel-text)' : 'var(--ink)',
+                    border: occasion === value ? 'none' : '0.5px solid var(--rule)',
+                    fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600,
+                    cursor: 'pointer',
+                  }}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 10,
+              marginBottom: 20,
+            }}>
+              <div style={{
+                background: 'var(--surface)',
+                border: '0.5px solid var(--rule)',
+                borderRadius: 14,
+                padding: 12,
+              }}>
+                <div style={{
+                  fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)',
+                  textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8,
+                }}>Value</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[1,2,3,4,5].map(n => (
+                    <button key={n} onClick={() => setValueRating(n)} style={{
+                      flex: 1,
+                      height: 30,
+                      borderRadius: 8,
+                      border: 'none',
+                      background: n <= valueRating ? 'var(--accent)' : 'var(--bg)',
+                      color: n <= valueRating ? 'var(--panel-text)' : 'var(--ink-muted)',
+                      fontFamily: 'var(--mono)',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                    }}>{n}</button>
+                  ))}
+                </div>
+              </div>
+              <button onClick={() => setWouldReturn(v => !v)} style={{
+                background: wouldReturn ? 'var(--verified-soft)' : 'var(--surface)',
+                border: '0.5px solid var(--rule)',
+                borderRadius: 14,
+                padding: 12,
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}>
+                <div style={{
+                  fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)',
+                  textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8,
+                }}>Return?</div>
+                <div style={{
+                  fontFamily: 'var(--ui)',
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: wouldReturn ? 'var(--verified)' : 'var(--ink)',
+                }}>{wouldReturn ? 'Yes' : 'No'}</div>
+              </button>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={{
+                fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)',
+                textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8,
+              }}>Best for</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {bestForOptions.map(t => (
+                  <button key={t} onClick={() => toggleBestFor(t)} style={{
+                    padding: '9px 12px', borderRadius: 999,
+                    background: bestFor.includes(t) ? 'var(--ink)' : 'var(--surface)',
+                    color: bestFor.includes(t) ? 'var(--bg)' : 'var(--ink)',
+                    border: bestFor.includes(t) ? 'none' : '0.5px solid var(--rule)',
+                    fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 500,
+                    cursor: 'pointer',
+                  }}>{t}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{
+              fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)',
+              textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 8,
+            }}>Review tags</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {tagOptions.map(t => (
                 <button key={t} onClick={() => toggle(t)} style={{

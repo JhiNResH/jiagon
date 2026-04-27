@@ -29,6 +29,11 @@ type MintReceiptRequest = {
     branch?: string;
     rating?: number;
     tags?: string[];
+    visitType?: string;
+    occasion?: string;
+    valueRating?: number;
+    wouldReturn?: boolean;
+    bestFor?: string[];
     text?: string;
   };
 };
@@ -174,6 +179,26 @@ function configuredPrivateKey(value: string | undefined) {
 function configuredSecret(value: string | undefined) {
   const secret = (value || "").trim();
   return secret.length >= 32 ? secret : null;
+}
+
+function cleanText(value: unknown, maxLength = 80) {
+  if (typeof value !== "string") return undefined;
+  const cleaned = value.trim().replace(/\s+/g, " ");
+  return cleaned ? cleaned.slice(0, maxLength) : undefined;
+}
+
+function cleanStringList(value: unknown, maxItems = 8, maxLength = 40) {
+  if (!Array.isArray(value)) return [];
+  const cleaned = value
+    .map((item) => cleanText(item, maxLength))
+    .filter((item): item is string => Boolean(item));
+  return Array.from(new Set(cleaned)).slice(0, maxItems);
+}
+
+function boundedRating(value: unknown) {
+  const rating = Number(value);
+  if (!Number.isFinite(rating)) return undefined;
+  return Math.min(5, Math.max(1, Math.trunc(rating)));
 }
 
 function safeTokenEqual(actual: string, expected: string) {
@@ -446,6 +471,14 @@ export async function handleMintReceiptRequest(request: Request, mintTokenOverri
   const merchant = body.review?.merchant?.trim();
   const branch = body.review?.branch?.trim();
   const rating = Number(body.review?.rating || 0);
+  const tags = cleanStringList(body.review?.tags, 10, 40);
+  const reviewAttributes = stable({
+    visitType: cleanText(body.review?.visitType),
+    occasion: cleanText(body.review?.occasion),
+    valueRating: boundedRating(body.review?.valueRating),
+    wouldReturn: typeof body.review?.wouldReturn === "boolean" ? body.review.wouldReturn : undefined,
+    bestFor: cleanStringList(body.review?.bestFor, 8, 40),
+  }) as Record<string, unknown>;
 
   if (!assertValidTx(sourceTx)) {
     return Response.json({ error: "A valid ether.fi Cash Optimism source transaction is required." }, { status: 400 });
@@ -491,7 +524,8 @@ export async function handleMintReceiptRequest(request: Request, mintTokenOverri
       review: {
         id: body.review?.id,
         rating,
-        tags: body.review?.tags || [],
+        tags,
+        attributes: reviewAttributes,
         text: body.review?.text || "",
       },
       owner,
@@ -555,7 +589,8 @@ export async function handleMintReceiptRequest(request: Request, mintTokenOverri
         merchant,
         branch,
         rating,
-        tags: body.review?.tags || [],
+        tags,
+        reviewAttributes,
         reviewText: body.review?.text || "",
         amount: body.receipt?.amount || (body.receipt?.amountUsd ? `$${body.receipt.amountUsd}` : null),
         token: body.receipt?.token || "OP USDC",
