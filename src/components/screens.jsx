@@ -11,13 +11,51 @@ const _useState = React.useState;
 // ─────────────────────────────────────────────────────────────
 // ONBOARDING
 // ─────────────────────────────────────────────────────────────
-const OnboardingScreen = ({ onDone }) => {
+const OnboardingScreen = ({ onDone, auth }) => {
   const [step, setStep] = _useState(0);
   const [connecting, setConnecting] = _useState(false);
+  const [authError, setAuthError] = _useState("");
+  const [hasSynced, setHasSynced] = _useState(false);
+  const ready = auth?.ready ?? true;
+  const authenticated = auth?.authenticated ?? false;
+  const userLabel = auth?.userLabel;
+  const walletLabel = auth?.walletLabel;
+  const login = auth?.login;
 
-  const connect = () => {
+  React.useEffect(() => {
+    if (!ready || !authenticated || hasSynced || step !== 0) return;
+
     setConnecting(true);
-    setTimeout(() => { setConnecting(false); setStep(1); }, 1100);
+    const timer = window.setTimeout(() => {
+      setConnecting(false);
+      setHasSynced(true);
+      setStep(1);
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [authenticated, hasSynced, ready, step]);
+
+  const connect = async () => {
+    setAuthError("");
+
+    if (!ready || connecting) return;
+
+    if (authenticated) {
+      setConnecting(true);
+      window.setTimeout(() => {
+        setConnecting(false);
+        setHasSynced(true);
+        setStep(1);
+      }, 700);
+      return;
+    }
+
+    try {
+      await login?.();
+    } catch (error) {
+      setConnecting(false);
+      setAuthError(error instanceof Error ? error.message : "Privy login was cancelled.");
+    }
   };
 
   return (
@@ -56,7 +94,7 @@ const OnboardingScreen = ({ onDone }) => {
         </div>
         {[
           ['01', 'Sign in with Privy', 'email, social, or wallet'],
-          ['02', 'Detect your Cash safe', ETHERFI_SYNC.safe],
+          ['02', 'Detect your account', walletLabel || userLabel || ETHERFI_SYNC.safe],
           ['03', 'Scan OP Spend events', '73 payments found'],
           ['04', 'Claim a merchant', 'one receipt, one review'],
         ].map(([n, t, s]) => (
@@ -79,15 +117,22 @@ const OnboardingScreen = ({ onDone }) => {
       </div>
 
       <div style={{ marginTop: 'auto' }}>
-        <button onClick={connect} disabled={connecting} style={{
+        {authError && (
+          <div style={{
+            fontFamily: 'var(--mono)', fontSize: 10.5,
+            color: 'var(--accent)', textAlign: 'center',
+            lineHeight: 1.45, marginBottom: 12,
+          }}>{authError}</div>
+        )}
+        <button onClick={connect} disabled={!ready || connecting} style={{
           width: '100%', background: 'var(--ink)', color: 'var(--bg)',
           border: 'none', borderRadius: 999,
           padding: '17px 24px', fontSize: 16, fontWeight: 600,
           fontFamily: 'var(--ui)', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          opacity: connecting ? 0.7 : 1,
+          opacity: !ready || connecting ? 0.7 : 1,
         }}>
-          {connecting ? (
+          {!ready ? 'Loading Privy…' : connecting ? (
             <>
               <span className="spin" style={{
                 width: 14, height: 14, border: '2px solid var(--bg)',
@@ -96,7 +141,7 @@ const OnboardingScreen = ({ onDone }) => {
               }} />
               Syncing ether.fi safe…
             </>
-          ) : 'Continue with Privy'}
+          ) : authenticated ? 'Sync ether.fi receipts' : 'Continue with Privy'}
         </button>
         <button onClick={onDone} style={{
           width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
@@ -130,7 +175,7 @@ const OnboardingScreen = ({ onDone }) => {
             <div style={{
               fontFamily: 'var(--mono)', fontSize: 11, marginTop: 10,
               color: 'var(--ink-muted)', letterSpacing: 0.2,
-            }}>{ETHERFI_SYNC.safe}</div>
+            }}>{walletLabel || userLabel || ETHERFI_SYNC.safe}</div>
           </div>
 
           <div style={{
@@ -1058,38 +1103,67 @@ const DiscoverScreen = () => {
 // ─────────────────────────────────────────────────────────────
 // PROFILE
 // ─────────────────────────────────────────────────────────────
-const ProfileScreen = ({ verifyStyle }) => (
+const ProfileScreen = ({ verifyStyle, auth }) => {
+  const ready = auth?.ready ?? true;
+  const authenticated = auth?.authenticated ?? false;
+  const appConfigured = auth?.appConfigured ?? false;
+  const userLabel = auth?.userLabel;
+  const walletLabel = auth?.walletLabel;
+  const login = auth?.login;
+  const logout = auth?.logout;
+  const displayName = authenticated ? (userLabel || PROFILE.name) : PROFILE.name;
+  const avatarLabel = (displayName || 'Y').slice(0, 1).toUpperCase();
+  const privyStatus = !appConfigured
+    ? 'Preview mode'
+    : !ready
+      ? 'Privy loading'
+      : authenticated
+        ? 'Privy verified'
+        : 'Not signed in';
+
+  return (
   <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
     <TopBar
       title="Profile"
-      sub="Privy account + ether.fi safe"
+      sub={walletLabel || "Privy account + ether.fi safe"}
       left={<div style={{ width: 28 }} />}
-      right={<IconBtn>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
-          <path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.07a2 2 0 01-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.12-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 005 15.06 1.7 1.7 0 003.45 14H3a2 2 0 010-4h.1A1.7 1.7 0 004.66 8.88a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34h.06A1.7 1.7 0 0010 3.06V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.55h.06a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87v.06a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.55 1z" stroke="currentColor" strokeWidth="1.4"/>
-        </svg>
-      </IconBtn>}
+      right={authenticated ? (
+        <button onClick={logout} style={{
+          border: '0.5px solid var(--rule)', background: 'var(--surface)',
+          color: 'var(--ink-muted)', borderRadius: 999,
+          padding: '7px 11px', fontFamily: 'var(--mono)',
+          fontSize: 10, cursor: 'pointer',
+        }}>Logout</button>
+      ) : (
+        <button onClick={login} disabled={!ready} style={{
+          border: '0.5px solid var(--rule)', background: 'var(--surface)',
+          color: 'var(--ink-muted)', borderRadius: 999,
+          padding: '7px 11px', fontFamily: 'var(--mono)',
+          fontSize: 10, cursor: ready ? 'pointer' : 'default',
+          opacity: ready ? 1 : 0.55,
+        }}>Login</button>
+      )}
     />
 
     {/* hero */}
     <div style={{ padding: '0 24px 22px', display: 'flex', alignItems: 'center', gap: 16 }}>
-      <Avatar tint={PROFILE.avatar} label="Y" size={68} />
+      <Avatar tint={PROFILE.avatar} label={avatarLabel} size={68} />
       <div style={{ flex: 1 }}>
         <div style={{
           fontFamily: 'var(--display)', fontStyle: 'italic',
           fontSize: 26, color: 'var(--ink)', letterSpacing: -0.4,
-        }}>{PROFILE.name}</div>
+        }}>{displayName}</div>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 6,
-          background: 'var(--verified-soft)', color: 'var(--verified)',
+          background: authenticated ? 'var(--verified-soft)' : 'var(--surface)',
+          color: authenticated ? 'var(--verified)' : 'var(--ink-muted)',
           padding: '3px 9px', borderRadius: 999,
           fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 500,
         }}>
           <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
             <path d="M2 6.5l3 3 5-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Privy verified
+          {privyStatus}
         </div>
       </div>
     </div>
@@ -1108,13 +1182,13 @@ const ProfileScreen = ({ verifyStyle }) => (
         }}>e</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
-            ether.fi Cash synced
+            {authenticated ? 'ether.fi Cash synced' : 'Sign in to sync ether.fi Cash'}
           </div>
           <div style={{
             fontFamily: 'var(--mono)', fontSize: 10,
             color: 'var(--ink-muted)', marginTop: 3,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{ETHERFI_SYNC.safe}</div>
+          }}>{authenticated ? ETHERFI_SYNC.safe : 'Privy required for account scan'}</div>
         </div>
       </div>
       <div style={{
@@ -1226,7 +1300,8 @@ const ProfileScreen = ({ verifyStyle }) => (
 
     <div style={{ height: 110 }} />
   </div>
-);
+  );
+};
 
 export { 
   OnboardingScreen, FeedScreen, InboxScreen, WriteReviewScreen,
