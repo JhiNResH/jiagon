@@ -26,9 +26,10 @@ Required gates before finalizing:
 5. Fix or explicitly document every credible audit finding.
 6. Ask another agent for code review before commit.
 7. Fix or explicitly document every credible review finding.
-8. Make an atomic commit.
+8. Keep the PR scoped to one logical change. Branch commits may be multiple during iteration.
 9. Push and open a PR.
-10. Merge only after explicit user approval.
+10. Merge with squash so `main` receives one commit per PR.
+11. Merge only after explicit user approval.
 
 Never mark mock, prepared, simulated, or locally generated credentials as real onchain mints. UI and API copy must distinguish `prepared` from `minted`.
 <!-- END:jiagon-secure-ship-workflow -->
