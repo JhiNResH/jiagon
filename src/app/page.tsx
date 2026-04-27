@@ -12,6 +12,23 @@ type Tab = "feed" | "inbox" | "discover" | "profile";
 type VerifyStyle = "chip" | "stamp";
 type Density = "compact" | "comfy";
 
+type AuthState = {
+  ready: boolean;
+  authenticated: boolean;
+  appConfigured: boolean;
+  userLabel?: string;
+  walletLabel?: string;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
+};
+
+type StoredSession = {
+  userLabel?: string;
+  walletLabel?: string;
+};
+
+const authStorageKey = "jiagon:privy-session";
+
 export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>("feed");
@@ -21,13 +38,54 @@ export default function Home() {
   const [detail, setDetail] = useState<any>(null);
   const [showOnboard, setShowOnboard] = useState(true);
   const [scale, setScale] = useState(1);
+  const [authPreview, setAuthPreview] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authSession, setAuthSession] = useState<StoredSession | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+
+    const stored = window.localStorage.getItem(authStorageKey);
+    if (!stored) return;
+
+    try {
+      setAuthSession(JSON.parse(stored));
+    } catch {
+      window.localStorage.removeItem(authStorageKey);
+    }
+  }, []);
 
   const verifyStyle: VerifyStyle = "chip";
   const density: Density = "comfy";
   const dark = false;
+  const hasPrivyAppId = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
+
+  const auth: AuthState = {
+    ready: !authBusy,
+    authenticated: authPreview || Boolean(authSession),
+    appConfigured: hasPrivyAppId,
+    userLabel: authSession?.userLabel || (authPreview ? "preview@jiagon.local" : undefined),
+    walletLabel: authSession?.walletLabel || (authPreview ? "0xpreview" : undefined),
+    login: async () => {
+      if (hasPrivyAppId) {
+        window.location.href = "/auth";
+        return;
+      }
+
+      setAuthBusy(true);
+      window.setTimeout(() => {
+        setAuthPreview(true);
+        setAuthBusy(false);
+      }, hasPrivyAppId ? 350 : 0);
+    },
+    logout: async () => {
+      setAuthPreview(false);
+      setAuthSession(null);
+      setAuthBusy(false);
+      window.localStorage.removeItem(authStorageKey);
+    },
+  };
 
   // Apply theme + accent
   useEffect(() => {
@@ -52,7 +110,7 @@ export default function Home() {
     feed: <FeedScreen onOpenReview={(r: unknown) => setDetail(r)} density={density} verifyStyle={verifyStyle} />,
     inbox: <InboxScreen onOpenReceipt={(r: unknown) => setReviewing(r)} />,
     discover: <DiscoverScreen />,
-    profile: <ProfileScreen verifyStyle={verifyStyle} />,
+    profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} />,
   };
 
   return (
@@ -85,7 +143,7 @@ export default function Home() {
 
               {showOnboard && (
                 <div className="screen" style={{ zIndex: 50 }}>
-                  <OnboardingScreen onDone={() => { setShowOnboard(false); setTab("inbox"); }} />
+                  <OnboardingScreen auth={auth} onDone={() => { setShowOnboard(false); setTab("inbox"); }} />
                 </div>
               )}
             </div>

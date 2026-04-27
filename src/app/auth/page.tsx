@@ -1,0 +1,139 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
+
+type StoredSession = {
+  userLabel?: string;
+  walletLabel?: string;
+};
+
+const storageKey = "jiagon:privy-session";
+
+const shortAddress = (address?: string) => {
+  if (!address) return undefined;
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+};
+
+const getPrimaryWallet = (user: unknown) => {
+  const typedUser = user as {
+    wallet?: { address?: string };
+    linkedAccounts?: Array<{ type?: string; address?: string }>;
+  } | null;
+
+  return (
+    typedUser?.wallet?.address ||
+    typedUser?.linkedAccounts?.find((account) => account.type === "wallet")?.address
+  );
+};
+
+const getUserLabel = (user: unknown, walletAddress?: string) => {
+  const typedUser = user as {
+    id?: string;
+    email?: { address?: string };
+    phone?: { number?: string };
+    google?: { email?: string };
+    linkedAccounts?: Array<{
+      type?: string;
+      email?: string;
+      address?: string;
+      phoneNumber?: string;
+    }>;
+  } | null;
+
+  const linkedEmail = typedUser?.linkedAccounts?.find((account) => account.email)?.email;
+  const linkedPhone = typedUser?.linkedAccounts?.find((account) => account.phoneNumber)?.phoneNumber;
+
+  return (
+    typedUser?.email?.address ||
+    typedUser?.google?.email ||
+    linkedEmail ||
+    typedUser?.phone?.number ||
+    linkedPhone ||
+    shortAddress(walletAddress) ||
+    typedUser?.id
+  );
+};
+
+function AuthFlow() {
+  const { ready, authenticated, user, login } = usePrivy();
+  const loginStarted = useRef(false);
+
+  useEffect(() => {
+    if (!ready || authenticated || loginStarted.current) return;
+
+    loginStarted.current = true;
+    login();
+  }, [authenticated, login, ready]);
+
+  useEffect(() => {
+    if (!ready || !authenticated) return;
+
+    const walletAddress = getPrimaryWallet(user);
+    const session: StoredSession = {
+      userLabel: getUserLabel(user, walletAddress),
+      walletLabel: shortAddress(walletAddress),
+    };
+
+    window.localStorage.setItem(storageKey, JSON.stringify(session));
+    window.location.replace("/");
+  }, [authenticated, ready, user]);
+
+  return (
+    <main style={{
+      minHeight: "100vh",
+      display: "grid",
+      placeItems: "center",
+      background: "#eeebe5",
+      color: "#2f2a24",
+      fontFamily: "Inter, -apple-system, system-ui, sans-serif",
+    }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{
+          fontFamily: "Georgia, serif",
+          fontStyle: "italic",
+          fontSize: 42,
+          marginBottom: 10,
+        }}>Jiagon</div>
+        <div style={{
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          fontSize: 11,
+          letterSpacing: 1,
+          textTransform: "uppercase",
+          opacity: 0.65,
+        }}>Opening Privy</div>
+      </div>
+    </main>
+  );
+}
+
+export default function AuthPage() {
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+
+  if (!appId) {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(storageKey, JSON.stringify({
+        userLabel: "preview@jiagon.local",
+        walletLabel: "0xpreview",
+      }));
+      window.location.replace("/");
+    }
+
+    return null;
+  }
+
+  return (
+    <PrivyProvider
+      appId={appId}
+      config={{
+        loginMethods: ["email", "wallet", "google"],
+        appearance: {
+          theme: "light",
+          accentColor: "#B95432",
+        },
+      }}
+    >
+      <AuthFlow />
+    </PrivyProvider>
+  );
+}

@@ -2,6 +2,16 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Copy the example environment file and add your Privy app ID:
+
+```bash
+cp env.example .env.local
+```
+
+```bash
+NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
+```
+
 First, run the development server:
 
 ```bash

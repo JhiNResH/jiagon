@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
+
   --display: 'Instrument Serif', Georgia, serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
   --ui: 'Inter', -apple-system, system-ui, sans-serif;
@@ -28,6 +30,7 @@
 
 html, body {
   margin: 0; padding: 0;
+  color-scheme: light;
   background: oklch(0.94 0.008 80);
   font-family: var(--ui);
   color: var(--ink);
