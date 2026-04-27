@@ -1,15 +1,26 @@
 # Secure Ship Workflow
 
-Use this workflow for every contract-facing Jiagon change.
+Use this workflow for every Jiagon change that touches contracts, proofs, credentials, receipt verification, minting, attestations, or security-sensitive API/auth logic.
+
+## Trigger
+
+Run this workflow when changing any of:
+
+- Solidity contracts, tests, deployment scripts, or Foundry config.
+- Receipt credential schema or proof-level semantics.
+- `/api/receipts/*`, `/api/etherfi/*`, or agent proof APIs.
+- OP spend scan, BNB credential, Greenfield pointer, mint/prepare/attest flows.
+- Ownership, auth, session, wallet, or safe-binding logic.
+- UI copy that states whether a receipt is prepared, minted, verified, or onchain.
 
 ## Required order
 
 1. Create a scoped `codex/*` branch.
 2. Implement one atomic change.
-3. Add unit tests and fuzz tests.
+3. Add unit tests and fuzz tests when contracts are touched.
 4. Run local verification:
    - `pnpm build`
-   - `forge test`
+   - `forge test -vvv`
 5. Run Pashov Solidity audit skill on in-scope contracts.
 6. Fix or document every credible audit finding.
 7. Ask another agent for code review.
@@ -17,6 +28,26 @@ Use this workflow for every contract-facing Jiagon change.
 9. Create one atomic commit.
 10. Push branch and open a PR.
 11. Merge only after explicit approval.
+
+## Pass criteria
+
+- `pnpm build` passes for app/API changes.
+- `forge test -vvv` passes for contract changes.
+- Pashov audit has no unresolved credible findings.
+- Independent code review has no unresolved blocking findings.
+- `git diff --check` passes.
+- PR body lists verification and any residual risks.
+
+## Fail criteria
+
+Do not commit or open a PR if any of these remain unresolved:
+
+- UI or API claims a mock/prepared credential is a real onchain mint.
+- API trusts client-supplied proof ownership without server-side verification.
+- A credential can be created without a verified source proof.
+- Contract duplicate-prevention does not match the app's receipt identity.
+- Private keys, RPC secrets, auth tokens, or sensitive receipt metadata are committed.
+- A credible audit or review finding is left unfixed without explicit documentation.
 
 ## Contract checklist
 
@@ -31,3 +62,11 @@ Use this workflow for every contract-facing Jiagon change.
 - Public hashes and storage pointers must be privacy-preserving commitments; never publish raw receipt metadata onchain.
 - Sensitive receipt details stay offchain; chain stores hash/pointer.
 - Mainnet deployment requires audit before use.
+
+## Current receipt credential assumptions
+
+- `prepared` means OP spend proof was verified and BNB/Greenfield payloads are ready.
+- `minted` means a real BNB testnet or mainnet transaction was broadcast and confirmed.
+- Until a real registry write is integrated, UI and API must say `prepared`, not `minted`.
+- Current proof level for prepare-only credentials is at most `C` unless ownership is authenticated server-side.
+- Source receipt identity is `source chain + provider + tx hash + log/event identity`, not tx hash alone.
