@@ -14,6 +14,7 @@ const ETHERFI_SYNC = {
   auth: 'Privy',
   wallet: '0x3e9a…a04f',
   safe: '0x8745…9d0b',
+  safeFull: '0x874525d36afad840ac44e5d66e62f18f49439d0b',
   chain: 'Optimism',
   emitter: '0x380b…1acb',
   detected: 73,
@@ -31,7 +32,7 @@ const RECEIPTS = [
     branch: 'Irvine',
     cat: 'Bakery · Irvine',
     glyph: '8',
-    tint: 'oklch(0.92 0.04 60)',
+    tint: 'var(--place-warm)',
     amount: '$4.95',
     token: 'OP USDC',
     date: 'Apr 25 · 12:16',
@@ -49,7 +50,7 @@ const RECEIPTS = [
     branch: null,
     cat: 'Merchant not claimed',
     glyph: '$',
-    tint: 'oklch(0.90 0.02 80)',
+    tint: 'var(--place-paper)',
     amount: '$30.40',
     token: 'OP USDC',
     date: 'Apr 25 · 00:56',
@@ -67,7 +68,7 @@ const RECEIPTS = [
     branch: null,
     cat: 'Merchant not claimed',
     glyph: '$',
-    tint: 'oklch(0.90 0.02 80)',
+    tint: 'var(--place-paper)',
     amount: '$14.25',
     token: 'OP USDC',
     date: 'Apr 24 · 07:27',
@@ -85,7 +86,7 @@ const RECEIPTS = [
     branch: 'San Francisco',
     cat: 'Bakery · SF',
     glyph: '◐',
-    tint: 'oklch(0.90 0.05 80)',
+    tint: 'var(--place-warm)',
     amount: '$21.54',
     token: 'OP USDC',
     date: 'Apr 24 · 19:11',
@@ -103,7 +104,7 @@ const RECEIPTS = [
     branch: 'Tokyo',
     cat: 'Café · Tokyo',
     glyph: '☕',
-    tint: 'oklch(0.92 0.04 60)',
+    tint: 'var(--place-fresh)',
     amount: '$7.00',
     token: 'OP USDC',
     date: 'Apr 24 · 20:35',
@@ -119,36 +120,39 @@ const RECEIPTS = [
 const FEED = [
   {
     id: 'f1', author: 'mira.eth', handle: '0x8a2…f01',
-    rep: 412, avatar: 'oklch(0.78 0.10 30)',
+    rep: 412, avatar: 'var(--avatar-warm)',
     merchant: '85C Bakery Cafe', branch: 'Irvine', cat: 'Bakery · Irvine',
     rating: 5, time: '2h',
     text: 'Fast pastry stop before a drive. The sea salt coffee was consistent and the line moved in under five minutes.',
     tx: '0x61b4…d63', amount: '$4.95 OP USDC',
     proofLevel: 'A · onchain payment',
+    merchantProof: 'C · claimed merchant',
     verifiedVisits: 12,
-    photo: 'oklch(0.86 0.06 50)',
+    photo: 'var(--place-warm)',
   },
   {
     id: 'f2', author: 'kenji.lens', handle: '0x4f1…22d',
-    rep: 1280, avatar: 'oklch(0.72 0.09 200)',
+    rep: 1280, avatar: 'var(--avatar-cool)',
     merchant: 'Tartine', branch: 'San Francisco', cat: 'Bakery · SF',
     rating: 4, time: '6h',
     text: 'Morning bun still hits. Crowded, but this visit was quick enough to recommend for pickup, not a sit-down.',
     tx: '0xf82b…0158', amount: '$21.54 OP USDC',
     proofLevel: 'A · onchain payment',
+    merchantProof: 'C · claimed merchant',
     verifiedVisits: 8,
     photo: null,
   },
   {
     id: 'f3', author: 'luca.pay', handle: '0x21c…9e8',
-    rep: 87, avatar: 'oklch(0.80 0.08 130)',
+    rep: 87, avatar: 'var(--avatar-fresh)',
     merchant: 'Fuglen Coffee', branch: 'Tokyo', cat: 'Café · Tokyo',
     rating: 5, time: '1d',
     text: 'The hand-drip Ethiopia was clean and bright. Worth routing here if the agent is optimizing for quiet coffee.',
     tx: '0xdb3c…8d9b', amount: '$7.00 OP USDC',
     proofLevel: 'A · onchain payment',
+    merchantProof: 'C · claimed merchant',
     verifiedVisits: 5,
-    photo: 'oklch(0.84 0.04 90)',
+    photo: 'var(--place-fresh)',
   },
 ];
 
@@ -158,7 +162,7 @@ const MERCHANTS = [
     name: '85C Bakery Cafe',
     branch: 'Irvine',
     cat: 'Bakery',
-    tint: 'oklch(0.92 0.04 60)',
+    tint: 'var(--place-warm)',
     glyph: '8',
     rating: 4.5,
     visits: 12,
@@ -172,7 +176,7 @@ const MERCHANTS = [
     name: 'Tartine',
     branch: 'San Francisco',
     cat: 'Bakery',
-    tint: 'oklch(0.90 0.05 80)',
+    tint: 'var(--place-warm)',
     glyph: '◐',
     rating: 4.2,
     visits: 8,
@@ -186,7 +190,7 @@ const MERCHANTS = [
     name: 'Fuglen Coffee',
     branch: 'Tokyo',
     cat: 'Café',
-    tint: 'oklch(0.88 0.04 220)',
+    tint: 'var(--place-cool)',
     glyph: '☕',
     rating: 4.8,
     visits: 5,
@@ -204,7 +208,7 @@ const PROFILE = {
   reviews: 18,
   receipts: 73,
   joined: 'Mar 2025',
-  avatar: 'oklch(0.78 0.12 40)',
+  avatar: 'var(--avatar-warm)',
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -250,9 +254,9 @@ const VerifiedChip = ({ tx, amount, style: vStyle = 'chip' }) => {
     }}>
       <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
         <circle cx="6" cy="6" r="5.5" fill="var(--verified)"/>
-        <path d="M3.2 6.2l1.8 1.8 3.8-4.4" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+        <path d="M3.2 6.2l1.8 1.8 3.8-4.4" stroke="var(--panel-text)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
       </svg>
-      <span>Payment verified · {amount}</span>
+      <span>A payment · {amount}</span>
       {tx && <span style={{ opacity: 0.6 }}>· {tx}</span>}
     </div>
   );
@@ -340,7 +344,7 @@ const IconBtn = ({ children, onClick }) => (
 // ─────────────────────────────────────────────────────────────
 const TabBar = ({ active, onChange }) => {
   const tabs = [
-    { id: 'feed', label: 'Feed', icon: (
+    { id: 'feed', label: 'Memory', icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <path d="M3 7h18M3 12h18M3 17h12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
       </svg>
@@ -351,7 +355,7 @@ const TabBar = ({ active, onChange }) => {
         <path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
       </svg>
     )},
-    { id: 'discover', label: 'Discover', icon: (
+    { id: 'discover', label: 'Agent', icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.7"/>
         <path d="M16 16l5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>

@@ -25,13 +25,49 @@ type AuthState = {
 type StoredSession = {
   userLabel?: string;
   walletLabel?: string;
+  walletAddress?: string;
 };
 
 const authStorageKey = "jiagon:privy-session";
+const etherfiStorageKey = "jiagon:etherfi-sync";
+const reviewsStorageKey = "jiagon:published-reviews";
+const reviewedReceiptsStorageKey = "jiagon:reviewed-receipts";
+
+type EtherfiReceipt = {
+  id: string;
+  txHash: string;
+  txShort: string;
+  blockNumber: number;
+  timestamp?: number;
+  amountUsd: string;
+  proof: string;
+  chain: string;
+};
+
+type EtherfiSyncState = {
+  safe?: string;
+  sourceTx?: string;
+  sourceTxBlock?: number;
+  status: "idle" | "scanning" | "synced" | "error";
+  receipts: EtherfiReceipt[];
+  totalSpendUsd?: string;
+  count?: number;
+  scope?: string;
+  lookbackBlocks?: number;
+  fromBlock?: number;
+  toBlock?: number;
+  scannedAt?: string;
+  error?: string;
+};
+
+const emptyEtherfiSync: EtherfiSyncState = {
+  status: "idle",
+  receipts: [],
+};
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
-  const [tab, setTab] = useState<Tab>("feed");
+  const [tab, setTab] = useState<Tab>("inbox");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [reviewing, setReviewing] = useState<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,18 +77,49 @@ export default function Home() {
   const [authPreview, setAuthPreview] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authSession, setAuthSession] = useState<StoredSession | null>(null);
+  const [etherfiSync, setEtherfiSync] = useState<EtherfiSyncState>(emptyEtherfiSync);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [publishedReviews, setPublishedReviews] = useState<any[]>([]);
+  const [reviewedReceiptIds, setReviewedReceiptIds] = useState<string[]>([]);
   const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
 
     const stored = window.localStorage.getItem(authStorageKey);
-    if (!stored) return;
+    if (stored) {
+      try {
+        setAuthSession(JSON.parse(stored));
+      } catch {
+        window.localStorage.removeItem(authStorageKey);
+      }
+    }
 
-    try {
-      setAuthSession(JSON.parse(stored));
-    } catch {
-      window.localStorage.removeItem(authStorageKey);
+    const storedEtherfi = window.localStorage.getItem(etherfiStorageKey);
+    if (storedEtherfi) {
+      try {
+        setEtherfiSync(JSON.parse(storedEtherfi));
+      } catch {
+        window.localStorage.removeItem(etherfiStorageKey);
+      }
+    }
+
+    const storedReviews = window.localStorage.getItem(reviewsStorageKey);
+    if (storedReviews) {
+      try {
+        setPublishedReviews(JSON.parse(storedReviews));
+      } catch {
+        window.localStorage.removeItem(reviewsStorageKey);
+      }
+    }
+
+    const storedReviewedReceipts = window.localStorage.getItem(reviewedReceiptsStorageKey);
+    if (storedReviewedReceipts) {
+      try {
+        setReviewedReceiptIds(JSON.parse(storedReviewedReceipts));
+      } catch {
+        window.localStorage.removeItem(reviewedReceiptsStorageKey);
+      }
     }
   }, []);
 
@@ -83,8 +150,107 @@ export default function Home() {
       setAuthPreview(false);
       setAuthSession(null);
       setAuthBusy(false);
+      setEtherfiSync(emptyEtherfiSync);
+      setPublishedReviews([]);
+      setReviewedReceiptIds([]);
       window.localStorage.removeItem(authStorageKey);
+      window.localStorage.removeItem(etherfiStorageKey);
+      window.localStorage.removeItem(reviewsStorageKey);
+      window.localStorage.removeItem(reviewedReceiptsStorageKey);
     },
+  };
+
+  const scanEtherfiProof = async (proof: string) => {
+    const nextProof = proof.trim();
+    const isTx = /^0x[a-fA-F0-9]{64}$/.test(nextProof);
+    const queryKey = isTx ? "tx" : "safe";
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+
+    setEtherfiSync((current) => ({
+      ...current,
+      safe: isTx ? current.safe : nextProof,
+      sourceTx: isTx ? nextProof : current.sourceTx,
+      status: "scanning",
+      error: undefined,
+    }));
+
+    let payload;
+
+    try {
+      const response = await fetch(`/api/etherfi/spends?${queryKey}=${encodeURIComponent(nextProof)}&limit=100&scope=full`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      payload = await response.json();
+
+      if (!response.ok) {
+        const message = payload?.error || "Unable to scan ether.fi Cash spend events.";
+        setEtherfiSync((current) => ({
+          ...current,
+          safe: isTx ? current.safe : nextProof,
+          sourceTx: isTx ? nextProof : current.sourceTx,
+          status: "error",
+          error: message,
+        }));
+        throw new Error(message);
+      }
+    } catch (error) {
+      const message =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "Receipt scan timed out. Try again or add a smaller block window later."
+          : error instanceof Error
+            ? error.message
+            : "Unable to scan ether.fi Cash spend events.";
+
+      setEtherfiSync((current) => ({
+        ...current,
+        safe: isTx ? current.safe : nextProof,
+        sourceTx: isTx ? nextProof : current.sourceTx,
+        status: "error",
+        error: message,
+      }));
+      throw new Error(message);
+    } finally {
+      window.clearTimeout(timeout);
+    }
+
+    const nextSync: EtherfiSyncState = {
+      safe: payload.safe,
+      sourceTx: payload.sourceTx,
+      sourceTxBlock: payload.sourceTxBlock,
+      status: "synced",
+      receipts: payload.receipts || [],
+      totalSpendUsd: payload.totalSpendUsd,
+      count: payload.count,
+      scope: payload.scope,
+      lookbackBlocks: payload.lookbackBlocks,
+      fromBlock: payload.fromBlock,
+      toBlock: payload.toBlock,
+      scannedAt: new Date().toISOString(),
+    };
+
+    setEtherfiSync(nextSync);
+    window.localStorage.setItem(etherfiStorageKey, JSON.stringify(nextSync));
+    return nextSync;
+  };
+
+  const etherfi = {
+    ...etherfiSync,
+    scan: scanEtherfiProof,
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const publishReview = (review: any) => {
+    const nextReviews = [review, ...publishedReviews.filter((item) => item.id !== review.id)];
+    const nextReviewedReceiptIds = Array.from(new Set([review.receiptId, ...reviewedReceiptIds]));
+
+    setPublishedReviews(nextReviews);
+    setReviewedReceiptIds(nextReviewedReceiptIds);
+    window.localStorage.setItem(reviewsStorageKey, JSON.stringify(nextReviews));
+    window.localStorage.setItem(reviewedReceiptsStorageKey, JSON.stringify(nextReviewedReceiptIds));
+    setReviewing(null);
+    setTab("feed");
   };
 
   // Apply theme + accent
@@ -107,10 +273,24 @@ export default function Home() {
   }, []);
 
   const tabContent: Record<Tab, React.ReactNode> = {
-    feed: <FeedScreen onOpenReview={(r: unknown) => setDetail(r)} density={density} verifyStyle={verifyStyle} />,
-    inbox: <InboxScreen onOpenReceipt={(r: unknown) => setReviewing(r)} />,
+    feed: (
+      <FeedScreen
+        onOpenReview={(r: unknown) => setDetail(r)}
+        density={density}
+        verifyStyle={verifyStyle}
+        userReviews={publishedReviews}
+      />
+    ),
+    inbox: (
+      <InboxScreen
+        onOpenReceipt={(r: unknown) => setReviewing(r)}
+        auth={auth}
+        etherfi={etherfi}
+        reviewedReceiptIds={reviewedReceiptIds}
+      />
+    ),
     discover: <DiscoverScreen />,
-    profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} />,
+    profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} etherfi={etherfi} userReviews={publishedReviews} />,
   };
 
   return (
@@ -137,13 +317,13 @@ export default function Home() {
 
               {reviewing && (
                 <div className="screen modal-enter" style={{ zIndex: 40 }}>
-                  <WriteReviewScreen receipt={reviewing} onClose={() => setReviewing(null)} onSubmit={() => setReviewing(null)} />
+                  <WriteReviewScreen receipt={reviewing} onClose={() => setReviewing(null)} onSubmit={publishReview} />
                 </div>
               )}
 
               {showOnboard && (
                 <div className="screen" style={{ zIndex: 50 }}>
-                  <OnboardingScreen auth={auth} onDone={() => { setShowOnboard(false); setTab("inbox"); }} />
+                  <OnboardingScreen auth={auth} etherfi={etherfi} onDone={() => { setShowOnboard(false); setTab("inbox"); }} />
                 </div>
               )}
             </div>
