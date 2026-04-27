@@ -13,6 +13,8 @@ const DEMO_MERCHANTS = [
       payment: "A",
       merchant: "C",
       source: "ether.fi Cash OP Spend event",
+      credentialChain: "BNB Smart Chain testnet",
+      storageLayer: "BNB Greenfield testnet",
       caveat: "Payment is onchain-verified; merchant identity is reviewer-claimed until an official card API or uploaded receipt verifies it.",
     },
     reasons: [
@@ -35,6 +37,8 @@ const DEMO_MERCHANTS = [
       payment: "A",
       merchant: "C",
       source: "ether.fi Cash OP Spend event",
+      credentialChain: "BNB Smart Chain testnet",
+      storageLayer: "BNB Greenfield testnet",
       caveat: "Payment is onchain-verified; merchant identity is reviewer-claimed until an official card API or uploaded receipt verifies it.",
     },
     reasons: [
@@ -57,6 +61,8 @@ const DEMO_MERCHANTS = [
       payment: "A",
       merchant: "C",
       source: "ether.fi Cash OP Spend event",
+      credentialChain: "BNB Smart Chain testnet",
+      storageLayer: "BNB Greenfield testnet",
       caveat: "Payment is onchain-verified; merchant identity is reviewer-claimed until an official card API or uploaded receipt verifies it.",
     },
     reasons: [
@@ -97,9 +103,15 @@ export async function GET(request: Request) {
     query,
     product: "Jiagon verified local memory layer",
     privacy: "Demo response only includes published or aggregate signals. Private receipts should require user consent.",
+    architecture: {
+      sourceChain: "optimism",
+      credentialChain: "bnb-testnet",
+      storageLayer: "greenfield-testnet",
+      flow: "OP Spend event -> Jiagon verification -> BNB testnet receipt credential -> Greenfield data object",
+    },
     proofLevels: {
       A: "Onchain card spend event",
-      B: "Official card API or webhook",
+      B: "BNB testnet receipt credential minted from verified payment and user-claimed merchant",
       C: "User-claimed merchant on top of verified payment",
       D: "Self-claimed review without payment proof",
     },
