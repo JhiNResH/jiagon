@@ -71,6 +71,8 @@ Set at least:
 
 ```bash
 NEXT_PUBLIC_PRIVY_APP_ID=your-privy-app-id
+# Required for server-side private account state sync.
+# PRIVY_VERIFICATION_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
 BNB_TESTNET_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
 BNB_TESTNET_ADMIN=0x046aB9D6aC4EA10C42501ad89D9a741115A76Fa9
 BNB_RECEIPT_CONTRACT_ADDRESS=0xd2162803d5C893d1D8Ce317B674625beC4Ad18E5
@@ -159,13 +161,18 @@ to `status: "prepared"` and `mode: "prepare-only"`.
 The web app posts reviews to `/api/receipts/publish`, which injects
 `JIAGON_MINT_API_TOKEN` server-side. By default this endpoint only works on
 localhost when `JIAGON_APP_MINT_ENABLED=true`. Keep it disabled for hosted
-demos and public production until Privy server verification, rate limiting, and
-receipt ownership binding are added.
+demos and public production until rate limiting and stronger receipt ownership
+binding are added.
 
 When `DATABASE_URL` is configured, `/api/receipts/mint` also upserts the
 published review and public credential metadata. If no database is configured,
 the API includes `persistence.configured: false` and the frontend keeps the
 local receipt view in browser storage.
+
+Private receipt inbox state is stored separately through `/api/account/state`.
+That endpoint requires a Privy bearer token and `PRIVY_VERIFICATION_KEY`; without
+the verification key it refuses reads and writes instead of treating a
+client-supplied wallet address as a private-data security boundary.
 
 ## Development Workflow
 
@@ -183,7 +190,7 @@ For contract, proof, credential, auth, or minting changes:
 ## Next Milestones
 
 - Replace temporary mint token gating with Privy server verification and safe ownership binding.
-- Add Privy server verification and safe ownership binding before trusted production minting.
+- Add stronger safe ownership binding before trusted production minting.
 - Move raw review JSON from temporary payload storage to Greenfield objects.
-- Build user-scoped receipt inbox persistence.
+- Harden user-scoped receipt inbox persistence with richer account recovery and migration tooling.
 - Reduce manual tx submission by adding safer account-linked spend discovery.
