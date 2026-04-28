@@ -34,6 +34,8 @@ type PublishReceiptRequest = {
     merchant?: string;
     branch?: string;
     rating?: number;
+    placeProvider?: string;
+    googlePlaceId?: string;
     tags?: string[];
     visitType?: string;
     occasion?: string;
@@ -174,6 +176,8 @@ async function verifyPublishOwnership(body: PublishReceiptRequest) {
     merchant,
     branch,
     rating,
+    placeProvider: body.review?.placeProvider,
+    googlePlaceId: body.review?.googlePlaceId,
     tags: body.review?.tags,
     visitType: body.review?.visitType,
     occasion: body.review?.occasion,
@@ -208,6 +212,8 @@ function canonicalizeSignedBody(body: PublishReceiptRequest, spend: Awaited<Retu
     merchant: body.review?.merchant || "",
     branch: body.review?.branch || "",
     rating: Number(body.review?.rating || 0),
+    placeProvider: body.review?.placeProvider,
+    googlePlaceId: body.review?.googlePlaceId,
     tags: body.review?.tags,
     visitType: body.review?.visitType,
     occasion: body.review?.occasion,
@@ -227,6 +233,8 @@ function canonicalizeSignedBody(body: PublishReceiptRequest, spend: Awaited<Retu
       merchant: string;
       branch: string;
       rating: number;
+      placeProvider?: string;
+      googlePlaceId?: string;
       tags: string[];
       attributes: {
         visitType?: string;
@@ -259,6 +267,8 @@ function canonicalizeSignedBody(body: PublishReceiptRequest, spend: Awaited<Retu
       merchant: payload.review.merchant,
       branch: payload.review.branch,
       rating: payload.review.rating,
+      placeProvider: payload.review.placeProvider,
+      googlePlaceId: payload.review.googlePlaceId,
       tags: payload.review.tags,
       visitType: payload.review.attributes.visitType,
       occasion: payload.review.attributes.occasion,

@@ -23,6 +23,13 @@ export async function GET(request: Request) {
         parameters: discovery.endpoints.recommendations.query,
       },
       {
+        name: "rerank_place_candidates_with_receipt_proof",
+        description: "Rerank Google Places or other place graph candidates with Jiagon receipt-backed proof.",
+        method: "POST",
+        url: discovery.endpoints.rerank.url,
+        parameters: discovery.endpoints.rerank.body,
+      },
+      {
         name: "list_published_receipt_reviews",
         description: "List public receipt-backed reviews and credential metadata.",
         method: "GET",
@@ -31,6 +38,6 @@ export async function GET(request: Request) {
       },
     ],
     proofLevels: discovery.proofLevels,
-    example: discovery.exampleAgentCall,
+    example: discovery.exampleRerankCall,
   });
 }

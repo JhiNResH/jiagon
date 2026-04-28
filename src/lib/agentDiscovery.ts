@@ -34,6 +34,24 @@ export function agentDiscovery(origin: string) {
       method: "GET",
       url: `${origin}/api/agent/recommendations?query=coffee%20irvine&limit=3`,
     },
+    exampleRerankCall: {
+      method: "POST",
+      url: `${origin}/api/agent/rerank`,
+      body: {
+        query: "coffee irvine",
+        candidates: [
+          {
+            provider: "google",
+            placeId: "ChIJ...",
+            name: "85C Bakery Cafe",
+            branch: "Irvine",
+            category: "Cafe",
+            rating: 4.4,
+            openNow: true,
+          },
+        ],
+      },
+    },
     endpoints: {
       recommendations: {
         method: "GET",
@@ -48,6 +66,19 @@ export function agentDiscovery(origin: string) {
           "agent-readable reasons",
           "aggregate verified visits and wallets",
           "credential chain and source chain context",
+        ],
+      },
+      rerank: {
+        method: "POST",
+        url: `${origin}/api/agent/rerank`,
+        body: {
+          query: "Free text user intent. Example: coffee irvine.",
+          candidates: "Candidate places from Google Places or another place graph. Jiagon does not need to own the full place graph.",
+        },
+        returns: [
+          "candidate ranking with Jiagon proof boost",
+          "matched receipt-backed signals when available",
+          "proof caveats for candidates without Jiagon data",
         ],
       },
       publishedReviews: {
@@ -142,6 +173,37 @@ export function openApiSpec(origin: string) {
           },
         },
       },
+      "/api/agent/rerank": {
+        post: {
+          tags: ["Agent"],
+          summary: "Rerank external place candidates with Jiagon receipt proof.",
+          operationId: "rerankPlaceCandidatesWithJiagonProof",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/RerankRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Candidates ranked with Jiagon proof boosts.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/RerankResponse" },
+                },
+              },
+            },
+            "400": {
+              description: "Invalid candidate request.",
+            },
+            "503": {
+              description: "Receipt memory store unavailable.",
+            },
+          },
+        },
+      },
       "/api/receipts/reviews": {
         get: {
           tags: ["Agent"],
@@ -204,6 +266,54 @@ export function openApiSpec(origin: string) {
             },
           },
         },
+        RerankRequest: {
+          type: "object",
+          required: ["candidates"],
+          properties: {
+            query: { type: "string", examples: ["coffee irvine"] },
+            candidates: {
+              type: "array",
+              minItems: 1,
+              maxItems: 50,
+              items: {
+                type: "object",
+                properties: {
+                  provider: { type: "string", examples: ["google"] },
+                  placeId: { type: "string", description: "Google place_id or equivalent provider id." },
+                  name: { type: "string" },
+                  branch: { type: "string" },
+                  category: { type: "string" },
+                  rating: { type: "number" },
+                  distanceMeters: { type: "number" },
+                  openNow: { type: "boolean" },
+                },
+              },
+            },
+          },
+        },
+        RerankResponse: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            product: { type: "string" },
+            usage: { type: "string" },
+            ranked: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  placeId: { type: ["string", "null"] },
+                  name: { type: "string" },
+                  baseScore: { type: "number" },
+                  jiagonBoost: { type: "number" },
+                  agentScore: { type: "number" },
+                  jiagonProof: { type: "object" },
+                  reasons: { type: "array", items: { type: "string" } },
+                },
+              },
+            },
+          },
+        },
         ReceiptReviewsResponse: {
           type: "object",
           properties: {
@@ -232,7 +342,8 @@ export function openApiSpec(origin: string) {
     "x-agent-example": {
       user: "I want coffee near Irvine. Recommend somewhere reliable.",
       call: `GET ${origin}/api/agent/recommendations?query=coffee%20irvine&limit=3`,
-      decision: "Rank returned merchants by agentScore, proofLevel, freshness, and reasons.",
+      rerankCall: `POST ${origin}/api/agent/rerank with Google Places candidates`,
+      decision: "Use Google or another place graph for candidates; use Jiagon agentScore and jiagonProof to boost receipt-backed places.",
     },
   };
 }
