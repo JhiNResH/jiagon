@@ -179,12 +179,6 @@ const TabBar = ({ active, onChange }) => {
         <path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
       </svg>
     )},
-    { id: 'discover', label: 'Agent', icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.7"/>
-        <path d="M16 16l5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-      </svg>
-    )},
     { id: 'profile', label: 'Profile', icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <circle cx="12" cy="9" r="4" stroke="currentColor" strokeWidth="1.7"/>

@@ -193,7 +193,7 @@ const AgentSignalsBlock = ({ review }) => {
 // ─────────────────────────────────────────────────────────────
 // ONBOARDING
 // ─────────────────────────────────────────────────────────────
-const OnboardingScreen = ({ onDone, auth, etherfi }) => {
+const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
   const [connecting, setConnecting] = _useState(false);
   const [authError, setAuthError] = _useState("");
   const [proofInput, setProofInput] = _useState(etherfi?.sourceTx || '');
@@ -215,7 +215,7 @@ const OnboardingScreen = ({ onDone, auth, etherfi }) => {
 
     if (authenticated) {
       etherfi?.scan?.(proofInput).catch(() => {});
-      onDone();
+      onImportDone();
       return;
     }
 
@@ -359,7 +359,26 @@ const OnboardingScreen = ({ onDone, auth, etherfi }) => {
 // ─────────────────────────────────────────────────────────────
 const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @type {Array<any>} */ ([]) }) => {
   const pad = density === 'comfy' ? 22 : 16;
-  const reviews = userReviews;
+  const [query, setQuery] = _useState('');
+  const normalizedQuery = query.trim().toLowerCase();
+  const reviews = normalizedQuery
+    ? userReviews.filter(review => {
+      const haystack = [
+        review.merchant,
+        review.branch,
+        review.cat,
+        review.text,
+        review.amount,
+        review.tx,
+        ...(Array.isArray(review.tags) ? review.tags : []),
+        ...signalChipsFor(review, 8),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(normalizedQuery);
+    })
+    : userReviews;
+  const merchantSignals = buildMerchantSignals(reviews);
+  const endpointQuery = encodeURIComponent(query.trim() || 'coffee irvine');
+  const endpoint = `/api/agent/recommendations?query=${endpointQuery}&limit=3`;
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
@@ -372,22 +391,53 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
           fontFamily: 'var(--display)', fontStyle: 'italic',
           fontSize: 18, color: 'var(--panel-text)', fontWeight: 500,
         }}>J</div>}
-        right={<>
-          <IconBtn>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8"/>
-              <path d="M16 16l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-          </IconBtn>
-        </>}
+        right={<div style={{
+          border: '0.5px solid var(--rule)',
+          background: 'var(--surface)',
+          color: 'var(--ink-muted)',
+          borderRadius: 999,
+          padding: '7px 10px',
+          fontFamily: 'var(--mono)',
+          fontSize: 10,
+          fontWeight: 700,
+        }}>API</div>}
       />
+
+      <div style={{ padding: '4px 18px 10px' }}>
+        <div style={{
+          background: 'var(--surface-raised)', borderRadius: 12,
+          padding: '11px 13px', display: 'flex', alignItems: 'center', gap: 10,
+          border: '0.5px solid var(--rule)',
+          boxShadow: '0 8px 22px oklch(0.45 0.02 110 / 0.045)',
+        }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="7" stroke="var(--ink-muted)" strokeWidth="1.8"/>
+            <path d="M16 16l5 5" stroke="var(--ink-muted)" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          <input
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder="Search coffee, Irvine, merchant, tags..."
+            style={{
+              flex: 1,
+              minWidth: 0,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              color: 'var(--ink)',
+              fontFamily: 'var(--ui)',
+              fontSize: 14,
+            }}
+          />
+        </div>
+      </div>
 
       {/* filter chips */}
       <div style={{
-        display: 'flex', gap: 8, padding: '8px 18px 14px',
+        display: 'flex', gap: 8, padding: '0 18px 12px',
         overflowX: 'auto',
       }}>
-        {['My signals', 'Agent picks', 'A proof', 'C merchant', 'Cafés', 'Recent'].map((c, i) => (
+        {['Published', 'Receipt-backed', 'A payment', 'C merchant', 'Cafés', 'Recent'].map((c, i) => (
           <div key={c} style={{
             padding: '7px 14px', borderRadius: 999,
             background: i === 0 ? 'var(--ink)' : 'var(--surface)',
@@ -397,6 +447,57 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
             whiteSpace: 'nowrap', flexShrink: 0,
           }}>{c}</div>
         ))}
+      </div>
+
+      <div style={{ padding: '0 18px 14px' }}>
+        <div style={{
+          background: 'var(--surface-raised)',
+          color: 'var(--ink)',
+          borderRadius: 16,
+          padding: 14,
+          border: '0.5px solid var(--rule)',
+          boxShadow: '0 10px 26px oklch(0.45 0.02 110 / 0.045)',
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            marginBottom: 9,
+          }}>
+            <div style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              textTransform: 'uppercase',
+              letterSpacing: 0.8,
+              color: 'var(--verified)',
+            }}>Agent API preview</div>
+            <div style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              color: 'var(--ink-muted)',
+              whiteSpace: 'nowrap',
+            }}>{merchantSignals.length} places</div>
+          </div>
+          <div style={{
+            fontFamily: 'var(--mono)',
+            fontSize: 11.5,
+            lineHeight: 1.45,
+            fontWeight: 600,
+            background: 'var(--verified-soft)',
+            border: '0.5px solid var(--rule)',
+            borderRadius: 10,
+            padding: '9px 10px',
+            wordBreak: 'break-word',
+          }}>{endpoint}</div>
+          <div style={{
+            fontFamily: 'var(--mono)',
+            fontSize: 10.5,
+            lineHeight: 1.45,
+            color: 'var(--ink-muted)',
+            marginTop: 8,
+          }}>Recommendation calls rank published Taste only; private receipts stay in Receipts until reviewed.</div>
+        </div>
       </div>
 
       {reviews.length === 0 && (
@@ -413,14 +514,14 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
             fontSize: 26,
             color: 'var(--ink)',
             lineHeight: 1.05,
-          }}>No taste signals yet.</div>
+          }}>{userReviews.length === 0 ? 'No taste signals yet.' : 'No matching taste signals.'}</div>
           <p style={{
             fontFamily: 'var(--ui)',
             fontSize: 14,
             lineHeight: 1.5,
             color: 'var(--ink-muted)',
             margin: '10px 0 0',
-          }}>Import a verified ether.fi spend, claim the merchant, then publish a review before this feed becomes usable by agents.</p>
+          }}>{userReviews.length === 0 ? 'Import a verified ether.fi spend in Receipts, claim the merchant, then publish a review before this feed becomes usable by agents.' : 'Try a merchant, city, tag, or receipt proof query.'}</p>
         </div>
       )}
 
@@ -2097,15 +2198,11 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
   const walletLabel = auth?.walletLabel;
   const login = auth?.login;
   const logout = auth?.logout;
-  const [proofInput, setProofInput] = _useState(etherfi?.sourceTx || '');
-  const [scanError, setScanError] = _useState("");
   const displayName = authenticated ? (userLabel || PROFILE.name) : PROFILE.name;
   const avatarLabel = (displayName || 'Y').slice(0, 1).toUpperCase();
-  const scanning = etherfi?.status === 'scanning';
   const synced = etherfi?.status === 'synced';
   const eventCount = synced ? etherfi.count : 0;
   const pendingCount = synced ? etherfi.receipts?.length || 0 : 0;
-  const totalSpend = synced ? `$${etherfi.totalSpendUsd}` : ETHERFI_SYNC.totalSpend;
   const safeLabel = etherfi?.safe || 'No safe scanned';
   const credentialEntries = Object.values(receiptCredentials);
   const credentialCount = Object.keys(receiptCredentials).length;
@@ -2116,17 +2213,6 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
       : authenticated
         ? 'Privy verified'
         : 'Not signed in';
-  const scanSafe = async () => {
-    if (!authenticated || scanning) return;
-
-    setScanError("");
-
-    try {
-      await etherfi?.scan?.(proofInput);
-    } catch (error) {
-      setScanError(error instanceof Error ? error.message : "Unable to import ether.fi Cash receipt.");
-    }
-  };
 
   return (
   <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
@@ -2189,80 +2275,31 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
         }}>e</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
-            {synced ? 'ether.fi Cash scanned' : authenticated ? 'Import from spend tx' : 'Sign in to sync ether.fi Cash'}
+            {synced ? 'ether.fi Cash connected' : authenticated ? 'Ready for receipt import' : 'Sign in to connect receipts'}
           </div>
           <div style={{
             fontFamily: 'var(--mono)', fontSize: 10,
             color: 'var(--ink-muted)', marginTop: 3,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{authenticated ? safeLabel : 'Privy required for account scan'}</div>
+          }}>{authenticated ? safeLabel : 'Privy required for private receipt state'}</div>
         </div>
       </div>
-      {authenticated && (
-        <div style={{ marginTop: 14 }}>
-          <label style={{
-            display: 'block',
-            fontFamily: 'var(--mono)',
-            fontSize: 9.5,
-            color: 'var(--ink-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: 0.7,
-            marginBottom: 7,
-          }}>ether.fi spend transaction</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              value={proofInput}
-              onChange={e => setProofInput(e.target.value)}
-              placeholder="Paste ether.fi Cash spend tx"
-              spellCheck={false}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                background: 'var(--bg)',
-                color: 'var(--ink)',
-                border: '0.5px solid var(--rule)',
-                borderRadius: 10,
-                padding: '10px 11px',
-                fontFamily: 'var(--mono)',
-                fontSize: 10.5,
-                outline: 'none',
-              }}
-            />
-            <button
-              onClick={scanSafe}
-              disabled={scanning}
-              style={{
-                border: 'none',
-                background: 'var(--ink)',
-                color: 'var(--bg)',
-                borderRadius: 10,
-                padding: '0 12px',
-                fontFamily: 'var(--mono)',
-                fontSize: 10,
-                fontWeight: 700,
-                cursor: scanning ? 'default' : 'pointer',
-                opacity: scanning ? 0.65 : 1,
-              }}
-            >{scanning ? 'SCAN' : 'SYNC'}</button>
-          </div>
-          {(scanError || etherfi?.error) && (
-            <div style={{
-              fontFamily: 'var(--mono)',
-              fontSize: 10,
-              color: 'var(--accent)',
-              marginTop: 8,
-              lineHeight: 1.45,
-            }}>{scanError || etherfi.error}</div>
-          )}
-        </div>
-      )}
+      <div style={{
+        marginTop: 14,
+        borderTop: '0.5px solid var(--rule)',
+        paddingTop: 12,
+        fontFamily: 'var(--mono)',
+        fontSize: 10.5,
+        lineHeight: 1.45,
+        color: 'var(--ink-muted)',
+      }}>Receipt import lives in Receipts. Profile only shows account, proof, and privacy status.</div>
       <div style={{
         marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
       }}>
       {[
         ['OP events', eventCount],
+        ['Private', pendingCount],
         ['BNB creds', credentialCount],
-        ['Volume', totalSpend],
         ].map(([k, v]) => (
           <div key={k} style={{
             background: 'var(--bg)', border: '0.5px solid var(--rule)',
@@ -2318,7 +2355,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
       display: 'flex', gap: 24, padding: '24px 24px 12px',
       borderBottom: '0.5px solid var(--rule)', marginBottom: 4,
     }}>
-      {['Reviews', 'Credentials', 'Agent API'].map((t, i) => (
+      {['Reviews', 'Credentials'].map((t, i) => (
         <div key={t} style={{
           fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600,
           color: i === 0 ? 'var(--ink)' : 'var(--ink-muted)',
