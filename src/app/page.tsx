@@ -278,6 +278,8 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [etherfiSync, setEtherfiSync] = useState<EtherfiSyncState>(emptyEtherfiSync);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [publishedReviews, setPublishedReviews] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [publicReviews, setPublicReviews] = useState<any[]>([]);
   const [reviewedReceiptIds, setReviewedReceiptIds] = useState<string[]>([]);
   const [receiptCredentials, setReceiptCredentials] = useState<Record<string, ReceiptCredential>>({});
   const [accountStateReady, setAccountStateReady] = useState(false);
@@ -442,11 +444,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
 
       if (publicReviews.length === 0 || cancelled) return;
 
-      setPublishedReviews((current) => {
-        const nextReviews = mergeReviews(current, publicReviews);
-        window.localStorage.setItem(reviewsStorageKey, JSON.stringify(nextReviews));
-        return nextReviews;
-      });
+      setPublicReviews(publicReviews);
     };
 
     loadPublicReviews().catch(() => undefined);
@@ -529,6 +527,8 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     receiptCredentials,
     reviewedReceiptIds,
   ]);
+
+  const visibleReviews = mergeReviews(publishedReviews, publicReviews);
 
   const auth: AuthState = {
     ready: !authBusy,
@@ -823,7 +823,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         onOpenReview={(r: unknown) => setDetail(r)}
         density={density}
         verifyStyle={verifyStyle}
-        userReviews={publishedReviews}
+        userReviews={visibleReviews}
       />
     ),
     inbox: (
@@ -835,8 +835,8 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         receiptCredentials={receiptCredentials}
       />
     ),
-    discover: <DiscoverScreen userReviews={publishedReviews} />,
-    profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} etherfi={etherfi} userReviews={publishedReviews} receiptCredentials={receiptCredentials} />,
+    discover: <DiscoverScreen userReviews={visibleReviews} />,
+    profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} etherfi={etherfi} userReviews={visibleReviews} receiptCredentials={receiptCredentials} />,
   };
 
   return (
