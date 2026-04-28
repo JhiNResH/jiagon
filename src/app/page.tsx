@@ -336,6 +336,8 @@ export default function Home() {
       merchant: review.merchant,
       branch: review.branch,
       rating: review.rating,
+      placeProvider: review.placeProvider,
+      googlePlaceId: review.googlePlaceId,
       tags: review.tags,
       visitType: review.visitType,
       occasion: review.occasion,

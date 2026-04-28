@@ -9,6 +9,8 @@ type ReceiptPublishMessageInput = {
   merchant: string;
   branch: string;
   rating: number;
+  placeProvider?: string;
+  googlePlaceId?: string;
   tags?: string[];
   visitType?: string;
   occasion?: string;
@@ -65,6 +67,8 @@ export function receiptPublishPayloadSummary(input: ReceiptPublishMessageInput) 
       merchant: normalizeText(input.merchant),
       branch: normalizeText(input.branch),
       rating: input.rating,
+      placeProvider: normalizeOptionalText(input.placeProvider),
+      googlePlaceId: normalizeOptionalText(input.googlePlaceId),
       tags: normalizeStringList(input.tags, 10, 40),
       attributes: {
         visitType: normalizeOptionalText(input.visitType)?.slice(0, 80),

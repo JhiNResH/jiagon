@@ -36,6 +36,8 @@ export type ReceiptReviewRecord = {
   logIndex: number;
   ownerSafe?: string | null;
   wallet?: string | null;
+  placeProvider?: string | null;
+  googlePlaceId?: string | null;
   merchant: string;
   branch: string;
   rating: number;
@@ -68,6 +70,8 @@ export type PublicReceiptReview = {
   mode: string | null;
   sourceChain: string;
   logIndex: number;
+  placeProvider: string | null;
+  googlePlaceId: string | null;
   merchant: string;
   branch: string;
   rating: number;
@@ -91,6 +95,8 @@ export type PublicReceiptReview = {
 
 export type AgentMerchantSignal = {
   id: string;
+  placeProvider: string | null;
+  googlePlaceId: string | null;
   name: string;
   branch: string;
   category: string;
@@ -151,6 +157,8 @@ async function ensureSchema(pool: Pool) {
         log_index integer not null,
         owner_safe text,
         wallet text,
+        place_provider text,
+        google_place_id text,
         merchant text not null,
         branch text not null,
         rating integer not null check (rating between 1 and 5),
@@ -178,6 +186,14 @@ async function ensureSchema(pool: Pool) {
 
       alter table jiagon_receipt_reviews
         add column if not exists review_attributes jsonb not null default '{}'::jsonb;
+
+      alter table jiagon_receipt_reviews
+        add column if not exists place_provider text,
+        add column if not exists google_place_id text;
+
+      create index if not exists jiagon_receipt_reviews_google_place_id_idx
+        on jiagon_receipt_reviews (google_place_id)
+        where google_place_id is not null;
     `).then(() => undefined);
   }
 
@@ -226,6 +242,8 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           log_index,
           owner_safe,
           wallet,
+          place_provider,
+          google_place_id,
           merchant,
           branch,
           rating,
@@ -252,10 +270,10 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
         )
         values (
           $1, $2, $3, $4, $5, $6, $7, $8,
-          $9, $10, $11, $12, $13, $14::jsonb,
-          $15::jsonb, $16, $17, $18, $19, $20, $21,
-          $22, $23, $24, $25, $26, $27, $28,
-          $29, $30, $31, $32, $33::jsonb
+          $9, $10, $11, $12, $13, $14, $15,
+          $16::jsonb, $17::jsonb, $18, $19, $20,
+          $21, $22, $23, $24, $25, $26, $27,
+          $28, $29, $30, $31, $32, $33, $34, $35::jsonb
         )
         on conflict (source_receipt_hash) do update set
           updated_at = now(),
@@ -266,6 +284,8 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           source_block = excluded.source_block,
           owner_safe = excluded.owner_safe,
           wallet = excluded.wallet,
+          place_provider = excluded.place_provider,
+          google_place_id = excluded.google_place_id,
           merchant = excluded.merchant,
           branch = excluded.branch,
           rating = excluded.rating,
@@ -300,6 +320,8 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
         record.logIndex,
         record.ownerSafe || null,
         record.wallet || null,
+        record.placeProvider || null,
+        record.googlePlaceId || null,
         record.merchant,
         record.branch,
         record.rating,
@@ -361,6 +383,8 @@ export async function listReceiptReviews(limit = 50): Promise<{
           mode,
           source_chain,
           log_index,
+          place_provider,
+          google_place_id,
           merchant,
           branch,
           rating,
@@ -397,6 +421,8 @@ export async function listReceiptReviews(limit = 50): Promise<{
         mode: row.mode,
         sourceChain: row.source_chain,
         logIndex: row.log_index,
+        placeProvider: row.place_provider,
+        googlePlaceId: row.google_place_id,
         merchant: row.merchant,
         branch: row.branch,
         rating: row.rating,
@@ -443,6 +469,8 @@ export async function listAgentMerchantSignals(limit = 25): Promise<{
         select
           merchant,
           branch,
+          (array_remove(array_agg(place_provider order by created_at desc), null))[1] as place_provider,
+          (array_remove(array_agg(google_place_id order by created_at desc), null))[1] as google_place_id,
           count(distinct source_receipt_hash)::integer as verified_visits,
           count(distinct coalesce(owner_safe, wallet))::integer as verified_wallets,
           round(avg(rating)::numeric, 1)::float as average_rating,
@@ -464,6 +492,8 @@ export async function listAgentMerchantSignals(limit = 25): Promise<{
         const key = `${row.merchant.toLowerCase()}::${row.branch.toLowerCase()}`;
         return {
           id: key.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+          placeProvider: row.place_provider || null,
+          googlePlaceId: row.google_place_id || null,
           name: row.merchant,
           branch: row.branch,
           category: "Local",

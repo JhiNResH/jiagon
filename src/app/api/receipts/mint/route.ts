@@ -28,6 +28,8 @@ type MintReceiptRequest = {
     merchant?: string;
     branch?: string;
     rating?: number;
+    placeProvider?: string;
+    googlePlaceId?: string;
     tags?: string[];
     visitType?: string;
     occasion?: string;
@@ -519,6 +521,8 @@ export async function handleMintReceiptRequest(request: Request, mintTokenOverri
       merchantClaim: {
         merchant,
         branch,
+        placeProvider: body.review?.placeProvider,
+        googlePlaceId: body.review?.googlePlaceId,
         proof: "C",
       },
       review: {
@@ -586,6 +590,8 @@ export async function handleMintReceiptRequest(request: Request, mintTokenOverri
         logIndex: verifiedSpend.logIndex,
         ownerSafe: owner,
         wallet: verifiedSpend.wallet,
+        placeProvider: body.review?.placeProvider || null,
+        googlePlaceId: body.review?.googlePlaceId || null,
         merchant,
         branch,
         rating,
