@@ -265,7 +265,7 @@ const OnboardingScreen = ({ onDone, auth, etherfi }) => {
           ['01', 'Sign in with Privy', 'wallet, email, or social login'],
           ['02', 'Start with one spend tx', walletLabel || userLabel || 'paste from ether.fi Cash'],
           ['03', 'Scan OP Spend events', synced ? `${detected} payments found` : 'from one spend tx'],
-          ['04', 'Build private memory', 'claim merchant, then publish if useful'],
+          ['04', 'Build taste graph', 'claim merchant, then publish if useful'],
         ].map(([n, t, s]) => (
           <div key={n} style={{ display: 'flex', gap: 12, padding: '7px 0', alignItems: 'baseline' }}>
             <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{n}</span>
@@ -348,7 +348,7 @@ const OnboardingScreen = ({ onDone, auth, etherfi }) => {
           width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
           marginTop: 14, fontSize: 13, color: 'var(--ink-muted)',
           fontFamily: 'var(--ui)',
-        }}>Explore receipt memory</button>
+        }}>Explore taste feed</button>
       </div>
     </div>
   );
@@ -364,7 +364,7 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
-        title="Memory"
+        title="Taste"
         sub="Published taste signals for agents"
         left={<div style={{
           width: 28, height: 28, borderRadius: 6, background: 'var(--accent)',
@@ -413,7 +413,7 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
             fontSize: 26,
             color: 'var(--ink)',
             lineHeight: 1.05,
-          }}>No published memory yet.</div>
+          }}>No taste signals yet.</div>
           <p style={{
             fontFamily: 'var(--ui)',
             fontSize: 14,
@@ -618,8 +618,8 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
   const agentReadiness = synced
     ? unclaimedCount > 0
       ? `${eventCount} payment proofs ready. Claim merchants to unlock place-level recommendations.`
-      : `${eventCount} verified memories ready for agent recommendations.`
-    : 'Import one ether.fi spend tx to build a private local memory from real payments.';
+      : `${eventCount} verified taste signals ready for agent recommendations.`
+    : 'Import one ether.fi spend tx to build a private taste graph from real payments.';
   const nextAction = synced
     ? unclaimedCount > 0
       ? `Claim ${Math.min(unclaimedCount, 3)} receipts`
@@ -642,7 +642,7 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
           textTransform: 'uppercase',
           letterSpacing: 0.9,
           color: 'var(--ink-muted)',
-        }}>Taste memory</div>
+        }}>Taste graph</div>
         <div style={{
           fontFamily: 'var(--display)',
           fontStyle: 'italic',
@@ -986,7 +986,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
                 fontSize: 9.5,
                 color: 'var(--ink-muted)',
                 marginTop: 3,
-              }}>{authenticated ? 'Refresh private receipt memory' : 'Privy required'}</div>
+              }}>{authenticated ? 'Refresh private taste graph' : 'Privy required'}</div>
             </div>
             {!authenticated && (
               <button
@@ -1080,7 +1080,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
             fontSize: 13.5,
             lineHeight: 1.45,
             color: 'var(--ink-muted)',
-          }}>Paste an ether.fi Cash spend transaction to scan your account and build private receipt memory.</p>
+          }}>Paste an ether.fi Cash spend transaction to scan your account and build a private taste graph.</p>
         </div>
       )}
 
@@ -2451,7 +2451,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
           fontSize: 13.5,
           lineHeight: 1.45,
           color: 'var(--ink-muted)',
-        }}>Publish from a verified receipt before your profile exposes agent-readable memory.</p>
+        }}>Publish from a verified receipt before your profile exposes agent-readable taste signals.</p>
       </div>
     )}
 

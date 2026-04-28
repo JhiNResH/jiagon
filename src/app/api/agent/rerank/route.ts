@@ -110,7 +110,7 @@ export async function POST(request: Request) {
   if (persisted.configured && persisted.error) {
     return Response.json(
       {
-        error: "Unable to load Jiagon receipt memory.",
+        error: "Unable to load Jiagon receipt signals.",
         persistence: {
           configured: true,
           error: persisted.error,
@@ -160,7 +160,7 @@ export async function POST(request: Request) {
             },
         reasons: signal
           ? [
-              "Candidate matched Jiagon receipt-backed memory.",
+              "Candidate matched Jiagon receipt-backed taste signals.",
               `Verified visits: ${signal.verifiedVisits}.`,
               `Verified wallets: ${signal.verifiedWallets}.`,
               signalMatchType === "merchant_branch_and_user_claimed_google_place_id"

@@ -11,7 +11,7 @@ export async function GET(request: Request) {
       "Read /api/agent or /.well-known/jiagon-agent.json to discover endpoints.",
       "Use Google Places or another place graph to get candidates when Jiagon does not have enough coverage.",
       "Call /api/agent/rerank with those candidates to apply Jiagon receipt proof boosts.",
-      "Call /api/agent/recommendations directly when you only want places already present in Jiagon memory.",
+      "Call /api/agent/recommendations directly when you only want places already present in Jiagon taste signals.",
       "Use proofLevel, proofBoundary, reasons, freshness, verifiedVisits, and verifiedWallets to decide whether to recommend a merchant.",
       "Do not treat user-claimed merchant identity as an official merchant fact unless a stronger proof level is present.",
     ],

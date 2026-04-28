@@ -168,7 +168,7 @@ export function openApiSpec(origin: string) {
               },
             },
             "503": {
-              description: "Receipt memory store unavailable.",
+              description: "Receipt signal store unavailable.",
             },
           },
         },
@@ -199,7 +199,7 @@ export function openApiSpec(origin: string) {
               description: "Invalid candidate request.",
             },
             "503": {
-              description: "Receipt memory store unavailable.",
+              description: "Receipt signal store unavailable.",
             },
           },
         },

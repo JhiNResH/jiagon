@@ -61,7 +61,7 @@ export async function GET(request: Request) {
   if (persisted.configured && persisted.error) {
     return Response.json(
       {
-        error: "Unable to load Jiagon receipt memory.",
+        error: "Unable to load Jiagon receipt signals.",
         persistence: {
           configured: true,
           error: persisted.error,
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
 
   return Response.json({
     query,
-    product: "Jiagon verified local memory layer",
+    product: "Jiagon verified local taste signal layer",
     privacy: "Response includes published or aggregate receipt review signals. Private receipt inbox data should stay user-scoped.",
     dataSource: persisted.merchants.length > 0 ? "postgres-merchant-signals" : "empty",
     persistence: {

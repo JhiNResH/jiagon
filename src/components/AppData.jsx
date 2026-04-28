@@ -168,7 +168,7 @@ const IconBtn = ({ children, onClick }) => (
 // ─────────────────────────────────────────────────────────────
 const TabBar = ({ active, onChange }) => {
   const tabs = [
-    { id: 'feed', label: 'Memory', icon: (
+    { id: 'feed', label: 'Taste', icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <path d="M3 7h18M3 12h18M3 17h12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
       </svg>
