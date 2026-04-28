@@ -207,6 +207,7 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
   const detected = synced ? etherfi.count : ETHERFI_SYNC.detected;
   const totalSpend = synced ? `$${etherfi.totalSpendUsd}` : ETHERFI_SYNC.totalSpend;
   const pending = synced ? etherfi.receipts?.length || 0 : ETHERFI_SYNC.pending;
+  const accountLabel = walletLabel || userLabel;
 
   const connect = async () => {
     setAuthError("");
@@ -274,12 +275,12 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
           background: 'linear-gradient(-45deg, transparent 33%, var(--bg) 33%) 0 0/12px 12px, linear-gradient(45deg, transparent 33%, var(--bg) 33%) 0 0/12px 12px',
         }} />
         <div style={{ textAlign: 'center', borderBottom: '1px dashed var(--rule)', paddingBottom: 10, marginBottom: 10, letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600 }}>
-          Ether.fi import
+          Receipt import
         </div>
         {[
           ['01', 'Sign in with Privy', 'wallet, email, or social login'],
-          ['02', 'Start with one spend tx', walletLabel || userLabel || 'paste from ether.fi Cash'],
-          ['03', 'Scan OP Spend events', synced ? `${detected} payments found` : 'from one spend tx'],
+          ['02', 'Paste a supported card tx', 'ether.fi Cash OP spend tx for MVP'],
+          ['03', 'Scan payment evidence', synced ? `${detected} payments found` : 'from one spend tx'],
           ['04', 'Build taste graph', 'claim merchant, then publish if useful'],
         ].map(([n, t, s]) => (
           <div key={n} style={{ display: 'flex', gap: 12, padding: '7px 0', alignItems: 'baseline' }}>
@@ -290,6 +291,26 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
             </div>
           </div>
         ))}
+        {authenticated && accountLabel && (
+          <div style={{
+            borderTop: '1px dashed var(--rule)',
+            paddingTop: 9,
+            marginTop: 8,
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: 10,
+          }}>
+            <span style={{ color: 'var(--ink-muted)' }}>account</span>
+            <span style={{
+              color: 'var(--ink)',
+              textAlign: 'right',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: 168,
+            }}>{accountLabel}</span>
+          </div>
+        )}
         {authenticated && (
           <div style={{
             borderTop: '1px dashed var(--rule)',
