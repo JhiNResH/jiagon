@@ -7,6 +7,17 @@ import {
   OnboardingScreen, FeedScreen, InboxScreen, WriteReviewScreen,
   ReviewDetailScreen, DiscoverScreen, ProfileScreen,
 } from "@/components/screens";
+import { buildReceiptPublishMessage } from "@/lib/receiptPublish";
+
+type EthereumProvider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+};
+
+declare global {
+  interface Window {
+    ethereum?: EthereumProvider;
+  }
+}
 
 type Tab = "feed" | "inbox" | "discover" | "profile";
 type VerifyStyle = "chip" | "stamp";
@@ -33,6 +44,7 @@ const etherfiStorageKey = "jiagon:etherfi-sync";
 const reviewsStorageKey = "jiagon:published-reviews";
 const reviewedReceiptsStorageKey = "jiagon:reviewed-receipts";
 const receiptCredentialsStorageKey = "jiagon:receipt-credentials";
+const localDemoHosts = new Set(["localhost", "127.0.0.1", "::1"]);
 
 const proofBoundary = {
   payment: "verified",
@@ -295,7 +307,60 @@ export default function Home() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const postReceiptCredential = (path: string, review: any, receipt: any) =>
+  const signReceiptPublish = async (review: any, receipt: any) => {
+    if (localDemoHosts.has(window.location.hostname)) return undefined;
+
+    const signer = authSession?.walletAddress;
+    const sourceTx = receipt.txFull || receipt.txHash;
+
+    if (!signer) {
+      throw new Error("Wallet login is required before minting a production receipt.");
+    }
+
+    if (!sourceTx || typeof receipt.logIndex !== "number") {
+      throw new Error("A verified ether.fi Spend transaction and log index are required before minting.");
+    }
+
+    if (!window.ethereum) {
+      throw new Error("Wallet signature is required before minting. Open Jiagon with the wallet used for the ether.fi Spend event.");
+    }
+
+    const message = buildReceiptPublishMessage({
+      sourceTx,
+      logIndex: receipt.logIndex,
+      provider: receipt.provider,
+      amount: receipt.amount,
+      amountUsd: receipt.amountUsd,
+      token: receipt.token,
+      reviewId: review.id,
+      merchant: review.merchant,
+      branch: review.branch,
+      rating: review.rating,
+      tags: review.tags,
+      visitType: review.visitType,
+      occasion: review.occasion,
+      valueRating: review.valueRating,
+      wouldReturn: review.wouldReturn,
+      bestFor: review.bestFor,
+      text: review.text,
+      wallet: signer,
+    });
+    const signature = await window.ethereum.request({
+      method: "personal_sign",
+      params: [message, signer],
+    });
+
+    if (typeof signature !== "string") {
+      throw new Error("Wallet did not return a valid receipt publish signature.");
+    }
+
+    return {
+      signer,
+      signature,
+    };
+  };
+
+  const postReceiptCredential = (path: string, review: any, receipt: any, ownership?: { signer: string; signature: string }) =>
     fetch(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -303,17 +368,20 @@ export default function Home() {
         owner: authSession?.walletAddress || authSession?.walletLabel || "privy-user",
         receipt,
         review,
+        ownership,
       }),
     });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mintReceiptCredential = async (review: any, receipt: any) => {
-    let response = await postReceiptCredential("/api/receipts/publish", review, receipt);
-    if (response.status === 403) {
-      response = await postReceiptCredential("/api/receipts/mint", review, receipt);
-    }
+    const ownership = await signReceiptPublish(review, receipt);
+    let response = await postReceiptCredential("/api/receipts/publish", review, receipt, ownership);
+    let payload = await response.json();
 
-    const payload = await response.json();
+    if (response.status === 403 && payload?.error === "App receipt publishing is disabled on this server.") {
+      response = await postReceiptCredential("/api/receipts/mint", review, receipt, ownership);
+      payload = await response.json();
+    }
 
     if (!response.ok) {
       throw new Error(payload?.error || "Unable to mint BNB testnet receipt credential.");

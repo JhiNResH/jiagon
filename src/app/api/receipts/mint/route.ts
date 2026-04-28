@@ -431,7 +431,7 @@ async function rpcCall<T>(method: string, params: unknown[]): Promise<T> {
   throw new Error(lastError);
 }
 
-async function verifyEtherfiSpend(sourceTx: string, expectedLogIndex?: number) {
+export async function verifyEtherfiSpend(sourceTx: string, expectedLogIndex?: number) {
   const receipt = await rpcCall<RpcReceipt>("eth_getTransactionReceipt", [sourceTx]);
   const spendLogs = receipt.logs.filter(
     (log) => log.address.toLowerCase() === CASH_EVENT_EMITTER && log.topics[0]?.toLowerCase() === SPEND_TOPIC,
