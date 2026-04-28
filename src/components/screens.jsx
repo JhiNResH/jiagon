@@ -217,7 +217,7 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
     if (authenticated) {
       const spendTx = proofInput.trim();
       if (!/^0x[a-fA-F0-9]{64}$/.test(spendTx)) {
-        setAuthError("Paste a valid ether.fi Cash spend transaction before importing.");
+        setAuthError("Paste a valid card spend transaction hash before importing.");
         return;
       }
 
@@ -226,7 +226,8 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
         await etherfi?.scan?.(spendTx);
         onImportDone();
       } catch (error) {
-        setAuthError(error instanceof Error ? error.message : "Unable to import ether.fi Cash receipt.");
+        const message = error instanceof Error ? error.message : "Unable to import this card spend proof.";
+        setAuthError(`${message} If this card is not supported yet, try an ether.fi Cash OP spend tx.`);
       } finally {
         setConnecting(false);
       }
@@ -279,8 +280,8 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
         </div>
         {[
           ['01', 'Sign in with Privy', 'wallet, email, or social login'],
-          ['02', 'Paste a supported card tx', 'ether.fi Cash OP spend tx for MVP'],
-          ['03', 'Scan payment evidence', synced ? `${detected} payments found` : 'from one spend tx'],
+          ['02', 'Add a card spend proof', 'paste a supported onchain card tx'],
+          ['03', 'Verify payment evidence', synced ? `${detected} payments found` : 'auto-detect provider where supported'],
           ['04', 'Build taste graph', 'claim merchant, then publish if useful'],
         ].map(([n, t, s]) => (
           <div key={n} style={{ display: 'flex', gap: 12, padding: '7px 0', alignItems: 'baseline' }}>
@@ -327,7 +328,7 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
             <input
               value={proofInput}
               onChange={e => setProofInput(e.target.value)}
-              placeholder="0x spend transaction"
+              placeholder="0x card spend tx"
               spellCheck={false}
               style={{
                 width: '100%',
