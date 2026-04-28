@@ -109,9 +109,24 @@ export type AgentMerchantSignal = {
   latestAttributes: Record<string, unknown>;
 };
 
+export type PrivateAccountState = {
+  etherfiSync?: unknown;
+  publishedReviews?: unknown[];
+  reviewedReceiptIds?: string[];
+  receiptCredentials?: Record<string, unknown>;
+};
+
+export type AccountStateRecord = {
+  configured: boolean;
+  state: PrivateAccountState | null;
+  updatedAt?: string;
+  error?: string;
+};
+
 type ReceiptStoreGlobal = typeof globalThis & {
   jiagonReceiptPool?: Pool;
   jiagonReceiptSchemaReady?: Promise<void>;
+  jiagonAccountStateSchemaReady?: Promise<void>;
 };
 
 function databaseUrl() {
@@ -198,6 +213,224 @@ async function ensureSchema(pool: Pool) {
   }
 
   return globalStore.jiagonReceiptSchemaReady;
+}
+
+async function ensureAccountStateSchema(pool: Pool) {
+  const globalStore = globalThis as ReceiptStoreGlobal;
+  if (!globalStore.jiagonAccountStateSchemaReady) {
+    globalStore.jiagonAccountStateSchemaReady = pool.query(`
+      create table if not exists jiagon_account_states (
+        id bigserial primary key,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        privy_user_id text not null unique,
+        session_id text,
+        wallet text,
+        user_label text,
+        state jsonb not null default '{}'::jsonb
+      );
+
+      create index if not exists jiagon_account_states_wallet_idx
+        on jiagon_account_states (wallet)
+        where wallet is not null;
+    `).then(() => undefined);
+  }
+
+  return globalStore.jiagonAccountStateSchemaReady;
+}
+
+function cleanStringList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0).slice(0, 250);
+}
+
+function cleanPrivateAccountState(value: unknown): PrivateAccountState {
+  const input = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const receiptCredentials =
+    input.receiptCredentials && typeof input.receiptCredentials === "object" && !Array.isArray(input.receiptCredentials)
+      ? (input.receiptCredentials as Record<string, unknown>)
+      : {};
+
+  return {
+    etherfiSync: input.etherfiSync && typeof input.etherfiSync === "object" ? input.etherfiSync : undefined,
+    publishedReviews: Array.isArray(input.publishedReviews) ? input.publishedReviews.slice(0, 250) : [],
+    reviewedReceiptIds: cleanStringList(input.reviewedReceiptIds),
+    receiptCredentials,
+  };
+}
+
+function mergePrivateAccountState(current: unknown, next: unknown): PrivateAccountState {
+  const currentState = cleanPrivateAccountState(current);
+  const nextState = cleanPrivateAccountState(next);
+  const currentCredentials =
+    currentState.receiptCredentials && typeof currentState.receiptCredentials === "object"
+      ? currentState.receiptCredentials
+      : {};
+  const nextCredentials =
+    nextState.receiptCredentials && typeof nextState.receiptCredentials === "object"
+      ? nextState.receiptCredentials
+      : {};
+
+  const reviewsById = new Map<string, unknown>();
+  for (const review of currentState.publishedReviews || []) {
+    if (review && typeof review === "object" && "id" in review && typeof review.id === "string") {
+      reviewsById.set(review.id, review);
+    }
+  }
+  for (const review of nextState.publishedReviews || []) {
+    if (review && typeof review === "object" && "id" in review && typeof review.id === "string") {
+      reviewsById.set(review.id, review);
+    }
+  }
+
+  return {
+    etherfiSync: nextState.etherfiSync || currentState.etherfiSync,
+    publishedReviews: Array.from(reviewsById.values()).slice(0, 250),
+    reviewedReceiptIds: Array.from(
+      new Set([...(currentState.reviewedReceiptIds || []), ...(nextState.reviewedReceiptIds || [])]),
+    ),
+    receiptCredentials: {
+      ...currentCredentials,
+      ...nextCredentials,
+    },
+  };
+}
+
+export async function getPrivateAccountState(privyUserId: string): Promise<AccountStateRecord> {
+  const pool = getPool();
+  if (!pool) return { configured: false, state: null };
+
+  try {
+    await ensureAccountStateSchema(pool);
+    const result = await pool.query(
+      `
+        select state, updated_at
+        from jiagon_account_states
+        where privy_user_id = $1
+        limit 1
+      `,
+      [privyUserId],
+    );
+
+    const row = result.rows[0];
+    if (!row) return { configured: true, state: null };
+
+    return {
+      configured: true,
+      state: cleanPrivateAccountState(row.state),
+      updatedAt: row.updated_at.toISOString(),
+    };
+  } catch {
+    return {
+      configured: true,
+      state: null,
+      error: "Private account state query failed.",
+    };
+  }
+}
+
+export async function savePrivateAccountState(input: {
+  privyUserId: string;
+  sessionId?: string;
+  wallet?: string | null;
+  userLabel?: string | null;
+  state: unknown;
+  ifUnmodifiedSince?: string | null;
+}): Promise<AccountStateRecord> {
+  const pool = getPool();
+  if (!pool) return { configured: false, state: null };
+
+  try {
+    await ensureAccountStateSchema(pool);
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const existing = await client.query(
+        `
+          select state, updated_at
+          from jiagon_account_states
+          where privy_user_id = $1
+          limit 1
+          for update
+        `,
+        [input.privyUserId],
+      );
+      const existingRow = existing.rows[0];
+      const existingUpdatedAt = existingRow?.updated_at?.toISOString();
+
+      if (input.ifUnmodifiedSince && existingUpdatedAt && input.ifUnmodifiedSince !== existingUpdatedAt) {
+        await client.query("rollback");
+        return {
+          configured: true,
+          state: cleanPrivateAccountState(existingRow.state),
+          updatedAt: existingUpdatedAt,
+          error: "Private account state changed on another device. Refresh before saving.",
+        };
+      }
+
+      const state = mergePrivateAccountState(existingRow?.state, input.state);
+      const result = existingRow
+        ? await client.query(
+            `
+              update jiagon_account_states
+              set
+                updated_at = now(),
+                session_id = $2,
+                wallet = $3,
+                user_label = $4,
+                state = $5::jsonb
+              where privy_user_id = $1
+              returning state, updated_at
+            `,
+            [
+              input.privyUserId,
+              input.sessionId || null,
+              input.wallet || null,
+              input.userLabel || null,
+              JSON.stringify(state),
+            ],
+          )
+        : await client.query(
+            `
+              insert into jiagon_account_states (
+                privy_user_id,
+                session_id,
+                wallet,
+                user_label,
+                state
+              )
+              values ($1, $2, $3, $4, $5::jsonb)
+              returning state, updated_at
+            `,
+            [
+              input.privyUserId,
+              input.sessionId || null,
+              input.wallet || null,
+              input.userLabel || null,
+              JSON.stringify(state),
+            ],
+          );
+
+      await client.query("commit");
+      const row = result.rows[0];
+      return {
+        configured: true,
+        state: cleanPrivateAccountState(row.state),
+        updatedAt: row.updated_at.toISOString(),
+      };
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch {
+    return {
+      configured: true,
+      state: null,
+      error: "Private account state save failed.",
+    };
+  }
 }
 
 export async function persistReceiptReview(record: ReceiptReviewRecord): Promise<ReceiptPersistenceResult> {

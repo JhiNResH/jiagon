@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { PrivyProvider, usePrivy, type PrivyClientConfig } from "@privy-io/react-auth";
 import { IOSDevice } from "@/components/IOSFrame";
 import { TabBar } from "@/components/AppData";
 import {
@@ -12,12 +13,6 @@ import { buildReceiptPublishMessage } from "@/lib/receiptPublish";
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
-
-declare global {
-  interface Window {
-    ethereum?: EthereumProvider;
-  }
-}
 
 type Tab = "feed" | "inbox" | "discover" | "profile";
 type VerifyStyle = "chip" | "stamp";
@@ -39,12 +34,89 @@ type StoredSession = {
   walletAddress?: string;
 };
 
+type PrivyBridge = {
+  ready: boolean;
+  authenticated: boolean;
+  user: unknown;
+  getAccessToken: () => Promise<string | null>;
+  logout: () => Promise<void>;
+};
+
 const authStorageKey = "jiagon:privy-session";
 const etherfiStorageKey = "jiagon:etherfi-sync";
 const reviewsStorageKey = "jiagon:published-reviews";
 const reviewedReceiptsStorageKey = "jiagon:reviewed-receipts";
 const receiptCredentialsStorageKey = "jiagon:receipt-credentials";
+const accountUserStorageKey = "jiagon:account-user-id";
 const localDemoHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+
+const privyConfig: PrivyClientConfig = {
+  loginMethods: ["wallet", "email", "google"],
+  appearance: {
+    theme: "light" as const,
+    accentColor: "#A9573D" as const,
+    showWalletLoginFirst: true,
+    walletChainType: "ethereum-only" as const,
+    walletList: [
+      "detected_ethereum_wallets",
+      "metamask",
+      "coinbase_wallet",
+      "base_account",
+      "okx_wallet",
+      "wallet_connect",
+    ],
+  },
+  embeddedWallets: {
+    ethereum: { createOnLogin: "off" as const },
+    solana: { createOnLogin: "off" as const },
+    showWalletUIs: false,
+  },
+};
+
+const shortAddress = (address?: string) => {
+  if (!address) return undefined;
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+};
+
+const getPrimaryWallet = (user: unknown) => {
+  const typedUser = user as {
+    wallet?: { address?: string };
+    linkedAccounts?: Array<{ type?: string; address?: string }>;
+  } | null;
+
+  return (
+    typedUser?.wallet?.address ||
+    typedUser?.linkedAccounts?.find((account) => account.type === "wallet")?.address
+  );
+};
+
+const getUserLabel = (user: unknown, walletAddress?: string) => {
+  const typedUser = user as {
+    id?: string;
+    email?: { address?: string };
+    phone?: { number?: string };
+    google?: { email?: string };
+    linkedAccounts?: Array<{
+      type?: string;
+      email?: string;
+      address?: string;
+      phoneNumber?: string;
+    }>;
+  } | null;
+
+  const linkedEmail = typedUser?.linkedAccounts?.find((account) => account.email)?.email;
+  const linkedPhone = typedUser?.linkedAccounts?.find((account) => account.phoneNumber)?.phoneNumber;
+
+  return (
+    typedUser?.email?.address ||
+    typedUser?.google?.email ||
+    linkedEmail ||
+    typedUser?.phone?.number ||
+    linkedPhone ||
+    shortAddress(walletAddress) ||
+    typedUser?.id
+  );
+};
 
 const proofBoundary = {
   payment: "verified",
@@ -119,7 +191,7 @@ const emptyEtherfiSync: EtherfiSyncState = {
   receipts: [],
 };
 
-export default function Home() {
+function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>("inbox");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -135,6 +207,9 @@ export default function Home() {
   const [publishedReviews, setPublishedReviews] = useState<any[]>([]);
   const [reviewedReceiptIds, setReviewedReceiptIds] = useState<string[]>([]);
   const [receiptCredentials, setReceiptCredentials] = useState<Record<string, ReceiptCredential>>({});
+  const [accountStateReady, setAccountStateReady] = useState(false);
+  const [accountStateUpdatedAt, setAccountStateUpdatedAt] = useState<string | null>(null);
+  const privyUserIdRef = useRef<string | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -154,40 +229,8 @@ export default function Home() {
       }
     }
 
-    const storedEtherfi = window.localStorage.getItem(etherfiStorageKey);
-    if (storedEtherfi) {
-      try {
-        setEtherfiSync(JSON.parse(storedEtherfi));
-      } catch {
-        window.localStorage.removeItem(etherfiStorageKey);
-      }
-    }
-
-    const storedReviews = window.localStorage.getItem(reviewsStorageKey);
-    if (storedReviews) {
-      try {
-        setPublishedReviews(JSON.parse(storedReviews));
-      } catch {
-        window.localStorage.removeItem(reviewsStorageKey);
-      }
-    }
-
-    const storedReviewedReceipts = window.localStorage.getItem(reviewedReceiptsStorageKey);
-    if (storedReviewedReceipts) {
-      try {
-        setReviewedReceiptIds(JSON.parse(storedReviewedReceipts));
-      } catch {
-        window.localStorage.removeItem(reviewedReceiptsStorageKey);
-      }
-    }
-
-    const storedCredentials = window.localStorage.getItem(receiptCredentialsStorageKey);
-    if (storedCredentials) {
-      try {
-        setReceiptCredentials(JSON.parse(storedCredentials));
-      } catch {
-        window.localStorage.removeItem(receiptCredentialsStorageKey);
-      }
+    if (!stored) {
+      window.localStorage.removeItem(accountUserStorageKey);
     }
   }, []);
 
@@ -195,6 +238,194 @@ export default function Home() {
   const density: Density = "comfy";
   const dark = false;
   const hasPrivyAppId = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
+
+  const clearAccountScopedState = () => {
+    setEtherfiSync(emptyEtherfiSync);
+    setPublishedReviews([]);
+    setReviewedReceiptIds([]);
+    setReceiptCredentials({});
+    window.localStorage.removeItem(etherfiStorageKey);
+    window.localStorage.removeItem(reviewsStorageKey);
+    window.localStorage.removeItem(reviewedReceiptsStorageKey);
+    window.localStorage.removeItem(receiptCredentialsStorageKey);
+  };
+
+  useEffect(() => {
+    if (!mounted || !privy?.ready || !privy.authenticated) return;
+
+    const typedUser = privy.user as { id?: string } | null;
+    const privyUserId = typedUser?.id || null;
+    const previousPrivyUserId = privyUserIdRef.current;
+    const storedPrivyUserId = window.localStorage.getItem(accountUserStorageKey);
+
+    if (privyUserId && storedPrivyUserId !== privyUserId) {
+      clearAccountScopedState();
+      setAccountStateReady(false);
+      setAccountStateUpdatedAt(null);
+    }
+
+    if (privyUserId && previousPrivyUserId && privyUserId !== previousPrivyUserId) {
+      clearAccountScopedState();
+      setAccountStateReady(false);
+      setAccountStateUpdatedAt(null);
+    }
+
+    privyUserIdRef.current = privyUserId;
+    if (privyUserId) window.localStorage.setItem(accountUserStorageKey, privyUserId);
+
+    const walletAddress = getPrimaryWallet(privy.user);
+    const session: StoredSession = {
+      userLabel: getUserLabel(privy.user, walletAddress),
+      walletLabel: shortAddress(walletAddress),
+      walletAddress,
+    };
+
+    setAuthSession(session);
+    window.localStorage.setItem(authStorageKey, JSON.stringify(session));
+  }, [mounted, privy?.authenticated, privy?.ready, privy?.user]);
+
+  useEffect(() => {
+    if (!mounted || !privy?.ready) return;
+    if (!privy.authenticated) {
+      setAccountStateReady(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateAccountState = async () => {
+      const token = await privy.getAccessToken();
+      if (!token || cancelled) return;
+
+      const response = await fetch("/api/account/state", {
+        cache: "no-store",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (cancelled) return;
+      if (!response.ok) {
+        setAccountStateReady(false);
+        return;
+      }
+
+      const payload = await response.json();
+      const state = payload?.state;
+
+      if (!state) {
+        clearAccountScopedState();
+        setAccountStateUpdatedAt(payload?.updatedAt || null);
+        setAccountStateReady(true);
+        return;
+      }
+
+      if (state.etherfiSync && typeof state.etherfiSync === "object" && state.etherfiSync.status) {
+        setEtherfiSync(state.etherfiSync);
+        window.localStorage.setItem(etherfiStorageKey, JSON.stringify(state.etherfiSync));
+      }
+
+      if (Array.isArray(state.publishedReviews)) {
+        setPublishedReviews(state.publishedReviews);
+        window.localStorage.setItem(reviewsStorageKey, JSON.stringify(state.publishedReviews));
+      }
+
+      if (Array.isArray(state.reviewedReceiptIds)) {
+        setReviewedReceiptIds(state.reviewedReceiptIds);
+        window.localStorage.setItem(reviewedReceiptsStorageKey, JSON.stringify(state.reviewedReceiptIds));
+      }
+
+      if (state.receiptCredentials && typeof state.receiptCredentials === "object" && !Array.isArray(state.receiptCredentials)) {
+        setReceiptCredentials(state.receiptCredentials);
+        window.localStorage.setItem(receiptCredentialsStorageKey, JSON.stringify(state.receiptCredentials));
+      }
+
+      setAccountStateUpdatedAt(payload?.updatedAt || null);
+      setAccountStateReady(true);
+    };
+
+    hydrateAccountState().catch(() => {
+      if (!cancelled) setAccountStateReady(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, privy?.authenticated, privy?.getAccessToken, privy?.ready, privy?.user]);
+
+  useEffect(() => {
+    if (!mounted || !accountStateReady || !privy?.ready || !privy.authenticated) return;
+
+    const timeout = window.setTimeout(async () => {
+      const token = await privy.getAccessToken();
+      if (!token) return;
+
+      await fetch("/api/account/state", {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          wallet: authSession?.walletAddress || null,
+          userLabel: authSession?.userLabel || authSession?.walletLabel || null,
+          ifUnmodifiedSince: accountStateUpdatedAt,
+          state: {
+            etherfiSync,
+            publishedReviews,
+            reviewedReceiptIds,
+            receiptCredentials,
+          },
+        }),
+      }).then(async (response) => {
+        if (response.status === 409) {
+          const payload = await response.json();
+          const state = payload?.state;
+          if (state) {
+            if (state.etherfiSync && typeof state.etherfiSync === "object" && state.etherfiSync.status) {
+              setEtherfiSync(state.etherfiSync);
+              window.localStorage.setItem(etherfiStorageKey, JSON.stringify(state.etherfiSync));
+            }
+            if (Array.isArray(state.publishedReviews)) {
+              setPublishedReviews(state.publishedReviews);
+              window.localStorage.setItem(reviewsStorageKey, JSON.stringify(state.publishedReviews));
+            }
+            if (Array.isArray(state.reviewedReceiptIds)) {
+              setReviewedReceiptIds(state.reviewedReceiptIds);
+              window.localStorage.setItem(reviewedReceiptsStorageKey, JSON.stringify(state.reviewedReceiptIds));
+            }
+            if (state.receiptCredentials && typeof state.receiptCredentials === "object" && !Array.isArray(state.receiptCredentials)) {
+              setReceiptCredentials(state.receiptCredentials);
+              window.localStorage.setItem(receiptCredentialsStorageKey, JSON.stringify(state.receiptCredentials));
+            }
+          }
+          setAccountStateUpdatedAt(payload?.updatedAt || null);
+          return;
+        }
+
+        if (response.ok) {
+          const payload = await response.json();
+          setAccountStateUpdatedAt(payload?.updatedAt || null);
+        }
+      });
+    }, 800);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    accountStateReady,
+    accountStateUpdatedAt,
+    authSession?.userLabel,
+    authSession?.walletAddress,
+    authSession?.walletLabel,
+    etherfiSync,
+    mounted,
+    privy?.authenticated,
+    privy?.getAccessToken,
+    privy?.ready,
+    publishedReviews,
+    receiptCredentials,
+    reviewedReceiptIds,
+  ]);
 
   const auth: AuthState = {
     ready: !authBusy,
@@ -211,17 +442,15 @@ export default function Home() {
       setAuthBusy(false);
     },
     logout: async () => {
+      await privy?.logout();
       setAuthSession(null);
       setAuthBusy(false);
-      setEtherfiSync(emptyEtherfiSync);
-      setPublishedReviews([]);
-      setReviewedReceiptIds([]);
-      setReceiptCredentials({});
+      clearAccountScopedState();
       window.localStorage.removeItem(authStorageKey);
-      window.localStorage.removeItem(etherfiStorageKey);
-      window.localStorage.removeItem(reviewsStorageKey);
-      window.localStorage.removeItem(reviewedReceiptsStorageKey);
-      window.localStorage.removeItem(receiptCredentialsStorageKey);
+      window.localStorage.removeItem(accountUserStorageKey);
+      setAccountStateReady(false);
+      setAccountStateUpdatedAt(null);
+      privyUserIdRef.current = null;
     },
   };
 
@@ -321,7 +550,8 @@ export default function Home() {
       throw new Error("A verified ether.fi Spend transaction and log index are required before minting.");
     }
 
-    if (!window.ethereum) {
+    const ethereum = window.ethereum as EthereumProvider | undefined;
+    if (!ethereum) {
       throw new Error("Wallet signature is required before minting. Open Jiagon with the wallet used for the ether.fi Spend event.");
     }
 
@@ -347,7 +577,7 @@ export default function Home() {
       text: review.text,
       wallet: signer,
     });
-    const signature = await window.ethereum.request({
+    const signature = await ethereum.request({
       method: "personal_sign",
       params: [message, signer],
     });
@@ -545,5 +775,21 @@ export default function Home() {
         )}
       </div>
     </>
+  );
+}
+
+function PrivyHome() {
+  const privy = usePrivy();
+  return <HomeShell privy={privy} />;
+}
+
+export default function Home() {
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  if (!appId) return <HomeShell privy={null} />;
+
+  return (
+    <PrivyProvider appId={appId} config={privyConfig}>
+      <PrivyHome />
+    </PrivyProvider>
   );
 }
