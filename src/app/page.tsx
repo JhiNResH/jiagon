@@ -191,6 +191,79 @@ const emptyEtherfiSync: EtherfiSyncState = {
   receipts: [],
 };
 
+function shortHash(value?: string | null) {
+  if (!value) return "published";
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toFeedReviewFromPublic(record: any) {
+  const branch = record.branch || "Local";
+  const attributes = record.reviewAttributes || {};
+
+  return {
+    id: record.reviewId || record.receiptId,
+    receiptId: record.receiptId,
+    reviewId: record.reviewId,
+    author: "you",
+    avatar: "var(--accent-soft)",
+    rep: "verified",
+    handle: record.publicProofId ? `proof ${record.publicProofId}` : shortHash(record.credentialTx),
+    merchant: record.merchant,
+    branch,
+    cat: `Local · ${branch}`,
+    rating: record.rating,
+    time: record.createdAt ? new Date(record.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "published",
+    tags: Array.isArray(record.tags) ? record.tags : [],
+    text: record.reviewText || "",
+    tx: shortHash(record.credentialTx),
+    amount: record.token ? `Verified ${record.token}` : "Verified receipt",
+    proofLevel: `${record.proofLevel || "B"} · BNB minted`,
+    credentialTx: record.credentialTx ? shortHash(record.credentialTx) : record.credentialId,
+    credential: {
+      status: record.status,
+      mode: record.mode,
+      credentialChain: record.credentialChain,
+      chainId: record.chainId,
+      credentialId: record.credentialId,
+      credentialTx: record.credentialTx,
+      explorerUrl: record.explorerUrl,
+      storageUri: record.storageUri,
+      dataHash: record.dataHash,
+      dataMatchesRequest: record.dataMatchesRequest,
+      proofLevel: record.proofLevel,
+    },
+    dataMatchesRequest: record.dataMatchesRequest,
+    verifiedVisits: 1,
+    merchantProof: "C · user claimed",
+    visitType: attributes.visitType,
+    occasion: attributes.occasion,
+    valueRating: attributes.valueRating,
+    wouldReturn: attributes.wouldReturn,
+    bestFor: Array.isArray(attributes.bestFor) ? attributes.bestFor : [],
+    agentSignals: {
+      visitType: attributes.visitType || null,
+      occasion: attributes.occasion || null,
+      valueRating: attributes.valueRating || null,
+      wouldReturn: typeof attributes.wouldReturn === "boolean" ? attributes.wouldReturn : null,
+      bestFor: Array.isArray(attributes.bestFor) ? attributes.bestFor : [],
+    },
+    proofBoundary,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mergeReviews(current: any[], incoming: any[]) {
+  const byId = new Map<string, any>();
+  for (const review of incoming) {
+    if (review?.id) byId.set(review.id, review);
+  }
+  for (const review of current) {
+    if (review?.id) byId.set(review.id, review);
+  }
+  return Array.from(byId.values());
+}
+
 function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>("inbox");
@@ -352,6 +425,36 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       cancelled = true;
     };
   }, [mounted, privy?.authenticated, privy?.getAccessToken, privy?.ready, privy?.user]);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    let cancelled = false;
+
+    const loadPublicReviews = async () => {
+      const response = await fetch("/api/receipts/reviews?limit=50", { cache: "no-store" });
+      if (!response.ok || cancelled) return;
+
+      const payload = await response.json();
+      const publicReviews = Array.isArray(payload?.reviews)
+        ? payload.reviews.map(toFeedReviewFromPublic)
+        : [];
+
+      if (publicReviews.length === 0 || cancelled) return;
+
+      setPublishedReviews((current) => {
+        const nextReviews = mergeReviews(current, publicReviews);
+        window.localStorage.setItem(reviewsStorageKey, JSON.stringify(nextReviews));
+        return nextReviews;
+      });
+    };
+
+    loadPublicReviews().catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted]);
 
   useEffect(() => {
     if (!mounted || !accountStateReady || !privy?.ready || !privy.authenticated) return;
