@@ -6,7 +6,7 @@ import { IOSDevice } from "@/components/IOSFrame";
 import { TabBar } from "@/components/AppData";
 import {
   OnboardingScreen, FeedScreen, InboxScreen, WriteReviewScreen,
-  ReviewDetailScreen, DiscoverScreen, ProfileScreen,
+  ReviewDetailScreen, ProfileScreen,
 } from "@/components/screens";
 import { buildReceiptPublishMessage } from "@/lib/receiptPublish";
 
@@ -14,7 +14,7 @@ type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
 
-type Tab = "feed" | "inbox" | "discover" | "profile";
+type Tab = "feed" | "inbox" | "profile";
 type VerifyStyle = "chip" | "stamp";
 type Density = "compact" | "comfy";
 
@@ -835,7 +835,6 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         receiptCredentials={receiptCredentials}
       />
     ),
-    discover: <DiscoverScreen userReviews={visibleReviews} />,
     profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} etherfi={etherfi} userReviews={visibleReviews} receiptCredentials={receiptCredentials} />,
   };
 
@@ -869,7 +868,12 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
 
               {showOnboard && (
                 <div className="screen" style={{ zIndex: 50 }}>
-                  <OnboardingScreen auth={auth} etherfi={etherfi} onDone={() => { setShowOnboard(false); setTab("inbox"); }} />
+                  <OnboardingScreen
+                    auth={auth}
+                    etherfi={etherfi}
+                    onDone={() => { setShowOnboard(false); setTab("feed"); }}
+                    onImportDone={() => { setShowOnboard(false); setTab("inbox"); }}
+                  />
                 </div>
               )}
             </div>
