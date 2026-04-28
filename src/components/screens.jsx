@@ -214,16 +214,31 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
     if (!ready || connecting) return;
 
     if (authenticated) {
-      etherfi?.scan?.(proofInput).catch(() => {});
-      onImportDone();
+      const spendTx = proofInput.trim();
+      if (!/^0x[a-fA-F0-9]{64}$/.test(spendTx)) {
+        setAuthError("Paste a valid ether.fi Cash spend transaction before importing.");
+        return;
+      }
+
+      setConnecting(true);
+      try {
+        await etherfi?.scan?.(spendTx);
+        onImportDone();
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : "Unable to import ether.fi Cash receipt.");
+      } finally {
+        setConnecting(false);
+      }
       return;
     }
 
     try {
+      setConnecting(true);
       await login?.();
     } catch (error) {
-      setConnecting(false);
       setAuthError(error instanceof Error ? error.message : "Privy login was cancelled.");
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -291,6 +306,7 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
             <input
               value={proofInput}
               onChange={e => setProofInput(e.target.value)}
+              placeholder="0x spend transaction"
               spellCheck={false}
               style={{
                 width: '100%',
