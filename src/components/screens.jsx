@@ -695,14 +695,19 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
           {/* verify chip */}
           <VerifiedChip tx={r.tx} amount={r.amount} style={verifyStyle} />
 
-          {/* actions */}
+          {/* metadata */}
           <div style={{
-            display: 'flex', gap: 18, marginTop: 12,
-            color: 'var(--ink-muted)', fontFamily: 'var(--ui)', fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            marginTop: 12,
+            color: 'var(--ink-muted)',
+            fontFamily: 'var(--mono)',
+            fontSize: 10.5,
           }}>
-            <span>↑ {42 + i * 11}</span>
-            <span>↓ {i}</span>
-            <span>💬 {6 + i * 2}</span>
+            <span>Published taste signal</span>
+            <span>·</span>
+            <span>Open proof</span>
             <span style={{ marginLeft: 'auto' }}>↗</span>
           </div>
         </article>
