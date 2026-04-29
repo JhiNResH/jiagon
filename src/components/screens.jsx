@@ -794,7 +794,7 @@ const CredentialBadge = ({ credential }) => {
   );
 };
 
-const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, reviewedCount, lastSync, onAction, topSignals = [] }) => {
+const TasteMemoryPanel = ({ synced, showReceiptStats = synced, eventCount, totalSpend, unclaimedCount, reviewedCount, lastSync, onAction, topSignals = [] }) => {
   const agentReadiness = synced
     ? unclaimedCount > 0
       ? `${eventCount} payment proofs ready. Claim merchants to unlock place-level recommendations.`
@@ -847,8 +847,8 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
           marginTop: 14,
         }}>
           {[
-            ['Proofs', synced ? eventCount : '—'],
-            ['Spend', synced ? totalSpend : '—'],
+            ['Proofs', showReceiptStats ? eventCount : '—'],
+            ['Spend', showReceiptStats ? totalSpend : '—'],
             ['Reviews', reviewedCount],
           ].map(([k, v]) => (
             <div key={k} style={{
@@ -996,16 +996,19 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
   const unclaimed = receiptSource.filter(r => r.status === 'unclaimed');
   const claimed = receiptSource.filter(r => r.status === 'claimed');
   const done = receiptSource.filter(r => r.reviewed);
-  const eventCount = etherfi?.status === 'synced' ? etherfi.count : 0;
-  const totalSpend = etherfi?.status === 'synced' ? `$${etherfi.totalSpendUsd}` : ETHERFI_SYNC.totalSpend;
+  const hasReceiptProofs = liveReceipts.length > 0;
+  const hasUsableReceiptState = etherfi?.status === 'synced' || hasReceiptProofs;
+  const eventCount = hasUsableReceiptState ? (etherfi?.count || liveReceipts.length) : 0;
+  const totalSpend = hasUsableReceiptState && etherfi?.totalSpendUsd ? `$${etherfi.totalSpendUsd}` : ETHERFI_SYNC.totalSpend;
   const safeLabel = etherfi?.safe || 'No safe scanned';
   const lastSync = etherfi?.scannedAt
     ? new Date(etherfi.scannedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : ETHERFI_SYNC.lastSync;
   const scanning = etherfi?.status === 'scanning';
   const syncFailed = etherfi?.status === 'error';
-  const sourceStatusLabel = scanning ? 'Scanning' : syncFailed ? 'Error' : etherfi?.status === 'synced' ? 'Synced' : 'Idle';
-  const sourceStatusColor = syncFailed ? 'var(--accent)' : etherfi?.status === 'synced' ? 'var(--verified)' : 'var(--ink-muted)';
+  const currentSourceSynced = etherfi?.status === 'synced';
+  const sourceStatusLabel = scanning && hasReceiptProofs ? 'Refreshing' : scanning ? 'Scanning' : syncFailed ? 'Error' : hasUsableReceiptState ? 'Synced' : 'Idle';
+  const sourceStatusColor = syncFailed ? 'var(--accent)' : hasUsableReceiptState ? 'var(--verified)' : 'var(--ink-muted)';
 
   const importLatestTx = async () => {
     setImportError("");
@@ -1027,12 +1030,14 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
       <TopBar
         title="Receipts"
         sub={
-          etherfi?.status === 'synced'
-            ? `${eventCount} private payment proofs synced`
-            : syncFailed
-              ? 'Payment proof scan failed'
-              : scanning
-                ? 'Scanning payment proof'
+          syncFailed
+            ? hasReceiptProofs
+              ? 'Payment proof refresh failed'
+              : 'Payment proof scan failed'
+            : scanning
+              ? 'Scanning payment proof'
+              : hasUsableReceiptState
+                ? `${eventCount} private payment proofs synced`
                 : 'No private payment proofs synced'
         }
         left={<div style={{ width: 28 }} />}
@@ -1044,7 +1049,8 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
       />
 
       <TasteMemoryPanel
-        synced={etherfi?.status === 'synced'}
+        synced={currentSourceSynced}
+        showReceiptStats={hasUsableReceiptState}
         eventCount={eventCount}
         totalSpend={totalSpend}
         unclaimedCount={unclaimed.length}
