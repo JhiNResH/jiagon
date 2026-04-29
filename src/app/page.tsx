@@ -276,6 +276,50 @@ function readStoredJson(key: string) {
   }
 }
 
+function normalizeRestoredEtherfiSync(value: unknown): EtherfiSyncState | null {
+  if (!value || typeof value !== "object") return null;
+
+  const state = value as Partial<EtherfiSyncState>;
+  const receipts = Array.isArray(state.receipts) ? state.receipts : [];
+  const status = state.status;
+
+  if (status === "scanning") {
+    if (receipts.length > 0) {
+      return {
+        ...state,
+        status: "synced",
+        receipts,
+        error: undefined,
+        scannedAt: state.scannedAt || new Date().toISOString(),
+      } as EtherfiSyncState;
+    }
+
+    return {
+      safe: state.safe,
+      sourceTx: state.sourceTx,
+      sourceTxBlock: state.sourceTxBlock,
+      status: "idle",
+      receipts: [],
+    };
+  }
+
+  if (status === "idle" || status === "synced" || status === "error") {
+    return {
+      ...state,
+      status,
+      receipts,
+    } as EtherfiSyncState;
+  }
+
+  return null;
+}
+
+function writeStoredEtherfiSync(state: EtherfiSyncState) {
+  const normalized = normalizeRestoredEtherfiSync(state);
+  if (!normalized) return;
+  window.localStorage.setItem(etherfiStorageKey, JSON.stringify(normalized));
+}
+
 function hydrateLocalPrivateState(
   setEtherfiSyncState: (state: EtherfiSyncState) => void,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -283,9 +327,10 @@ function hydrateLocalPrivateState(
   setReviewedIdsState: (ids: string[]) => void,
   setCredentialsState: (credentials: Record<string, ReceiptCredential>) => void,
 ) {
-  const storedEtherfiSync = readStoredJson(etherfiStorageKey);
-  if (storedEtherfiSync && typeof storedEtherfiSync === "object" && storedEtherfiSync.status) {
-    setEtherfiSyncState(storedEtherfiSync as EtherfiSyncState);
+  const storedEtherfiSync = normalizeRestoredEtherfiSync(readStoredJson(etherfiStorageKey));
+  if (storedEtherfiSync) {
+    setEtherfiSyncState(storedEtherfiSync);
+    writeStoredEtherfiSync(storedEtherfiSync);
   }
 
   const storedReviews = readStoredJson(reviewsStorageKey);
@@ -327,6 +372,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const privyUserIdRef = useRef<string | null>(null);
   const localHydratedUserRef = useRef<string | null>(null);
   const etherfiScanKeyRef = useRef<string | null>(null);
+  const lastPersistableEtherfiSyncRef = useRef<EtherfiSyncState | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -359,6 +405,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const clearAccountScopedState = () => {
     etherfiScanKeyRef.current = null;
     localHydratedUserRef.current = null;
+    lastPersistableEtherfiSyncRef.current = null;
     setEtherfiSync(emptyEtherfiSync);
     setPublishedReviews([]);
     setReviewedReceiptIds([]);
@@ -443,9 +490,10 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         return;
       }
 
-      if (state.etherfiSync && typeof state.etherfiSync === "object" && state.etherfiSync.status) {
-        setEtherfiSync(state.etherfiSync);
-        window.localStorage.setItem(etherfiStorageKey, JSON.stringify(state.etherfiSync));
+      const restoredEtherfiSync = normalizeRestoredEtherfiSync(state.etherfiSync);
+      if (restoredEtherfiSync) {
+        setEtherfiSync(restoredEtherfiSync);
+        writeStoredEtherfiSync(restoredEtherfiSync);
       }
 
       if (Array.isArray(state.publishedReviews)) {
@@ -508,6 +556,9 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     const timeout = window.setTimeout(async () => {
       const token = await privy.getAccessToken();
       if (!token) return;
+      const persistableEtherfiSync = etherfiSync.status === "scanning"
+        ? lastPersistableEtherfiSyncRef.current || undefined
+        : etherfiSync;
 
       await fetch("/api/account/state", {
         method: "PUT",
@@ -520,7 +571,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
           userLabel: authSession?.userLabel || authSession?.walletLabel || null,
           ifUnmodifiedSince: accountStateUpdatedAt,
           state: {
-            etherfiSync,
+            etherfiSync: persistableEtherfiSync,
             publishedReviews,
             reviewedReceiptIds,
             receiptCredentials,
@@ -531,9 +582,10 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
           const payload = await response.json();
           const state = payload?.state;
           if (state) {
-            if (state.etherfiSync && typeof state.etherfiSync === "object" && state.etherfiSync.status) {
-              setEtherfiSync(state.etherfiSync);
-              window.localStorage.setItem(etherfiStorageKey, JSON.stringify(state.etherfiSync));
+            const restoredEtherfiSync = normalizeRestoredEtherfiSync(state.etherfiSync);
+            if (restoredEtherfiSync) {
+              setEtherfiSync(restoredEtherfiSync);
+              writeStoredEtherfiSync(restoredEtherfiSync);
             }
             if (Array.isArray(state.publishedReviews)) {
               setPublishedReviews(state.publishedReviews);
@@ -575,6 +627,12 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     receiptCredentials,
     reviewedReceiptIds,
   ]);
+
+  useEffect(() => {
+    if (etherfiSync.status === "scanning") return;
+    const normalized = normalizeRestoredEtherfiSync(etherfiSync);
+    if (normalized) lastPersistableEtherfiSyncRef.current = normalized;
+  }, [etherfiSync]);
 
   const visibleReviews = mergeReviews(publishedReviews, publicReviews);
 
@@ -687,7 +745,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     if (etherfiScanKeyRef.current !== scanKey) return nextSync;
 
     setEtherfiSync(nextSync);
-    window.localStorage.setItem(etherfiStorageKey, JSON.stringify(nextSync));
+    writeStoredEtherfiSync(nextSync);
 
     if (isTx) {
       fetch(`/api/etherfi/spends?${queryKey}=${encodeURIComponent(nextProof)}&limit=100&scope=full`, {
@@ -699,7 +757,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
           if (etherfiScanKeyRef.current !== scanKey) return;
           const fullSync = toSyncState(fullPayload);
           setEtherfiSync(fullSync);
-          window.localStorage.setItem(etherfiStorageKey, JSON.stringify(fullSync));
+          writeStoredEtherfiSync(fullSync);
         })
         .catch(() => undefined);
     }
