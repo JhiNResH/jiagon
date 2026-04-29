@@ -68,6 +68,43 @@ const hasReviewProof = (review = {}) => Boolean(
   typeof review.dataMatchesRequest === 'boolean'
 );
 
+const credentialKey = (credential = {}) => (
+  credential.credentialTx ||
+  credential.credentialId ||
+  credential.preparedCredentialId ||
+  credential.dataHash ||
+  credential.receiptId ||
+  null
+);
+
+const uniqueCredentialsForProfile = (receiptCredentials = {}, reviews = []) => {
+  const byKey = new Map();
+
+  Object.values(receiptCredentials).forEach(credential => {
+    const key = credentialKey(credential);
+    if (key) byKey.set(key, credential);
+  });
+
+  reviews.forEach(review => {
+    if (review?.credential) {
+      const key = credentialKey(review.credential);
+      if (key && !byKey.has(key)) byKey.set(key, review.credential);
+    }
+  });
+
+  return Array.from(byKey.values());
+};
+
+const profileRepScore = (reviews = [], credentials = []) => {
+  const publishedReviewPoints = reviews.length * 10;
+  const proofPoints = reviews.filter(hasReviewProof).length * 5;
+  const mintedCredentialPoints = credentials
+    .filter(credential => credential?.status === 'minted')
+    .length * 20;
+
+  return publishedReviewPoints + proofPoints + mintedCredentialPoints;
+};
+
 const parseUsdAmount = (amount) => {
   const value = Number(String(amount || '').replace(/[^0-9.-]/g, ''));
   return Number.isFinite(value) ? value : 0;
@@ -2242,8 +2279,9 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
   const eventCount = synced ? etherfi.count : 0;
   const pendingCount = synced ? etherfi.receipts?.length || 0 : 0;
   const safeLabel = etherfi?.safe || 'No safe scanned';
-  const credentialEntries = Object.values(receiptCredentials);
-  const credentialCount = Object.keys(receiptCredentials).length;
+  const credentialEntries = uniqueCredentialsForProfile(receiptCredentials, userReviews);
+  const credentialCount = credentialEntries.length;
+  const repScore = profileRepScore(userReviews, credentialEntries);
   const privyStatus = !appConfigured
     ? 'Preview mode'
     : !ready
@@ -2366,7 +2404,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
       display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
     }}>
       {[
-        ['Rep', PROFILE.rep],
+        ['Rep', repScore],
         ['Reviews', userReviews.length],
         ['Credentials', credentialCount],
       ].map(([k, v], i) => (
