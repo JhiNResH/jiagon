@@ -384,7 +384,7 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
         )}
         <div style={{ borderTop: '1px dashed var(--rule)', paddingTop: 10, marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ color: 'var(--ink-muted)' }}>proof</span>
-          <span>A payment · C merchant</span>
+          <span>payment verified · merchant claimed</span>
         </div>
         <div style={{
           position: 'absolute', bottom: -8, left: 0, right: 0, height: 8,
@@ -512,7 +512,7 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
         display: 'flex', gap: 8, padding: '0 18px 12px',
         overflowX: 'auto',
       }}>
-        {['Published', 'Receipt-backed', 'A payment', 'C merchant', 'Cafés', 'Recent'].map((c, i) => (
+        {['Published', 'Receipt-backed', 'Payment verified', 'Merchant claimed', 'Cafés', 'Recent'].map((c, i) => (
           <div key={c} style={{
             padding: '7px 14px', borderRadius: 999,
             background: i === 0 ? 'var(--ink)' : 'var(--surface)',
