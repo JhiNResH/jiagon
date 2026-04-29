@@ -1003,6 +1003,9 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
     ? new Date(etherfi.scannedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : ETHERFI_SYNC.lastSync;
   const scanning = etherfi?.status === 'scanning';
+  const syncFailed = etherfi?.status === 'error';
+  const sourceStatusLabel = scanning ? 'Scanning' : syncFailed ? 'Error' : etherfi?.status === 'synced' ? 'Synced' : 'Idle';
+  const sourceStatusColor = syncFailed ? 'var(--accent)' : etherfi?.status === 'synced' ? 'var(--verified)' : 'var(--ink-muted)';
 
   const importLatestTx = async () => {
     setImportError("");
@@ -1023,7 +1026,15 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
         title="Receipts"
-        sub={etherfi?.status === 'synced' ? `${eventCount} private payment proofs synced` : 'No private payment proofs synced'}
+        sub={
+          etherfi?.status === 'synced'
+            ? `${eventCount} private payment proofs synced`
+            : syncFailed
+              ? 'Payment proof scan failed'
+              : scanning
+                ? 'Scanning payment proof'
+                : 'No private payment proofs synced'
+        }
         left={<div style={{ width: 28 }} />}
         right={<IconBtn>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -1074,8 +1085,8 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
             </div>
             <div style={{
               fontFamily: 'var(--mono)', fontSize: 11,
-              color: etherfi?.status === 'synced' ? 'var(--verified)' : 'var(--ink-muted)',
-            }}>{etherfi?.status === 'synced' ? 'Synced' : 'Idle'}</div>
+              color: sourceStatusColor,
+            }}>{sourceStatusLabel}</div>
           </div>
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
@@ -1224,7 +1235,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
                     cursor: scanning ? 'default' : 'pointer',
                     opacity: scanning ? 0.65 : 1,
                   }}
-                >{scanning ? 'SCAN' : 'IMPORT'}</button>
+                >{scanning ? 'SCANNING' : 'IMPORT'}</button>
               </div>
               {(importError || etherfi?.error) && (
                 <div style={{
