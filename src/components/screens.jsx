@@ -652,29 +652,28 @@ const FeedScreen = ({ onOpenReview, density, verifyStyle, userReviews = /** @typ
           )}
 
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 7,
             marginBottom: 12,
           }}>
             {[
-              ['Proof', r.proofLevel],
-              ['Visits', `${r.verifiedVisits} verified`],
-              ['Merchant', r.merchantProof || 'C · claimed'],
-            ].map(([k, v]) => (
-              <div key={k} style={{
-                background: 'var(--surface)', border: '0.5px solid var(--rule)',
-                borderRadius: 10, padding: '8px 9px',
-              }}>
-                <div style={{
-                  fontFamily: 'var(--mono)', fontSize: 8.5,
-                  color: 'var(--ink-muted)', textTransform: 'uppercase',
-                  letterSpacing: 0.6,
-                }}>{k}</div>
-                <div style={{
-                  fontFamily: 'var(--mono)', fontSize: 10,
-                  color: 'var(--ink)', marginTop: 3,
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>{v}</div>
-              </div>
+              ['Verified payment', 'var(--verified-soft)', 'var(--verified)'],
+              ['Merchant claimed', 'var(--surface)', 'var(--ink-muted)'],
+            ].map(([label, bg, color]) => (
+              <span key={label} style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                border: '0.5px solid var(--rule)',
+                borderRadius: 999,
+                padding: '6px 9px',
+                background: bg,
+                color,
+                fontFamily: 'var(--mono)',
+                fontSize: 10,
+                fontWeight: 700,
+                whiteSpace: 'nowrap',
+              }}>{label}</span>
             ))}
           </div>
 
