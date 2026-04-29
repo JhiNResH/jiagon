@@ -2375,7 +2375,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
       {[
         ['OP events', eventCount],
         ['Private', pendingCount],
-        ['BNB creds', credentialCount],
+        ['BNB proofs', credentialCount],
         ].map(([k, v]) => (
           <div key={k} style={{
             background: 'var(--bg)', border: '0.5px solid var(--rule)',
@@ -2404,9 +2404,9 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
       display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
     }}>
       {[
-        ['Rep', repScore],
+        ['Signal score', repScore],
         ['Reviews', userReviews.length],
-        ['Credentials', credentialCount],
+        ['Proofs', credentialCount],
       ].map(([k, v], i) => (
         <div key={k} style={{
           textAlign: 'center',
@@ -2431,7 +2431,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
       display: 'flex', gap: 24, padding: '24px 24px 12px',
       borderBottom: '0.5px solid var(--rule)', marginBottom: 4,
     }}>
-      {['Reviews', 'Credentials'].map((t, i) => (
+      {['Reviews', 'Proofs'].map((t, i) => (
         <div key={t} style={{
           fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600,
           color: i === 0 ? 'var(--ink)' : 'var(--ink-muted)',
@@ -2455,7 +2455,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
           textTransform: 'uppercase',
           letterSpacing: 0.8,
           marginBottom: 9,
-        }}>Receipt credentials</div>
+        }}>Receipt proofs</div>
         {credentialEntries.map(credential => {
           const mismatch = credential.dataMatchesRequest === false;
           const minted = credential.status === 'minted';
