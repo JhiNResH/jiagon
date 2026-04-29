@@ -758,7 +758,7 @@ const TasteMemoryPanel = ({ synced, eventCount, totalSpend, unclaimedCount, revi
     ? unclaimedCount > 0
       ? `${eventCount} payment proofs ready. Claim merchants to unlock place-level recommendations.`
       : `${eventCount} verified taste signals ready for agent recommendations.`
-    : 'Import one ether.fi spend tx to build a private taste graph from real payments.';
+    : 'Import one supported card spend tx to build a private taste graph from real payments.';
   const nextAction = synced
     ? unclaimedCount > 0
       ? `Claim ${Math.min(unclaimedCount, 3)} receipts`
@@ -982,7 +982,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
         title="Receipts"
-        sub={etherfi?.status === 'synced' ? `${eventCount} private OP spends synced` : 'No private OP spends synced'}
+        sub={etherfi?.status === 'synced' ? `${eventCount} private payment proofs synced` : 'No private payment proofs synced'}
         left={<div style={{ width: 28 }} />}
         right={<IconBtn>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -1023,13 +1023,13 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
             }}>e</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
-                ether.fi Cash safe
+                Receipt source
               </div>
               <div style={{
                 fontFamily: 'var(--mono)', fontSize: 10,
                 color: 'var(--ink-muted)', marginTop: 3,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>{safeLabel} · {lastSync}</div>
+              }}>{etherfi?.status === 'synced' ? `ether.fi Cash · Optimism · ${safeLabel}` : `${safeLabel} · ${lastSync}`}</div>
             </div>
             <div style={{
               fontFamily: 'var(--mono)', fontSize: 11,
@@ -1041,7 +1041,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
             gap: 8, marginTop: 14,
           }}>
             {[
-              ['Spends', eventCount],
+              ['Proofs', eventCount],
               ['Pending', unclaimed.length],
               ['Volume', totalSpend],
             ].map(([k, v]) => (
@@ -1075,7 +1075,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
               border: '0.5px solid var(--rule)',
               borderRadius: 999,
               padding: '5px 8px',
-            }}>OP source proof</span>
+            }}>Optimism payment proof</span>
             <span style={{
               fontFamily: 'var(--mono)',
               fontSize: 9.5,
