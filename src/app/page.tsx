@@ -152,6 +152,8 @@ type EtherfiSyncState = {
   error?: string;
 };
 
+type EtherfiSpendPayload = Omit<EtherfiSyncState, "status" | "scannedAt" | "error">;
+
 type ReceiptCredential = {
   receiptId: string;
   reviewId: string;
@@ -264,6 +266,44 @@ function mergeReviews(current: any[], incoming: any[]) {
   return Array.from(byId.values());
 }
 
+function readStoredJson(key: string) {
+  try {
+    const stored = window.localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    window.localStorage.removeItem(key);
+    return null;
+  }
+}
+
+function hydrateLocalPrivateState(
+  setEtherfiSyncState: (state: EtherfiSyncState) => void,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setReviewsState: (reviews: any[]) => void,
+  setReviewedIdsState: (ids: string[]) => void,
+  setCredentialsState: (credentials: Record<string, ReceiptCredential>) => void,
+) {
+  const storedEtherfiSync = readStoredJson(etherfiStorageKey);
+  if (storedEtherfiSync && typeof storedEtherfiSync === "object" && storedEtherfiSync.status) {
+    setEtherfiSyncState(storedEtherfiSync as EtherfiSyncState);
+  }
+
+  const storedReviews = readStoredJson(reviewsStorageKey);
+  if (Array.isArray(storedReviews)) setReviewsState(storedReviews);
+
+  const storedReviewedReceiptIds = readStoredJson(reviewedReceiptsStorageKey);
+  if (Array.isArray(storedReviewedReceiptIds)) setReviewedIdsState(storedReviewedReceiptIds);
+
+  const storedReceiptCredentials = readStoredJson(receiptCredentialsStorageKey);
+  if (
+    storedReceiptCredentials &&
+    typeof storedReceiptCredentials === "object" &&
+    !Array.isArray(storedReceiptCredentials)
+  ) {
+    setCredentialsState(storedReceiptCredentials as Record<string, ReceiptCredential>);
+  }
+}
+
 function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>("inbox");
@@ -285,6 +325,8 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [accountStateReady, setAccountStateReady] = useState(false);
   const [accountStateUpdatedAt, setAccountStateUpdatedAt] = useState<string | null>(null);
   const privyUserIdRef = useRef<string | null>(null);
+  const localHydratedUserRef = useRef<string | null>(null);
+  const etherfiScanKeyRef = useRef<string | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -315,6 +357,8 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const hasPrivyAppId = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
 
   const clearAccountScopedState = () => {
+    etherfiScanKeyRef.current = null;
+    localHydratedUserRef.current = null;
     setEtherfiSync(emptyEtherfiSync);
     setPublishedReviews([]);
     setReviewedReceiptIds([]);
@@ -332,21 +376,26 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     const privyUserId = typedUser?.id || null;
     const previousPrivyUserId = privyUserIdRef.current;
     const storedPrivyUserId = window.localStorage.getItem(accountUserStorageKey);
+    const accountChanged = Boolean(
+      (privyUserId && storedPrivyUserId !== privyUserId) ||
+      (privyUserId && previousPrivyUserId && privyUserId !== previousPrivyUserId),
+    );
 
-    if (privyUserId && storedPrivyUserId !== privyUserId) {
-      clearAccountScopedState();
-      setAccountStateReady(false);
-      setAccountStateUpdatedAt(null);
-    }
-
-    if (privyUserId && previousPrivyUserId && privyUserId !== previousPrivyUserId) {
+    if (accountChanged) {
       clearAccountScopedState();
       setAccountStateReady(false);
       setAccountStateUpdatedAt(null);
     }
 
     privyUserIdRef.current = privyUserId;
-    if (privyUserId) window.localStorage.setItem(accountUserStorageKey, privyUserId);
+    if (privyUserId) {
+      if (!accountChanged && storedPrivyUserId === privyUserId && localHydratedUserRef.current !== privyUserId) {
+        hydrateLocalPrivateState(setEtherfiSync, setPublishedReviews, setReviewedReceiptIds, setReceiptCredentials);
+        localHydratedUserRef.current = privyUserId;
+      }
+
+      window.localStorage.setItem(accountUserStorageKey, privyUserId);
+    }
 
     const walletAddress = getPrimaryWallet(privy.user);
     const session: StoredSession = {
@@ -389,7 +438,6 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       const state = payload?.state;
 
       if (!state) {
-        clearAccountScopedState();
         setAccountStateUpdatedAt(payload?.updatedAt || null);
         setAccountStateReady(true);
         return;
@@ -561,58 +609,11 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     const nextProof = proof.trim();
     const isTx = /^0x[a-fA-F0-9]{64}$/.test(nextProof);
     const queryKey = isTx ? "tx" : "safe";
+    const scanKey = `${queryKey}:${nextProof}:${Date.now()}`;
+    etherfiScanKeyRef.current = scanKey;
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 30_000);
-
-    setEtherfiSync((current) => ({
-      ...current,
-      safe: isTx ? current.safe : nextProof,
-      sourceTx: isTx ? nextProof : current.sourceTx,
-      status: "scanning",
-      error: undefined,
-    }));
-
-    let payload;
-
-    try {
-      const response = await fetch(`/api/etherfi/spends?${queryKey}=${encodeURIComponent(nextProof)}&limit=100&scope=full`, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      payload = await response.json();
-
-      if (!response.ok) {
-        const message = payload?.error || "Unable to scan ether.fi Cash spend events.";
-        setEtherfiSync((current) => ({
-          ...current,
-          safe: isTx ? current.safe : nextProof,
-          sourceTx: isTx ? nextProof : current.sourceTx,
-          status: "error",
-          error: message,
-        }));
-        throw new Error(message);
-      }
-    } catch (error) {
-      const message =
-        error instanceof DOMException && error.name === "AbortError"
-          ? "Receipt scan timed out. Try again or add a smaller block window later."
-          : error instanceof Error
-            ? error.message
-            : "Unable to scan ether.fi Cash spend events.";
-
-      setEtherfiSync((current) => ({
-        ...current,
-        safe: isTx ? current.safe : nextProof,
-        sourceTx: isTx ? nextProof : current.sourceTx,
-        status: "error",
-        error: message,
-      }));
-      throw new Error(message);
-    } finally {
-      window.clearTimeout(timeout);
-    }
-
-    const nextSync: EtherfiSyncState = {
+    const toSyncState = (payload: EtherfiSpendPayload): EtherfiSyncState => ({
       safe: payload.safe,
       sourceTx: payload.sourceTx,
       sourceTxBlock: payload.sourceTxBlock,
@@ -625,10 +626,84 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       fromBlock: payload.fromBlock,
       toBlock: payload.toBlock,
       scannedAt: new Date().toISOString(),
-    };
+    });
+
+    setEtherfiSync((current) => ({
+      ...current,
+      safe: isTx ? current.safe : nextProof,
+      sourceTx: isTx ? nextProof : current.sourceTx,
+      status: "scanning",
+      error: undefined,
+    }));
+
+    let payload;
+
+    try {
+      const initialScope = isTx ? "source" : "full";
+      const initialLimit = isTx ? 20 : 100;
+      const response = await fetch(`/api/etherfi/spends?${queryKey}=${encodeURIComponent(nextProof)}&limit=${initialLimit}&scope=${initialScope}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      payload = await response.json();
+
+      if (!response.ok) {
+        const message = payload?.error || "Unable to scan ether.fi Cash spend events.";
+        if (etherfiScanKeyRef.current === scanKey) {
+          setEtherfiSync((current) => ({
+            ...current,
+            safe: isTx ? current.safe : nextProof,
+            sourceTx: isTx ? nextProof : current.sourceTx,
+            status: "error",
+            error: message,
+          }));
+        }
+        throw new Error(message);
+      }
+    } catch (error) {
+      const message =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "Receipt scan timed out. Try again or add a smaller block window later."
+          : error instanceof Error
+            ? error.message
+            : "Unable to scan ether.fi Cash spend events.";
+
+      if (etherfiScanKeyRef.current === scanKey) {
+        setEtherfiSync((current) => ({
+          ...current,
+          safe: isTx ? current.safe : nextProof,
+          sourceTx: isTx ? nextProof : current.sourceTx,
+          status: "error",
+          error: message,
+        }));
+      }
+      throw new Error(message);
+    } finally {
+      window.clearTimeout(timeout);
+    }
+
+    const nextSync = toSyncState(payload);
+
+    if (etherfiScanKeyRef.current !== scanKey) return nextSync;
 
     setEtherfiSync(nextSync);
     window.localStorage.setItem(etherfiStorageKey, JSON.stringify(nextSync));
+
+    if (isTx) {
+      fetch(`/api/etherfi/spends?${queryKey}=${encodeURIComponent(nextProof)}&limit=100&scope=full`, {
+        cache: "no-store",
+      })
+        .then(async (response) => {
+          const fullPayload = await response.json();
+          if (!response.ok) return;
+          if (etherfiScanKeyRef.current !== scanKey) return;
+          const fullSync = toSyncState(fullPayload);
+          setEtherfiSync(fullSync);
+          window.localStorage.setItem(etherfiStorageKey, JSON.stringify(fullSync));
+        })
+        .catch(() => undefined);
+    }
+
     return nextSync;
   };
 

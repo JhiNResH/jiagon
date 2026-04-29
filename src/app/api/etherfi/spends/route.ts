@@ -245,11 +245,12 @@ export async function GET(request: Request) {
   try {
     let safe = requestedSafe;
     let sourceTxBlock: number | undefined;
+    let sourceReceipt: RpcReceipt | undefined;
 
     if (!safe && tx) {
-      const receipt = await rpcCall<RpcReceipt>("eth_getTransactionReceipt", [tx]);
-      safe = getSafeFromSpendReceipt(receipt);
-      sourceTxBlock = receipt.blockNumber ? Number.parseInt(receipt.blockNumber, 16) : undefined;
+      sourceReceipt = await rpcCall<RpcReceipt>("eth_getTransactionReceipt", [tx]);
+      safe = getSafeFromSpendReceipt(sourceReceipt);
+      sourceTxBlock = sourceReceipt.blockNumber ? Number.parseInt(sourceReceipt.blockNumber, 16) : undefined;
     }
 
     if (!safe) {
@@ -261,7 +262,8 @@ export async function GET(request: Request) {
 
     const latestBlockHex = await rpcCall<string>("eth_blockNumber", []);
     const latestBlock = Number.parseInt(latestBlockHex, 16);
-    const scope = searchParams.get("scope") === "full" ? "full" : "recent";
+    const requestedScope = searchParams.get("scope");
+    const scope = requestedScope === "full" ? "full" : requestedScope === "source" ? "source" : "recent";
     const defaultLookback = scope === "full" ? FULL_LOOKBACK_BLOCKS : RECENT_LOOKBACK_BLOCKS;
     const requestedLookback = searchParams.has("lookbackBlocks")
       ? Number(searchParams.get("lookbackBlocks"))
@@ -287,24 +289,38 @@ export async function GET(request: Request) {
 
     const logs: RpcLog[] = [];
     const safeTopic = toTopicAddress(safe);
+
+    if (scope === "source" && tx) {
+      const receipt = sourceReceipt || await rpcCall<RpcReceipt>("eth_getTransactionReceipt", [tx]);
+      const sourceLogs = receipt.logs.filter(
+        (log) =>
+          log.address.toLowerCase() === CASH_EVENT_EMITTER &&
+          log.topics[0]?.toLowerCase() === SPEND_TOPIC &&
+          log.topics[1]?.toLowerCase() === safeTopic,
+      );
+      logs.push(...sourceLogs);
+    }
+
     const ranges = chunkRanges(fromBlock, toBlock);
 
-    for (let index = 0; index < ranges.length; index += LOG_BATCH_SIZE) {
-      const batch = ranges.slice(index, index + LOG_BATCH_SIZE);
-      const chunks = await Promise.all(
-        batch.map((range) =>
-          rpcCall<RpcLog[]>("eth_getLogs", [
-            {
-              address: CASH_EVENT_EMITTER,
-              fromBlock: toHexBlock(range.from),
-              toBlock: toHexBlock(range.to),
-              topics: [SPEND_TOPIC, safeTopic],
-            },
-          ]),
-        ),
-      );
+    if (scope !== "source") {
+      for (let index = 0; index < ranges.length; index += LOG_BATCH_SIZE) {
+        const batch = ranges.slice(index, index + LOG_BATCH_SIZE);
+        const chunks = await Promise.all(
+          batch.map((range) =>
+            rpcCall<RpcLog[]>("eth_getLogs", [
+              {
+                address: CASH_EVENT_EMITTER,
+                fromBlock: toHexBlock(range.from),
+                toBlock: toHexBlock(range.to),
+                topics: [SPEND_TOPIC, safeTopic],
+              },
+            ]),
+          ),
+        );
 
-      logs.push(...chunks.flat());
+        logs.push(...chunks.flat());
+      }
     }
 
     const sortedLogs = logs.sort((a, b) => {
