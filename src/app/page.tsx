@@ -935,17 +935,57 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       }),
     });
 
+  const buildSolanaOwnerLinkMessage = (credential: ReceiptCredential) => [
+    "Jiagon Solana credit mirror",
+    `Source receipt: ${credential.sourceReceiptHash}`,
+    `Solana owner: ${credential.solanaOwner}`,
+  ].join("\n");
+
+  const signSolanaCreditMirror = async (credential: ReceiptCredential) => {
+    const signer = authSession?.walletAddress;
+
+    if (!signer) {
+      throw new Error("Wallet login is required before mirroring credit to Solana.");
+    }
+
+    if (!credential.sourceReceiptHash || !credential.solanaOwner) {
+      throw new Error("A verified receipt hash and Solana owner are required before credit mirroring.");
+    }
+
+    const ethereum = window.ethereum as EthereumProvider | undefined;
+    if (!ethereum) {
+      throw new Error("Wallet signature is required before mirroring credit to Solana.");
+    }
+
+    const signature = await ethereum.request({
+      method: "personal_sign",
+      params: [buildSolanaOwnerLinkMessage(credential), signer],
+    });
+
+    if (typeof signature !== "string") {
+      throw new Error("Wallet did not return a valid Solana mirror signature.");
+    }
+
+    return {
+      signer,
+      signature,
+    };
+  };
+
   const mirrorSolanaCredit = async (credential: ReceiptCredential) => {
     if (!credential.sourceReceiptHash) {
       throw new Error("A verified source receipt hash is required before Solana mirroring.");
     }
 
+    const ownership = await signSolanaCreditMirror(credential);
     const response = await fetch("/api/solana/credit/mirror", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         sourceReceiptHash: credential.sourceReceiptHash,
         solanaOwner: credential.solanaOwner,
+        ownerSigner: ownership.signer,
+        ownerSignature: ownership.signature,
       }),
     });
 
@@ -1000,12 +1040,19 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       onchain: payload.onchain,
     };
 
-    try {
-      credential.solana = await mirrorSolanaCredit(credential);
-    } catch (error) {
+    if (credential.solanaOwner) {
+      try {
+        credential.solana = await mirrorSolanaCredit(credential);
+      } catch (error) {
+        credential.solana = {
+          status: "adapter-error",
+          error: error instanceof Error ? error.message : "Unable to build Solana credit PDA mirror.",
+        };
+      }
+    } else {
       credential.solana = {
-        status: "adapter-error",
-        error: error instanceof Error ? error.message : "Unable to build Solana credit PDA mirror.",
+        status: "solana-owner-required",
+        error: "Connect a Solana wallet before mirroring this receipt into a credit PDA.",
       };
     }
 

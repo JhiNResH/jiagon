@@ -1,5 +1,6 @@
 import { buildSolanaCreditMirror } from "@/lib/solanaCredit";
 import { getVerifiedReceiptReviewBySourceHash } from "@/server/receiptStore";
+import { recoverMessageAddress, type Hex } from "viem";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,31 @@ function cleanSolanaOwner(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function cleanAddress(value: unknown) {
+  if (typeof value !== "string") return null;
+  const address = value.trim().toLowerCase();
+  return /^0x[a-f0-9]{40}$/.test(address) ? address : null;
+}
+
+function cleanSignature(value: unknown): Hex | null {
+  if (typeof value !== "string") return null;
+  return /^0x[a-fA-F0-9]{130}$/.test(value.trim()) ? value.trim() as Hex : null;
+}
+
+function buildSolanaOwnerLinkMessage({
+  sourceReceiptHash,
+  solanaOwner,
+}: {
+  sourceReceiptHash: string;
+  solanaOwner: string;
+}) {
+  return [
+    "Jiagon Solana credit mirror",
+    `Source receipt: ${sourceReceiptHash}`,
+    `Solana owner: ${solanaOwner}`,
+  ].join("\n");
+}
+
 export async function POST(request: Request) {
   if (!request.headers.get("content-type")?.toLowerCase().includes("application/json")) {
     return Response.json({ error: "Solana credit mirror requires a JSON request." }, { status: 415 });
@@ -24,6 +50,8 @@ export async function POST(request: Request) {
       body?.sourceReceiptHash || body?.credential?.sourceReceiptHash,
     );
     const solanaOwner = cleanSolanaOwner(body?.solanaOwner);
+    const ownerSigner = cleanAddress(body?.ownerSigner || body?.ownership?.signer);
+    const ownerSignature = cleanSignature(body?.ownerSignature || body?.ownership?.signature);
     const signingSecret = (process.env.JIAGON_SOLANA_ADAPTER_SECRET || "").trim();
 
     if (!sourceReceiptHash) {
@@ -55,6 +83,19 @@ export async function POST(request: Request) {
     }
 
     const review = stored.review;
+    const expectedSigner = cleanAddress(review.wallet || review.ownerSafe);
+    if (!expectedSigner || !ownerSigner || ownerSigner !== expectedSigner || !ownerSignature) {
+      return Response.json({ error: "Solana mirror ownership verification failed." }, { status: 403 });
+    }
+
+    const recovered = await recoverMessageAddress({
+      message: buildSolanaOwnerLinkMessage({ sourceReceiptHash, solanaOwner }),
+      signature: ownerSignature,
+    });
+    if (recovered.toLowerCase() !== expectedSigner) {
+      return Response.json({ error: "Solana mirror ownership verification failed." }, { status: 403 });
+    }
+
     const mirror = buildSolanaCreditMirror({
       solanaOwner,
       sourceOwner: review.ownerSafe || review.wallet,

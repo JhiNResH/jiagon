@@ -7,7 +7,7 @@ const DEFAULT_SOLANA_RPC_URL = "https://api.devnet.solana.com";
 const DEFAULT_SOLANA_CREDIT_PROGRAM_ID = "J1gUW4ZJwSeff33p5kvMLzPHtNMwCy4D7BAPizQzNGjB";
 const PDA_MARKER = "ProgramDerivedAddress";
 const ED25519_P = (BigInt(1) << BigInt(255)) - BigInt(19);
-const ED25519_D = mod(-BigInt(121665) * modInv(BigInt(121666)));
+let ed25519D: bigint | null = null;
 
 type ReceiptLike = {
   id?: string;
@@ -143,6 +143,11 @@ function modInv(value: bigint) {
   return modPow(value, ED25519_P - BigInt(2));
 }
 
+function getEd25519D() {
+  ed25519D = ed25519D ?? mod(-BigInt(121665) * modInv(BigInt(121666)));
+  return ed25519D;
+}
+
 function littleEndianToBigInt(bytes: Buffer) {
   let value = BigInt(0);
   for (let index = bytes.length - 1; index >= 0; index -= 1) {
@@ -159,7 +164,7 @@ function isEd25519Point(bytes: Buffer) {
 
   const y2 = mod(y * y);
   const numerator = mod(y2 - BigInt(1));
-  const denominator = mod(ED25519_D * y2 + BigInt(1));
+  const denominator = mod(getEd25519D() * y2 + BigInt(1));
   if (denominator === BigInt(0)) return false;
 
   const x2 = mod(numerator * modInv(denominator));
@@ -286,8 +291,10 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
   const config = solanaCreditConfig();
   const now = new Date().toISOString();
   const receiptCount = credential.status === "minted" || credential.status === "prepared" ? 1 : 0;
-  const score = Math.min(100, receiptCount * 42 + Math.min(28, Math.floor(amountUsd)));
-  const creditLimitUsd = receiptCount > 0 ? 50 : 0;
+  const spendCents = Math.floor(amountUsd * 100);
+  const score = Math.min(100, receiptCount * 28 + Math.min(44, Math.floor(spendCents / 100)));
+  const creditLimitCents = score >= 70 ? 10_000 : score >= 35 ? 5_000 : score > 0 ? 2_500 : 0;
+  const creditLimitUsd = creditLimitCents / 100;
 
   const mirror = {
     version: "jiagon-solana-credit-v0",

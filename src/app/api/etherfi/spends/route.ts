@@ -102,30 +102,23 @@ const spendDedupKey = (log: RpcLog) =>
 const isSafeIndexedWalletLog = (log: RpcLog, safe: string) =>
   wordToAddress(log.topics[2])?.toLowerCase() === safe.toLowerCase();
 
-const shouldPreferSpendLog = (candidate: RpcLog, current: RpcLog, safe: string) => {
-  const candidateIsSafe = isSafeIndexedWalletLog(candidate, safe);
-  const currentIsSafe = isSafeIndexedWalletLog(current, safe);
-
-  if (candidateIsSafe !== currentIsSafe) return candidateIsSafe;
-
-  return Number.parseInt(candidate.logIndex, 16) < Number.parseInt(current.logIndex, 16);
-};
-
 const dedupeSpendLogs = (logs: RpcLog[], safe: string) => {
   const groups = new Map<string, RpcLog[]>();
 
   for (const log of logs) {
     const key = spendDedupKey(log);
-    groups.set(key, [...(groups.get(key) || []), log]);
+    const group = groups.get(key);
+    if (group) {
+      group.push(log);
+    } else {
+      groups.set(key, [log]);
+    }
   }
 
   const dedupedLogs = Array.from(groups.values()).flatMap((group) => {
-    if (
-      group.length === 2 &&
-      isSafeIndexedWalletLog(group[0], safe) !== isSafeIndexedWalletLog(group[1], safe)
-    ) {
-      return [shouldPreferSpendLog(group[0], group[1], safe) ? group[0] : group[1]];
-    }
+    const safeIndexedLogs = group.filter((log) => isSafeIndexedWalletLog(log, safe));
+    const hasMirroredIndexes = safeIndexedLogs.length > 0 && safeIndexedLogs.length < group.length;
+    if (hasMirroredIndexes) return safeIndexedLogs;
 
     return group;
   });

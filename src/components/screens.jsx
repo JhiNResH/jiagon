@@ -2708,7 +2708,10 @@ const CreditScreen = ({
   const mintedCredentials = credentials.filter(credential => credential?.status === 'minted');
   const preparedCredentials = credentials.filter(credential => credential && credential?.status !== 'minted');
   const solanaMirrors = credentials.map(credential => credential?.solana).filter(Boolean);
-  const activeSolana = solanaMirrors[0];
+  const activeSolana =
+    [...solanaMirrors].reverse().find(mirror => mirror?.pda?.creditState) ||
+    solanaMirrors[solanaMirrors.length - 1] ||
+    null;
   const scannedReceipts = etherfi?.receipts?.length || 0;
   const reviewedReceipts = reviewedReceiptIds.length || userReviews.filter(hasReviewProof).length;
   const verifiedSignals = Math.max(mintedCredentials.length, reviewedReceipts);
@@ -2716,9 +2719,9 @@ const CreditScreen = ({
   const creditUnlocked = Boolean(activeSolana?.creditState?.unlocked) || verifiedSignals > 0 || mintedCredentials.length > 0;
   const drawn = drawState === 'drawn' || drawState === 'repaid';
   const repaid = drawState === 'repaid';
-  const baseCredit = activeSolana?.creditState?.availableCreditUsd || 50;
+  const baseCredit = activeSolana?.creditState?.availableCreditUsd ?? 50;
   const availableCredit = creditUnlocked ? (drawn && !repaid ? Math.max(0, baseCredit - 20) : baseCredit) : 0;
-  const score = activeSolana?.creditState?.score || Math.min(100, verifiedSignals * 28 + scannedReceipts * 8 + (repaid ? 24 : 0));
+  const score = activeSolana?.creditState?.score ?? Math.min(100, verifiedSignals * 28 + scannedReceipts * 8 + (repaid ? 24 : 0));
   const shortValue = (value) => value ? `${String(value).slice(0, 6)}…${String(value).slice(-4)}` : 'not prepared';
   const passportRows = [
     ['Wallet', auth?.walletLabel || auth?.userLabel || 'Not connected'],
