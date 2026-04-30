@@ -811,6 +811,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       privyUserIdRef.current = null;
     },
   };
+  const navAuthReady = hasPrivyAppId ? Boolean(privy?.ready) : true;
 
   const scanEtherfiProof = async (proof: string) => {
     const nextProof = proof.trim();
@@ -1339,7 +1340,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
               onConnect={() => {
                 auth.login();
               }}
-              authReady={auth.ready}
+              authReady={navAuthReady}
               authenticated={auth.authenticated}
               receiptCount={etherfi.receipts?.length || 0}
               credentialCount={credentialCount}
