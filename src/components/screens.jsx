@@ -2704,6 +2704,7 @@ const CreditScreen = ({
   onScan,
 }) => {
   const [drawState, setDrawState] = _useState('idle');
+  const [authError, setAuthError] = _useState('');
   const credentials = Object.values(receiptCredentials || {});
   const mintedCredentials = credentials.filter(credential => credential?.status === 'minted');
   const preparedCredentials = credentials.filter(credential => credential && credential?.status !== 'minted');
@@ -2712,6 +2713,10 @@ const CreditScreen = ({
     [...solanaMirrors].reverse().find(mirror => mirror?.pda?.creditState) ||
     solanaMirrors[solanaMirrors.length - 1] ||
     null;
+  const ready = auth?.ready ?? true;
+  const authenticated = auth?.authenticated ?? false;
+  const login = auth?.login;
+  const accountLabel = auth?.walletLabel || auth?.userLabel;
   const scannedReceipts = etherfi?.receipts?.length || 0;
   const reviewedReceipts = reviewedReceiptIds.length || userReviews.filter(hasReviewProof).length;
   const verifiedSignals = Math.max(mintedCredentials.length, reviewedReceipts);
@@ -2732,12 +2737,57 @@ const CreditScreen = ({
     ['Credit state', creditUnlocked ? (repaid ? 'Starter+' : activeSolana?.creditState?.status || 'Starter') : 'Locked'],
   ];
 
+  const handleCreditAction = async () => {
+    setAuthError('');
+
+    if (!authenticated) {
+      try {
+        await login?.();
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : 'Privy login was cancelled.');
+      }
+      return;
+    }
+
+    onScan?.();
+  };
+
   return (
     <div className="jiagon-credit-screen" style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
         title="Credit"
         sub={creditUnlocked ? 'Purpose-bound credit unlocked by receipts' : 'Scan a receipt proof to unlock credit'}
         left={<div style={{ width: 28 }} />}
+        right={authenticated ? (
+          <span style={{
+            border: '0.5px solid var(--rule)',
+            background: 'var(--surface)',
+            color: 'var(--verified)',
+            borderRadius: 999,
+            padding: '7px 10px',
+            fontFamily: 'var(--mono)',
+            fontSize: 10,
+            fontWeight: 700,
+            maxWidth: 116,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>{accountLabel || 'Wallet'}</span>
+        ) : (
+          <button onClick={handleCreditAction} disabled={!ready} style={{
+            border: '0.5px solid var(--rule)',
+            background: 'var(--ink)',
+            color: 'var(--bg)',
+            borderRadius: 999,
+            padding: '8px 11px',
+            fontFamily: 'var(--mono)',
+            fontSize: 10,
+            fontWeight: 800,
+            cursor: ready ? 'pointer' : 'default',
+            opacity: ready ? 1 : 0.55,
+            whiteSpace: 'nowrap',
+          }}>{ready ? 'Login' : 'Loading'}</button>
+        )}
       />
 
       <div className="jiagon-credit-panel-wrap jiagon-credit-passport-wrap" style={{ padding: '0 18px 14px' }}>
@@ -2886,14 +2936,29 @@ const CreditScreen = ({
               Next action
             </div>
             <div style={{ fontFamily: 'var(--display)', fontStyle: 'italic', fontSize: 26, lineHeight: 1.05, color: 'var(--ink)', marginTop: 8 }}>
-              {hasReceiptInput ? 'Claim a receipt.' : 'Scan a spend tx.'}
+              {!authenticated ? 'Connect wallet.' : hasReceiptInput ? 'Claim a receipt.' : 'Scan a spend tx.'}
             </div>
             <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-muted)', margin: '8px 0 14px' }}>
-              {hasReceiptInput
+              {!authenticated
+                ? 'Use Privy to connect the wallet that owns the card spend. Jiagon needs this session to sign receipt and Solana mirror proofs.'
+                : hasReceiptInput
                 ? 'A payment proof exists. Add merchant context and mint the receipt credential to make it usable for underwriting.'
                 : 'Paste an ether.fi Cash spend transaction in Receipts. Jiagon turns the verified payment into private credit input.'}
             </p>
-            <button onClick={onScan} style={{
+            {authError && (
+              <div style={{
+                background: 'var(--accent-soft)',
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                color: 'var(--accent)',
+                fontFamily: 'var(--mono)',
+                fontSize: 10,
+                lineHeight: 1.45,
+                padding: '9px 10px',
+                marginBottom: 10,
+              }}>{authError}</div>
+            )}
+            <button onClick={handleCreditAction} disabled={!ready} style={{
               width: '100%',
               border: 'none',
               borderRadius: 999,
@@ -2903,8 +2968,9 @@ const CreditScreen = ({
               fontFamily: 'var(--ui)',
               fontSize: 15,
               fontWeight: 800,
-              cursor: 'pointer',
-            }}>{hasReceiptInput ? 'Open receipts' : 'Scan tx'}</button>
+              cursor: ready ? 'pointer' : 'default',
+              opacity: ready ? 1 : 0.6,
+            }}>{!authenticated ? 'Continue with Privy' : hasReceiptInput ? 'Open receipts' : 'Scan tx'}</button>
           </div>
         </div>
       )}
