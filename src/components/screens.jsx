@@ -442,7 +442,7 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
               }} />
               Starting receipt sync…
             </>
-          ) : authenticated ? 'Import from spend tx' : 'Connect wallet'}
+          ) : authenticated ? 'Import from spend tx' : 'Log in / Sign up with Privy'}
         </button>
         <button onClick={onDone} style={{
           width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
@@ -1208,7 +1208,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
                 fontSize: 9.5,
                 color: 'var(--ink-muted)',
                 marginTop: 3,
-              }}>{authenticated ? 'Refresh private credit inputs' : 'Privy required'}</div>
+              }}>{authenticated ? 'Refresh private credit inputs' : 'Log in to sync private receipts'}</div>
             </div>
             {!authenticated && (
               <button
@@ -1226,7 +1226,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
                   cursor: ready ? 'pointer' : 'default',
                   opacity: ready ? 1 : 0.6,
                 }}
-              >LOGIN</button>
+              >LOG IN</button>
             )}
           </div>
 
@@ -2400,7 +2400,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
           padding: '7px 11px', fontFamily: 'var(--mono)',
           fontSize: 10, cursor: ready ? 'pointer' : 'default',
           opacity: ready ? 1 : 0.55,
-        }}>Connect wallet</button>
+        }}>{ready ? 'Log in' : 'Loading'}</button>
       )}
     />
 
@@ -2447,7 +2447,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
             fontFamily: 'var(--mono)', fontSize: 10,
             color: 'var(--ink-muted)', marginTop: 3,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{authenticated ? safeLabel : 'Privy required for private receipt state'}</div>
+          }}>{authenticated ? safeLabel : 'Log in to keep receipt state private'}</div>
         </div>
       </div>
       <div style={{
@@ -2916,7 +2916,7 @@ const CreditScreen = ({
             cursor: ready ? 'pointer' : 'default',
             opacity: ready ? 1 : 0.55,
             whiteSpace: 'nowrap',
-          }}>{ready ? 'Connect wallet' : 'Loading'}</button>
+          }}>{ready ? 'Log in' : 'Loading'}</button>
         )}
       />
 
@@ -3066,11 +3066,11 @@ const CreditScreen = ({
               Next action
             </div>
             <div style={{ fontFamily: 'var(--display)', fontStyle: 'italic', fontSize: 26, lineHeight: 1.05, color: 'var(--ink)', marginTop: 8 }}>
-              {!authenticated ? 'Connect wallet.' : hasReceiptInput ? 'Claim a receipt.' : 'Scan a spend tx.'}
+              {!authenticated ? 'Log in or sign up.' : hasReceiptInput ? 'Claim a receipt.' : 'Scan a spend tx.'}
             </div>
             <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-muted)', margin: '8px 0 14px' }}>
               {!authenticated
-                ? 'Use Privy to connect the wallet that owns the card spend. Jiagon needs this session to sign receipt and Solana mirror proofs.'
+                ? 'Use Privy to start a session for the wallet that owns the card spend. Jiagon needs this session to sign receipt and Solana mirror proofs.'
                 : hasReceiptInput
                 ? 'A payment proof exists. Add merchant context and mint the receipt credential to make it usable for underwriting.'
                 : 'Paste an ether.fi Cash spend transaction in Receipts. Jiagon turns the verified payment into private credit input.'}
@@ -3100,7 +3100,7 @@ const CreditScreen = ({
               fontWeight: 800,
               cursor: ready ? 'pointer' : 'default',
               opacity: ready ? 1 : 0.6,
-            }}>{!authenticated ? 'Connect wallet' : hasReceiptInput ? 'Open receipts' : 'Scan tx'}</button>
+            }}>{!authenticated ? 'Log in to unlock credit' : hasReceiptInput ? 'Open receipts' : 'Scan tx'}</button>
           </div>
         </div>
       )}
