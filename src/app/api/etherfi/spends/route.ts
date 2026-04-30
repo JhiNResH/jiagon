@@ -91,6 +91,45 @@ const wordToAddress = (word?: string) => {
   return `0x${word.slice(-40)}`;
 };
 
+const spendAmountAtomic = (log: RpcLog) => {
+  const [amount] = dataWords(log.data);
+  return parseWord(amount);
+};
+
+const spendDedupKey = (log: RpcLog) =>
+  `${log.transactionHash.toLowerCase()}:${spendAmountAtomic(log).toString()}`;
+
+const isSafeIndexedWalletLog = (log: RpcLog, safe: string) =>
+  wordToAddress(log.topics[2])?.toLowerCase() === safe.toLowerCase();
+
+const shouldPreferSpendLog = (candidate: RpcLog, current: RpcLog, safe: string) => {
+  const candidateIsSafe = isSafeIndexedWalletLog(candidate, safe);
+  const currentIsSafe = isSafeIndexedWalletLog(current, safe);
+
+  if (candidateIsSafe !== currentIsSafe) return candidateIsSafe;
+
+  return Number.parseInt(candidate.logIndex, 16) < Number.parseInt(current.logIndex, 16);
+};
+
+const dedupeSpendLogs = (logs: RpcLog[], safe: string) => {
+  const bySpend = new Map<string, RpcLog>();
+
+  for (const log of logs) {
+    const key = spendDedupKey(log);
+    const current = bySpend.get(key);
+
+    if (!current || shouldPreferSpendLog(log, current, safe)) {
+      bySpend.set(key, log);
+    }
+  }
+
+  return Array.from(bySpend.values()).sort((a, b) => {
+    const blockDiff = Number.parseInt(b.blockNumber, 16) - Number.parseInt(a.blockNumber, 16);
+    if (blockDiff !== 0) return blockDiff;
+    return Number.parseInt(b.logIndex, 16) - Number.parseInt(a.logIndex, 16);
+  });
+};
+
 const getSafeFromSpendReceipt = (receipt: RpcReceipt) => {
   const spendLog = receipt.logs.find(
     (log) =>
@@ -328,9 +367,10 @@ export async function GET(request: Request) {
       if (blockDiff !== 0) return blockDiff;
       return Number.parseInt(b.logIndex, 16) - Number.parseInt(a.logIndex, 16);
     });
-    // A single OP transaction can emit multiple ether.fi Cash Spend events.
-    // Each log is a separate receipt proof, so keep log-level granularity.
-    const paymentLogs = sortedLogs;
+    // A single ether.fi Cash transaction can mirror the same spend under both
+    // the Safe/account and card wallet indexes. Underwriting should count the
+    // spend once, not once per emitted log.
+    const paymentLogs = dedupeSpendLogs(sortedLogs, safe);
 
     const visibleLogs = paymentLogs.slice(0, limit);
     const blockNumbers = [...new Set(visibleLogs.map((log) => log.blockNumber))];
@@ -344,8 +384,10 @@ export async function GET(request: Request) {
       blocks.map((block) => [block.number.toLowerCase(), Number.parseInt(block.timestamp, 16)]),
     );
     const totalSpendAtomic = paymentLogs.reduce((total, log) => {
-      const [amount] = dataWords(log.data);
-      return total + parseWord(amount);
+      return total + spendAmountAtomic(log);
+    }, BigInt(0));
+    const rawTotalSpendAtomic = sortedLogs.reduce((total, log) => {
+      return total + spendAmountAtomic(log);
     }, BigInt(0));
 
     const receipts = visibleLogs.map((log) => {
@@ -392,6 +434,8 @@ export async function GET(request: Request) {
       rawEventCount: sortedLogs.length,
       returned: receipts.length,
       totalSpendUsd: formatUsd(totalSpendAtomic),
+      rawTotalSpendUsd: formatUsd(rawTotalSpendAtomic),
+      dedupeStrategy: "transactionHash+amountAtomic; prefer safe-indexed wallet log",
       receipts,
     });
   } catch (error) {

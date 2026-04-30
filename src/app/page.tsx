@@ -2,11 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { PrivyProvider, usePrivy, type PrivyClientConfig } from "@privy-io/react-auth";
-import { IOSDevice } from "@/components/IOSFrame";
-import { TabBar } from "@/components/AppData";
 import {
   OnboardingScreen, FeedScreen, InboxScreen, WriteReviewScreen,
-  ReviewDetailScreen, ProfileScreen,
+  ReviewDetailScreen, ProfileScreen, CreditScreen,
 } from "@/components/screens";
 import { buildReceiptPublishMessage } from "@/lib/receiptPublish";
 
@@ -14,7 +12,7 @@ type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
 
-type Tab = "feed" | "inbox" | "profile";
+type Tab = "feed" | "inbox" | "credit" | "profile";
 type VerifyStyle = "chip" | "stamp";
 type Density = "compact" | "comfy";
 
@@ -186,6 +184,8 @@ type ReceiptCredential = {
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onchain?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  solana?: any;
 };
 
 const emptyEtherfiSync: EtherfiSyncState = {
@@ -349,15 +349,109 @@ function hydrateLocalPrivateState(
   }
 }
 
+function initialTabFromPath(): Tab {
+  if (typeof window === "undefined") return "inbox";
+  if (window.location.pathname === "/credit") return "credit";
+  return "inbox";
+}
+
+const webTabs: Array<{ id: Tab; label: string; sub: string }> = [
+  { id: "inbox", label: "Receipts", sub: "Scan tx and claim proof" },
+  { id: "credit", label: "Credit", sub: "Passport and draw" },
+  { id: "feed", label: "Taste", sub: "Published proof feed" },
+  { id: "profile", label: "Profile", sub: "Wallet and reputation" },
+];
+
+const webShellStyles = `
+.jiagon-web-shell{min-height:100vh;display:grid;grid-template-columns:300px minmax(0,1fr);background:radial-gradient(circle at 10% 0%,oklch(0.98 0.008 105) 0 280px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink)}.jiagon-web-sidebar{min-height:100vh;padding:26px 18px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .74);backdrop-filter:blur(18px);display:flex;flex-direction:column;gap:18px}.jiagon-web-brand{display:flex;align-items:center;gap:13px;padding:4px 4px 12px}.jiagon-web-mark{width:54px;height:54px;border:3px solid var(--verified);border-radius:9px;background:var(--receipt);color:var(--verified);display:grid;place-items:center;position:relative;flex:0 0 auto;box-shadow:0 10px 24px rgba(24,58,38,.10)}.jiagon-web-mark span{font-family:Georgia,'Times New Roman',serif;font-size:36px;font-weight:700;line-height:1;transform:translateY(-2px)}.jiagon-web-mark i{position:absolute;left:9px;right:18px;bottom:8px;border-bottom:2px dotted var(--verified)}.jiagon-web-mark b{position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:999px;background:var(--ink);color:var(--receipt);display:grid;place-items:center;font-family:var(--ui);font-size:10px}.jiagon-web-wordmark{font-family:var(--display);font-size:36px;line-height:.9;color:var(--verified)}.jiagon-web-kicker{font-family:var(--mono);font-size:10px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:1px}.jiagon-web-primary{min-height:46px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-family:var(--ui);font-size:14px;font-weight:800;cursor:pointer}.jiagon-web-nav{display:grid;gap:7px}.jiagon-web-nav-item{text-align:left;border:.5px solid transparent;border-radius:10px;background:transparent;color:var(--ink);padding:12px;cursor:pointer}.jiagon-web-nav-item:hover,.jiagon-web-nav-item[data-active="true"]{border-color:var(--rule);background:var(--receipt);box-shadow:0 1px 0 rgba(24,24,24,.04)}.jiagon-web-nav-item span{display:block;font-family:var(--ui);font-size:14px;font-weight:800}.jiagon-web-nav-item small{display:block;margin-top:3px;font-family:var(--mono);font-size:9.5px;line-height:1.3;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.55px}.jiagon-web-status{margin-top:auto;border:.5px solid var(--rule);border-radius:12px;background:var(--receipt);padding:14px}.jiagon-web-status-grid{display:grid;grid-template-columns:1fr;gap:7px;margin-top:10px}.jiagon-web-status-grid div{display:flex;justify-content:space-between;gap:12px;font-family:var(--mono);font-size:10.5px;padding:6px 0;border-bottom:.5px dashed var(--rule)}.jiagon-web-status-grid span{color:var(--ink-muted)}.jiagon-web-status-grid strong{color:var(--ink)}.jiagon-web-status p{margin:10px 0 0;color:var(--ink-muted);font-size:12.5px;line-height:1.45}.jiagon-web-main{min-width:0;min-height:100vh;padding:28px clamp(22px,4vw,56px);position:relative}.jiagon-web-top{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:18px}.jiagon-web-top h1{margin:5px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(42px,5vw,70px);line-height:.92;color:var(--ink)}.jiagon-web-proofline{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.jiagon-web-proofline span{border:.5px solid var(--rule);border-radius:999px;background:var(--receipt);color:var(--ink-muted);padding:7px 10px;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.65px}.jiagon-web-workspace{min-height:0!important;border:0!important;border-radius:0!important;background:transparent!important;overflow:visible!important;box-shadow:none!important}.jiagon-web-content{max-width:1040px;position:relative;background:transparent!important}.jiagon-web-content>div{height:auto!important;min-height:0!important;background:transparent!important;overflow:visible!important}.jiagon-web-content>div>div:first-child{background:transparent!important}.jiagon-web-modal-root{position:absolute;inset:28px clamp(22px,4vw,56px);pointer-events:none;z-index:50}.jiagon-web-modal-root .screen{pointer-events:auto;position:absolute;inset:0;max-width:920px;margin:auto;border:.5px solid var(--rule);border-radius:12px;overflow:hidden;box-shadow:0 24px 90px rgba(24,24,24,.18)}@media(max-width:900px){.jiagon-web-shell{grid-template-columns:1fr}.jiagon-web-sidebar{min-height:auto;border-right:none;border-bottom:.5px solid var(--rule);padding:16px}.jiagon-web-nav{grid-template-columns:repeat(4,minmax(120px,1fr));overflow-x:auto}.jiagon-web-status{display:none}.jiagon-web-main{min-height:78vh;padding:18px 14px 28px}.jiagon-web-top{display:grid;align-items:start}.jiagon-web-proofline{justify-content:flex-start}.jiagon-web-workspace{min-height:0!important}}
+`;
+
+const logoMarkStyles = `
+.jiagon-logo-mark{display:block;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(24,58,38,.10));flex:0 0 auto}.jiagon-logo-mark-sidebar{width:64px;height:70px}.jiagon-logo-mark-passport{width:92px;height:101px}
+`;
+
+const webUiPolishStyles = `
+.jiagon-web-shell{grid-template-columns:280px minmax(0,1fr)!important;height:100vh!important;min-height:100vh!important;overflow:hidden!important}.jiagon-web-sidebar{padding:24px 18px!important;gap:16px!important;height:100vh!important;min-height:100vh!important;position:sticky!important;top:0!important;overflow:hidden!important}.jiagon-web-brand{gap:10px!important}.jiagon-web-wordmark{font-size:34px!important}.jiagon-web-main{padding:24px clamp(24px,4vw,64px) 42px!important;height:100vh!important;min-height:0!important;overflow-y:auto!important;overscroll-behavior:contain!important}.jiagon-web-top{align-items:center!important;margin-bottom:22px!important}.jiagon-web-top h1{display:none!important}.jiagon-web-proofline{margin-left:auto}.jiagon-web-content{max-width:1120px!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child{padding-top:0!important;padding-bottom:14px!important;position:relative!important;top:auto!important;background:transparent!important;border-bottom:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child>div:first-child{padding-left:0!important;padding-right:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child>div:last-child{padding-left:0!important;padding-right:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar{padding-top:0!important;padding-bottom:18px!important;position:relative!important;top:auto!important;z-index:1!important;background:transparent!important;border-bottom:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-controls{display:none!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-copy{padding:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-title{font-size:clamp(42px,4.6vw,58px)!important;line-height:.9!important;letter-spacing:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-sub{margin-top:8px!important;font-size:10px!important}.jiagon-web-nav{gap:6px!important}.jiagon-web-nav-item{padding:12px!important}.jiagon-web-nav-item[data-active="true"]{background:oklch(0.992 0.004 100)!important;border-color:color-mix(in oklch,var(--verified) 24%,var(--rule))!important}.jiagon-web-status{background:oklch(0.992 0.004 100 / .82)!important;padding:12px!important}.jiagon-web-status-grid{gap:4px!important;margin-top:8px!important}.jiagon-web-status-grid div{padding:5px 0!important}.jiagon-web-status p{font-size:11.5px!important;line-height:1.35!important;margin-top:8px!important}.jiagon-web-primary{box-shadow:0 8px 22px rgba(0,96,48,.16)}.jiagon-credit-screen{height:auto!important;overflow:visible!important;background:transparent!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(330px,380px)!important;gap:14px!important;align-items:start!important}.jiagon-credit-screen .jiagon-topbar{grid-column:1/-1}.jiagon-credit-panel-wrap{padding:0!important;min-width:0}.jiagon-credit-panel-wrap>div{border-radius:10px!important}.jiagon-credit-panel-wrap button{border-radius:10px!important}.jiagon-credit-passport-wrap{grid-column:1/-1}.jiagon-credit-next-wrap{grid-column:1}.jiagon-credit-draw-wrap{grid-column:2}.jiagon-credit-draw-wrap-unlocked{grid-column:1/-1}@media(max-height:980px) and (min-width:901px){.jiagon-web-sidebar{gap:12px!important}.jiagon-web-brand{padding-bottom:6px!important}.jiagon-web-status{display:none!important}.jiagon-web-nav-item{padding:10px 12px!important}}@media(max-width:1100px){.jiagon-credit-screen{grid-template-columns:1fr!important}.jiagon-credit-passport-wrap,.jiagon-credit-next-wrap,.jiagon-credit-draw-wrap{grid-column:1/-1!important}}@media(max-width:900px){.jiagon-web-shell{grid-template-columns:1fr!important;height:auto!important;min-height:100vh!important;overflow:visible!important}.jiagon-web-sidebar{height:auto!important;min-height:auto!important;position:relative!important;overflow:visible!important}.jiagon-web-main{padding:16px 14px 30px!important;height:auto!important;min-height:78vh!important;overflow:visible!important}.jiagon-web-top{display:grid!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child{padding-top:0!important}}
+`;
+
+const webDialogStyles = `
+.jiagon-web-modal-root-active{position:fixed!important;inset:0!important;z-index:1000!important;pointer-events:auto!important;background:rgba(24,32,26,.28)!important;backdrop-filter:blur(8px);display:grid!important;place-items:center!important;padding:36px!important}.jiagon-web-modal-root-active .screen{position:relative!important;inset:auto!important;width:min(920px,calc(100vw - 72px))!important;height:min(820px,calc(100vh - 72px))!important;max-width:none!important;margin:0!important;border-radius:12px!important}.jiagon-web-modal-close{position:fixed;top:18px;right:18px;z-index:1100;border:.5px solid var(--rule);border-radius:999px;background:var(--receipt);color:var(--ink);min-height:38px;padding:0 14px;font-family:var(--ui);font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 10px 28px rgba(24,24,24,.14)}.jiagon-web-modal-close:hover{background:var(--verified-soft)}@media(max-width:900px){.jiagon-web-modal-root-active{padding:12px!important;place-items:stretch!important}.jiagon-web-modal-root-active .screen{width:100%!important;height:calc(100vh - 24px)!important}.jiagon-web-modal-close{top:18px;right:18px}}
+`;
+
+function WebNav({
+  active,
+  onChange,
+  onImport,
+  authenticated,
+  receiptCount,
+  credentialCount,
+}: {
+  active: Tab;
+  onChange: (tab: Tab) => void;
+  onImport: () => void;
+  authenticated: boolean;
+  receiptCount: number;
+  credentialCount: number;
+}) {
+  return (
+    <aside className="jiagon-web-sidebar">
+      <div className="jiagon-web-brand">
+        <img className="jiagon-logo-mark jiagon-logo-mark-sidebar" src="/jiagon-logo-mark.png" alt="" aria-hidden="true" />
+        <div>
+          <div className="jiagon-web-wordmark">Jiagon</div>
+          <div className="jiagon-web-kicker">Receipt-backed credit</div>
+        </div>
+      </div>
+
+      <button className="jiagon-web-primary" onClick={onImport}>
+        Scan spend tx
+      </button>
+
+      <nav className="jiagon-web-nav" aria-label="Jiagon sections">
+        {webTabs.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className="jiagon-web-nav-item"
+            data-active={active === item.id ? "true" : undefined}
+            onClick={() => onChange(item.id)}
+          >
+            <span>{item.label}</span>
+            <small>{item.sub}</small>
+          </button>
+        ))}
+      </nav>
+
+      <div className="jiagon-web-status">
+        <div className="jiagon-web-kicker">MVP status</div>
+        <div className="jiagon-web-status-grid">
+          <div>
+            <span>Auth</span>
+            <strong>{authenticated ? "Connected" : "Local"}</strong>
+          </div>
+          <div>
+            <span>Receipts</span>
+            <strong>{receiptCount}</strong>
+          </div>
+          <div>
+            <span>Credentials</span>
+            <strong>{credentialCount}</strong>
+          </div>
+        </div>
+        <p>Scan a real spend proof first. Credit unlocks only after receipt proof becomes credential state.</p>
+      </div>
+    </aside>
+  );
+}
+
 function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [mounted, setMounted] = useState(false);
-  const [tab, setTab] = useState<Tab>("inbox");
+  const [tab, setTab] = useState<Tab>(initialTabFromPath);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [reviewing, setReviewing] = useState<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [detail, setDetail] = useState<any>(null);
-  const [showOnboard, setShowOnboard] = useState(true);
-  const [scale, setScale] = useState(1);
+  const [showOnboard, setShowOnboard] = useState(() => initialTabFromPath() !== "credit");
   const [authBusy, setAuthBusy] = useState(false);
   const [authSession, setAuthSession] = useState<StoredSession | null>(null);
   const [etherfiSync, setEtherfiSync] = useState<EtherfiSyncState>(emptyEtherfiSync);
@@ -840,6 +934,26 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       }),
     });
 
+  const mirrorSolanaCredit = async (credential: ReceiptCredential, review: any, receipt: any) => {
+    const response = await fetch("/api/solana/credit/mirror", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        owner: receipt.safe || authSession?.walletAddress || authSession?.walletLabel || "privy-user",
+        receipt,
+        review,
+        credential,
+      }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload?.error || "Unable to build Solana credit PDA mirror.");
+    }
+
+    return payload;
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mintReceiptCredential = async (review: any, receipt: any) => {
     const ownership = await signReceiptPublish(review, receipt);
@@ -882,6 +996,15 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       persistence: payload.persistence,
       onchain: payload.onchain,
     };
+
+    try {
+      credential.solana = await mirrorSolanaCredit(credential, review, receipt);
+    } catch (error) {
+      credential.solana = {
+        status: "adapter-error",
+        error: error instanceof Error ? error.message : "Unable to build Solana credit PDA mirror.",
+      };
+    }
 
     return credential;
   };
@@ -927,7 +1050,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     window.localStorage.setItem(reviewsStorageKey, JSON.stringify(nextReviews));
     window.localStorage.setItem(reviewedReceiptsStorageKey, JSON.stringify(nextReviewedReceiptIds));
     window.localStorage.setItem(receiptCredentialsStorageKey, JSON.stringify(nextCredentials));
-    setTab("feed");
+    setTab("credit");
     return credential;
   };
 
@@ -936,19 +1059,18 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
 
-  // Fit device to viewport
   useEffect(() => {
-    const fit = () => {
-      const W = window.innerWidth - 60;
-      const H = window.innerHeight - 60;
-      const dw = 402, dh = 874;
-      const s = Math.min(W / dw, H / dh, 1.05);
-      setScale(s);
+    if (!detail && !reviewing) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setDetail(null);
+      setReviewing(null);
     };
-    fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, []);
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [detail, reviewing]);
 
   const tabContent: Record<Tab, React.ReactNode> = {
     feed: (
@@ -968,50 +1090,104 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         receiptCredentials={receiptCredentials}
       />
     ),
+    credit: (
+      <CreditScreen
+        auth={auth}
+        etherfi={etherfi}
+        userReviews={publishedReviews}
+        reviewedReceiptIds={reviewedReceiptIds}
+        receiptCredentials={receiptCredentials}
+        onScan={() => {
+          setShowOnboard(false);
+          setTab("inbox");
+        }}
+      />
+    ),
     profile: <ProfileScreen verifyStyle={verifyStyle} auth={auth} etherfi={etherfi} userReviews={visibleReviews} receiptCredentials={receiptCredentials} />,
   };
+  const credentialCount = Object.keys(receiptCredentials).length;
+  const activeContent = showOnboard ? (
+    <OnboardingScreen
+      auth={auth}
+      etherfi={etherfi}
+      onDone={() => { setShowOnboard(false); setTab("feed"); }}
+      onImportDone={() => { setShowOnboard(false); setTab("inbox"); }}
+    />
+  ) : tabContent[tab];
 
   return (
     <>
-      <div className="label">
-        <span className="accent">●</span>&nbsp;&nbsp;JIAGON · ETHER.FI RECEIPT MVP · v0.1
-      </div>
-
-      <div className="stage" ref={stageRef} suppressHydrationWarning>
+      <style>{webShellStyles + logoMarkStyles + webUiPolishStyles + webDialogStyles}</style>
+      <div className="jiagon-web-shell" ref={stageRef} suppressHydrationWarning>
         {mounted && (
-        <div className="device-shell" style={{ transform: `scale(${scale})`, transformOrigin: "center" }}>
-          <IOSDevice width={402} height={874} dark={dark}>
-            <div style={{ position: "relative", height: "100%", overflow: "hidden" }}>
-              <div style={{ position: "absolute", inset: 0 }}>
-                {tabContent[tab]}
-                <TabBar active={tab} onChange={setTab} />
-              </div>
+          <>
+            <WebNav
+              active={showOnboard ? "inbox" : tab}
+              onChange={(nextTab) => {
+                setShowOnboard(false);
+                setTab(nextTab);
+              }}
+              onImport={() => {
+                setShowOnboard(false);
+                setTab("inbox");
+              }}
+              authenticated={auth.authenticated}
+              receiptCount={etherfi.receipts?.length || 0}
+              credentialCount={credentialCount}
+            />
 
+            <main className="jiagon-web-main">
+              <header className="jiagon-web-top">
+                <div>
+                  <div className="jiagon-web-kicker">JIAGON · RECEIPT CREDIT MVP · v0.2</div>
+                </div>
+                <div className="jiagon-web-proofline">
+                  <span>zkTLS-compatible adapter</span>
+                  <span>Metaplex Core</span>
+                  <span>Solana PDA</span>
+                </div>
+              </header>
+
+              <section className="jiagon-web-workspace">
+                <div className={`jiagon-web-content jiagon-web-content-${showOnboard ? "onboarding" : tab}`}>
+                  {activeContent}
+                </div>
+              </section>
+
+              {(detail || reviewing) && (
+              <div
+                className="jiagon-web-modal-root jiagon-web-modal-root-active"
+                onMouseDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  setDetail(null);
+                  setReviewing(null);
+                }}
+              >
+              <button
+                type="button"
+                className="jiagon-web-modal-close"
+                onClick={() => {
+                  setDetail(null);
+                  setReviewing(null);
+                }}
+              >
+                Close
+              </button>
               {detail && (
-                <div className="screen modal-enter" style={{ zIndex: 30 }}>
+                <div className="screen modal-enter" style={{ zIndex: 30 }} onMouseDown={(event) => event.stopPropagation()}>
                   <ReviewDetailScreen review={detail} onClose={() => setDetail(null)} verifyStyle={verifyStyle} />
                 </div>
               )}
 
               {reviewing && (
-                <div className="screen modal-enter" style={{ zIndex: 40 }}>
+                <div className="screen modal-enter" style={{ zIndex: 40 }} onMouseDown={(event) => event.stopPropagation()}>
                   <WriteReviewScreen receipt={reviewing} onClose={() => setReviewing(null)} onSubmit={publishReview} />
                 </div>
               )}
-
-              {showOnboard && (
-                <div className="screen" style={{ zIndex: 50 }}>
-                  <OnboardingScreen
-                    auth={auth}
-                    etherfi={etherfi}
-                    onDone={() => { setShowOnboard(false); setTab("feed"); }}
-                    onImportDone={() => { setShowOnboard(false); setTab("inbox"); }}
-                  />
-                </div>
+              </div>
               )}
-            </div>
-          </IOSDevice>
-        </div>
+            </main>
+          </>
         )}
       </div>
     </>
