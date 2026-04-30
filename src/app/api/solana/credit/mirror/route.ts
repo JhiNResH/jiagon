@@ -149,6 +149,9 @@ export async function POST(request: Request) {
         dataHash: review.dataHash,
         storageUri: review.storageUri,
         proofLevel: review.proofLevel,
+        metaplexCoreAsset: typeof body?.credential?.metaplexCoreAsset === "string" ? body.credential.metaplexCoreAsset : null,
+        standard: typeof body?.credential?.standard === "string" ? body.credential.standard : null,
+        merkleTree: typeof body?.credential?.merkleTree === "string" ? body.credential.merkleTree : null,
       },
       solayerProofs: solayerProofs.filter((proof): proof is SolayerCreditProof => Boolean(proof)),
     }, { signingSecret });

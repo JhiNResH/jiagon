@@ -165,17 +165,21 @@ type ReceiptCredential = {
   status: string;
   mode?: string;
   network: string;
-  chainId: number;
+  chainId?: number;
   credentialChain: string;
   credentialId: string;
   preparedCredentialId?: string;
   credentialTx?: string | null;
   explorerUrl?: string | null;
+  assetExplorerUrl?: string | null;
   storageLayer: string;
   storageUri: string;
   requestedStorageUri?: string;
   sourceReceiptHash?: string;
   solanaOwner?: string;
+  metaplexCoreAsset?: string;
+  merkleTree?: string;
+  standard?: string;
   dataHash: string;
   requestedDataHash?: string;
   dataMatchesRequest?: boolean;
@@ -1035,6 +1039,18 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       }),
     });
 
+  const mintSolanaBubblegumReceipt = (review: any, receipt: any, ownership?: { signer: string; signature: string }) =>
+    fetch("/api/solana/receipts/mint", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        receipt,
+        review,
+        ownership,
+        solanaOwner: review.solanaOwner || receipt.solanaOwner,
+      }),
+    });
+
   const signSolanaCreditMirror = async (credential: ReceiptCredential) => {
     const signer = authSession?.walletAddress;
 
@@ -1083,6 +1099,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         sourceReceiptHash: credential.sourceReceiptHash,
+        credential,
         solanaOwner: credential.solanaOwner,
         ownerSigner: ownership.signer,
         ownerSignature: ownership.signature,
@@ -1113,51 +1130,96 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       throw new Error(payload?.error || "Unable to mint BNB testnet receipt credential.");
     }
 
+    let bubblegumPayload: any = null;
+    let bubblegumError: string | null = null;
+
+    try {
+      const bubblegumResponse = await mintSolanaBubblegumReceipt(review, receipt, ownership);
+      const nextBubblegumPayload = await bubblegumResponse.json();
+      if (bubblegumResponse.ok) {
+        bubblegumPayload = nextBubblegumPayload;
+      } else {
+        bubblegumError = nextBubblegumPayload?.error || "Unable to mint Solana Bubblegum receipt cNFT.";
+      }
+    } catch (error) {
+      bubblegumError = error instanceof Error ? error.message : "Unable to mint Solana Bubblegum receipt cNFT.";
+    }
+
+    const primaryPayload = bubblegumPayload?.status === "minted" ? bubblegumPayload : payload;
     const credential: ReceiptCredential = {
       receiptId: receipt.id,
       reviewId: review.id,
-      status: payload.status,
-      network: payload.network,
-      chainId: payload.chainId,
-      credentialChain: payload.credentialChain,
-      credentialId: payload.credentialId,
+      status: primaryPayload.status,
+      network: primaryPayload.network,
+      chainId: primaryPayload.chainId,
+      credentialChain: primaryPayload.credentialChain,
+      credentialId: primaryPayload.credentialId || primaryPayload.assetId,
       preparedCredentialId: payload.preparedCredentialId,
-      credentialTx: payload.credentialTx,
-      explorerUrl: payload.explorerUrl,
-      storageLayer: payload.storageLayer,
-      storageUri: payload.storageUri,
+      credentialTx: primaryPayload.credentialTx,
+      explorerUrl: primaryPayload.explorerUrl,
+      assetExplorerUrl: primaryPayload.assetExplorerUrl,
+      storageLayer: primaryPayload.storageLayer || "bubblegum-v2",
+      storageUri: primaryPayload.storageUri,
       requestedStorageUri: payload.requestedStorageUri,
-      sourceReceiptHash: payload.sourceReceiptHash,
-      dataHash: payload.dataHash,
+      sourceReceiptHash: primaryPayload.sourceReceiptHash || payload.sourceReceiptHash,
+      dataHash: primaryPayload.dataHash || payload.dataHash,
       requestedDataHash: payload.requestedDataHash,
-      dataMatchesRequest: payload.dataMatchesRequest,
-      proofLevel: payload.proofLevel,
-      mode: payload.mode,
-      mintedAt: payload.mintedAt || payload.preparedAt || new Date().toISOString(),
-      preparedAt: payload.preparedAt,
-      minter: payload.minter,
-      note: payload.note,
+      dataMatchesRequest: typeof payload.dataMatchesRequest === "boolean" ? payload.dataMatchesRequest : true,
+      proofLevel: primaryPayload.proofLevel || payload.proofLevel,
+      mode: primaryPayload.mode || payload.mode,
+      mintedAt: primaryPayload.mintedAt || primaryPayload.preparedAt || payload.mintedAt || payload.preparedAt || new Date().toISOString(),
+      preparedAt: primaryPayload.preparedAt || payload.preparedAt,
+      minter: primaryPayload.minter || payload.minter,
+      note: primaryPayload.note || payload.note,
       persistence: payload.persistence,
       onchain: payload.onchain,
-      solanaOwner: payload.solanaOwner || receipt.solanaOwner || review.solanaOwner,
+      solanaOwner: primaryPayload.solanaOwner || payload.solanaOwner || receipt.solanaOwner || review.solanaOwner,
+      metaplexCoreAsset: primaryPayload.metaplexCoreAsset || primaryPayload.assetId,
+      merkleTree: primaryPayload.merkleTree,
+      standard: primaryPayload.standard,
+    };
+    credential.solana = {
+      ...(credential.solana || {}),
+      bubblegum:
+        bubblegumPayload || {
+          status: "not-minted",
+          error: bubblegumError || "Solana Bubblegum receipt cNFT was not minted.",
+        },
+      originCredential: payload.status
+        ? {
+            chain: payload.credentialChain,
+            status: payload.status,
+            credentialId: payload.credentialId,
+            credentialTx: payload.credentialTx,
+          }
+        : null,
     };
 
     if (credential.status === "minted" && credential.solanaOwner) {
       try {
-        credential.solana = await mirrorSolanaCredit(credential);
+        credential.solana = {
+          ...credential.solana,
+          mirror: await mirrorSolanaCredit(credential),
+        };
       } catch (error) {
         credential.solana = {
-          status: "adapter-error",
+          ...credential.solana,
+          mirror: {
+            status: "adapter-error",
+            error: error instanceof Error ? error.message : "Unable to build Solana credit PDA mirror.",
+          },
           error: error instanceof Error ? error.message : "Unable to build Solana credit PDA mirror.",
         };
       }
     } else if (!credential.solanaOwner) {
       credential.solana = {
+        ...credential.solana,
         status: "solana-owner-required",
         error: "Connect a Solana wallet before mirroring this receipt into a credit PDA.",
       };
     } else {
       credential.solana = {
+        ...credential.solana,
         status: "mint-required",
         error: "Solana mirroring is available after the receipt credential is minted.",
       };
@@ -1207,7 +1269,9 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       credential,
       proofLevel:
         credential.status === "minted"
-          ? credential.mode === "already-minted"
+          ? credential.standard === "bubblegum-v2-cnft"
+            ? "A+C · Bubblegum cNFT"
+            : credential.mode === "already-minted"
             ? `${credential.proofLevel} · BNB existing`
             : `${credential.proofLevel} · BNB minted`
           : `${credential.proofLevel} · prepared`,

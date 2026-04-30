@@ -50,6 +50,8 @@ type CredentialLike = {
   mintedAt?: string;
   preparedAt?: string;
   metaplexCoreAsset?: string | null;
+  standard?: string | null;
+  merkleTree?: string | null;
 };
 
 type SolayerProofLike = {
@@ -373,20 +375,29 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
       totalPositionUsd: solayerPositionUsd,
       proofs: solayerProofs,
     },
-    metaplexCore: {
-      status: credential.metaplexCoreAsset ? "asset-provided" : "core-asset-required",
+    metaplexReceipt: {
+      status: credential.metaplexCoreAsset ? "asset-provided" : "bubblegum-asset-required",
+      standard: credential.standard || "bubblegum-v2-cnft",
       assetAddress: credential.metaplexCoreAsset || null,
+      merkleTree: credential.merkleTree || null,
       collection: "Jiagon Receipt Credentials",
       name: `Jiagon Receipt ${credentialId}`,
       uri: credential.storageUri || `jiagon://receipt/${credentialId}`,
       plugins: {
-        transferDelegate: "disabled",
+        transferDelegate: "tree-authority",
         attributes: {
           proof: "etherfi-spend",
           merchantProof: "user-claimed",
           creditUse: "underwriting-input",
         },
       },
+    },
+    metaplexCore: {
+      status: credential.metaplexCoreAsset ? "asset-provided" : "bubblegum-asset-required",
+      assetAddress: credential.metaplexCoreAsset || null,
+      collection: "Jiagon Receipt Credentials",
+      name: `Jiagon Receipt ${credentialId}`,
+      uri: credential.storageUri || `jiagon://receipt/${credentialId}`,
     },
     pda: {
       creditState: pdas.creditStatePda,

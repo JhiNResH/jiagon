@@ -93,8 +93,10 @@ const credentialKey = (credential = {}) => (
 );
 
 const solanaMirrorLabel = (credential = {}) => {
-  const creditState = credential?.solana?.pda?.creditState;
+  const creditState = credential?.solana?.mirror?.pda?.creditState || credential?.solana?.pda?.creditState;
   if (creditState) return `Solana PDA ${String(creditState).slice(0, 6)}…${String(creditState).slice(-4)}`;
+  if (credential?.solana?.bubblegum?.assetId) return `Bubblegum cNFT ${String(credential.solana.bubblegum.assetId).slice(0, 6)}…${String(credential.solana.bubblegum.assetId).slice(-4)}`;
+  if (credential?.solana?.bubblegum?.status) return `Bubblegum ${credential.solana.bubblegum.status}`;
   if (credential?.solana?.status) return `Solana mirror ${credential.solana.status}`;
   if (credential?.solana?.error) return credential.solana.error;
   return 'Solana PDA mirror pending';
@@ -1165,7 +1167,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
               border: '0.5px solid var(--rule)',
               borderRadius: 999,
               padding: '5px 8px',
-            }}>BNB testnet credential</span>
+            }}>Bubblegum receipt cNFT</span>
             <span style={{
               fontFamily: 'var(--mono)',
               fontSize: 9.5,
@@ -1427,6 +1429,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
   const [wouldReturn, setWouldReturn] = _useState(true);
   const [bestFor, setBestFor] = _useState([]);
   const [text, setText] = _useState('');
+  const [solanaOwner, setSolanaOwner] = _useState(receipt.solanaOwner || '');
   const [submitting, setSubmitting] = _useState(false);
   const [done, setDone] = _useState(false);
   const [mintError, setMintError] = _useState("");
@@ -1453,6 +1456,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
     ['commute', 'Commute'],
   ];
   const bestForOptions = ['Coffee', 'Pastry', 'Quiet', 'Fast service', 'Good value', 'Groups', 'Work session', 'Late night'];
+  const solanaOwnerReady = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(solanaOwner.trim());
   const credentialStatus = credential?.dataMatchesRequest === false
     ? 'Different onchain data'
     : credential?.status === 'minted'
@@ -1487,6 +1491,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
       bestFor,
       time: 'now',
       text: text.trim(),
+      solanaOwner: solanaOwner.trim(),
       tags,
       tx: receipt.tx,
       amount: `${receipt.amount} ${receipt.token || ''}`.trim(),
@@ -1504,7 +1509,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
       window.setTimeout(onClose, 2200);
     } catch (error) {
       setSubmitting(false);
-      setMintError(error instanceof Error ? error.message : 'Unable to mint BNB testnet receipt credential.');
+      setMintError(error instanceof Error ? error.message : 'Unable to mint receipt credential.');
     }
   };
 
@@ -1838,6 +1843,44 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-muted)',
               }}>+ Add photo</button>
             </div>
+            <label style={{
+              display: 'block',
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              color: 'var(--ink-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: 0.7,
+              marginTop: 18,
+              marginBottom: 7,
+            }}>
+              Solana owner
+            </label>
+            <input
+              value={solanaOwner}
+              onChange={e => setSolanaOwner(e.target.value)}
+              placeholder="Paste Solana wallet address for the receipt cNFT"
+              style={{
+                width: '100%',
+                background: 'var(--surface)',
+                color: 'var(--ink)',
+                border: `0.5px solid ${solanaOwner && !solanaOwnerReady ? 'var(--accent)' : 'var(--rule)'}`,
+                borderRadius: 12,
+                padding: '13px 14px',
+                fontFamily: 'var(--mono)',
+                fontSize: 12,
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{
+              marginTop: 7,
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              color: solanaOwner && !solanaOwnerReady ? 'var(--accent)' : 'var(--ink-muted)',
+              lineHeight: 1.4,
+            }}>
+              Bubblegum cNFT receipts are minted to this Solana owner.
+            </div>
             <div style={{
               marginTop: 18,
               background: 'var(--surface)',
@@ -1855,9 +1898,9 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
               }}>Credential path</div>
               {[
                 ['Source proof', 'Optimism · ether.fi Spend'],
-                ['Credential', 'BNB mint + Solana PDA mirror'],
-                ['Core receipt', 'Metaplex Core adapter payload'],
-                ['Credit state', 'Jiagon PDA seeds prepared'],
+                ['Receipt', 'Bubblegum V2 cNFT'],
+                ['Tree', 'Merkle receipt tree'],
+                ['Credit state', 'Jiagon PDA mirror'],
               ].map(([k, v]) => (
                 <div key={k} style={{
                   display: 'flex',
@@ -1921,13 +1964,13 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
         ) : (
           <button
             onClick={submit}
-            disabled={text.trim().length < 10 || submitting}
+            disabled={text.trim().length < 10 || !solanaOwnerReady || submitting}
             style={{
               flex: 1, padding: '15px 24px', borderRadius: 999,
               background: 'var(--accent)', color: 'var(--panel-text)',
               border: 'none', cursor: 'pointer',
               fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600,
-              opacity: text.trim().length < 10 || submitting ? 0.5 : 1,
+              opacity: text.trim().length < 10 || !solanaOwnerReady || submitting ? 0.5 : 1,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             }}>
             {submitting ? <>
@@ -1936,7 +1979,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 borderTopColor: 'transparent', borderRadius: '50%',
               }} />
               Creating…
-            </> : 'Create receipt credential'}
+            </> : 'Mint Bubblegum receipt'}
           </button>
         )}
       </div>
@@ -1972,8 +2015,10 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
             {credential?.status === 'minted'
               ? credentialMode(credential) === 'already-minted'
                 ? 'existing BNB credential found'
-                : 'BNB testnet credential minted'
-              : 'BNB payload prepared'}<br/>
+                : credential?.standard === 'bubblegum-v2-cnft'
+                  ? 'Solana Bubblegum cNFT minted'
+                  : 'BNB testnet credential minted'
+              : 'receipt payload prepared'}<br/>
             {solanaMirrorLabel(credential)}<br/>
             {credential?.persistence?.persisted ? 'saved to Jiagon API' : 'local receipt view saved'}<br/>
             {credential?.credentialTx ? `${credential.credentialTx.slice(0, 8)}…${credential.credentialTx.slice(-6)}` : credential?.credentialId || 'Greenfield object ready'}
@@ -2095,7 +2140,7 @@ const ReviewDetailScreen = ({ review, onClose, verifyStyle }) => (
           ['Agent use', PROOF_BOUNDARY_LABELS.recommendationUse[1]],
           ['Source', 'ether.fi OP Spend event'],
           ['Tx hash', review.tx],
-          ['Credential', review.credentialTx || 'BNB testnet prepared'],
+          ['Credential', review.credentialTx || 'Bubblegum receipt prepared'],
           ['Storage', review.storageLayer || 'Greenfield testnet pending'],
           ['Data match', review.dataMatchesRequest === true ? 'Current review payload' : review.dataMatchesRequest === false ? 'Different submitted payload' : 'Not checked'],
           ['Amount', review.amount],
@@ -2420,7 +2465,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
       {[
         ['OP events', eventCount],
         ['Private', pendingCount],
-        ['BNB proofs', credentialCount],
+        ['cNFT proofs', credentialCount],
         ].map(([k, v]) => (
           <div key={k} style={{
             background: 'var(--bg)', border: '0.5px solid var(--rule)',
@@ -2508,8 +2553,8 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
           const statusText = mismatch
             ? 'Payload differs'
             : minted
-              ? mode === 'already-minted' ? 'Existing onchain credential' : 'Minted on BNB testnet'
-              : 'Prepared for BNB testnet';
+              ? credential.standard === 'bubblegum-v2-cnft' ? 'Minted as Bubblegum cNFT' : mode === 'already-minted' ? 'Existing onchain credential' : 'Minted on BNB testnet'
+              : 'Prepared for receipt mint';
           return (
             <div key={`${credential.receiptId}-${credential.credentialId}`} style={{
               background: 'var(--surface)',
@@ -2725,9 +2770,10 @@ const CreditScreen = ({
   const preparedCredentials = credentials.filter(credential => credential && credential?.status !== 'minted');
   const solanaMirrors = credentials.map(credential => credential?.solana).filter(Boolean);
   const activeSolana =
-    [...solanaMirrors].reverse().find(mirror => mirror?.pda?.creditState) ||
+    [...solanaMirrors].reverse().find(mirror => mirror?.mirror?.pda?.creditState || mirror?.pda?.creditState) ||
     solanaMirrors[solanaMirrors.length - 1] ||
     null;
+  const activeMirror = activeSolana?.mirror || activeSolana;
   const ready = auth?.ready ?? true;
   const authenticated = auth?.authenticated ?? false;
   const login = auth?.login;
@@ -2739,14 +2785,14 @@ const CreditScreen = ({
     if (reviewReceiptId) reviewedReceiptSet.add(reviewReceiptId);
   });
   const reviewedReceipts = reviewedReceiptSet.size;
-  const mirroredState = activeSolana?.creditState;
+  const mirroredState = activeMirror?.creditState;
   const drawPolicy = mirroredState?.policy;
   const localSolayerProofs = Array.isArray(solayerProofs) ? solayerProofs : [];
-  const mirroredSolayerProofs = activeSolana?.solayer?.proofs || [];
-  const solayerProofCount = activeSolana?.solayer?.proofs ? mirroredSolayerProofs.length : localSolayerProofs.length;
+  const mirroredSolayerProofs = activeMirror?.solayer?.proofs || [];
+  const solayerProofCount = activeMirror?.solayer?.proofs ? mirroredSolayerProofs.length : localSolayerProofs.length;
   const solayerPositionUsd =
-    typeof activeSolana?.solayer?.totalPositionUsd === 'number'
-      ? activeSolana.solayer.totalPositionUsd
+    typeof activeMirror?.solayer?.totalPositionUsd === 'number'
+      ? activeMirror.solayer.totalPositionUsd
       : localSolayerProofs.reduce((total, proof) => total + Number(proof?.positionUsd || 0), 0);
   const solayerPendingMirror = localSolayerProofs.length > 0 && mirroredSolayerProofs.length === 0;
   const canRefreshSolanaMirror = credentials.some(
@@ -2766,9 +2812,9 @@ const CreditScreen = ({
     ['Receipt proofs', scannedReceipts],
     ['Solayer proofs', solayerProofCount],
     ['Credential receipts', mintedCredentials.length || preparedCredentials.length],
-    ['Credit PDA', activeSolana?.pda?.creditState ? shortValue(activeSolana.pda.creditState) : creditUnlocked ? 'ready to update' : 'waiting for credential'],
-    ['Core receipt', activeSolana?.metaplexCore?.assetAddress ? shortValue(activeSolana.metaplexCore.assetAddress) : 'not prepared'],
-    ['Credit state', creditUnlocked ? (repaid ? 'Starter+' : activeSolana?.creditState?.status || 'Starter') : 'Locked'],
+    ['Credit PDA', activeMirror?.pda?.creditState ? shortValue(activeMirror.pda.creditState) : creditUnlocked ? 'ready to update' : 'waiting for credential'],
+    ['Bubblegum cNFT', activeSolana?.bubblegum?.assetId ? shortValue(activeSolana.bubblegum.assetId) : activeMirror?.metaplexReceipt?.assetAddress ? shortValue(activeMirror.metaplexReceipt.assetAddress) : 'not prepared'],
+    ['Credit state', creditUnlocked ? (repaid ? 'Starter+' : activeMirror?.creditState?.status || 'Starter') : 'Locked'],
   ];
 
   const handleCreditAction = async () => {
@@ -2948,9 +2994,9 @@ const CreditScreen = ({
               gap: 8,
             }}>
               {[
-                ['Solana mode', activeSolana.adapterMode || activeSolana.status || 'adapter'],
-                ['PDA', shortValue(activeSolana.pda?.creditState)],
-                ['Core asset', shortValue(activeSolana.metaplexCore?.assetAddress)],
+                ['Solana mode', activeMirror?.adapterMode || activeSolana.bubblegum?.status || activeSolana.status || 'adapter'],
+                ['PDA', shortValue(activeMirror?.pda?.creditState)],
+                ['cNFT', activeSolana.bubblegum?.assetId ? shortValue(activeSolana.bubblegum.assetId) : shortValue(activeMirror?.metaplexReceipt?.assetAddress)],
               ].map(([label, value]) => (
                 <div key={label} style={{
                   border: '0.5px solid var(--rule)',
