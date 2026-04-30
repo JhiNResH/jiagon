@@ -633,10 +633,8 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       }
 
       const restoredSolayerProofs = normalizeRestoredSolayerProofs(state.solayerProofs);
-      if (restoredSolayerProofs.length > 0) {
-        setSolayerProofs(restoredSolayerProofs);
-        writeStoredSolayerProofs(restoredSolayerProofs);
-      }
+      setSolayerProofs(restoredSolayerProofs);
+      writeStoredSolayerProofs(restoredSolayerProofs);
 
       if (Array.isArray(state.publishedReviews)) {
         setPublishedReviews(state.publishedReviews);
@@ -731,10 +729,8 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
               writeStoredEtherfiSync(restoredEtherfiSync);
             }
             const restoredSolayerProofs = normalizeRestoredSolayerProofs(state.solayerProofs);
-            if (restoredSolayerProofs.length > 0) {
-              setSolayerProofs(restoredSolayerProofs);
-              writeStoredSolayerProofs(restoredSolayerProofs);
-            }
+            setSolayerProofs(restoredSolayerProofs);
+            writeStoredSolayerProofs(restoredSolayerProofs);
             if (Array.isArray(state.publishedReviews)) {
               setPublishedReviews(state.publishedReviews);
               window.localStorage.setItem(reviewsStorageKey, JSON.stringify(state.publishedReviews));
@@ -1141,7 +1137,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       solanaOwner: payload.solanaOwner || receipt.solanaOwner || review.solanaOwner,
     };
 
-    if (credential.solanaOwner) {
+    if (credential.status === "minted" && credential.solanaOwner) {
       try {
         credential.solana = await mirrorSolanaCredit(credential);
       } catch (error) {
@@ -1150,10 +1146,15 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
           error: error instanceof Error ? error.message : "Unable to build Solana credit PDA mirror.",
         };
       }
-    } else {
+    } else if (!credential.solanaOwner) {
       credential.solana = {
         status: "solana-owner-required",
         error: "Connect a Solana wallet before mirroring this receipt into a credit PDA.",
+      };
+    } else {
+      credential.solana = {
+        status: "mint-required",
+        error: "Solana mirroring is available after the receipt credential is minted.",
       };
     }
 
@@ -1164,7 +1165,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     const credential = Object.values(receiptCredentials)
       .slice()
       .reverse()
-      .find((item) => item?.sourceReceiptHash && item?.solanaOwner);
+      .find((item) => item?.status === "minted" && item?.sourceReceiptHash && item?.solanaOwner);
 
     if (!credential) {
       throw new Error("Mint a receipt credential with a Solana owner before refreshing the credit mirror.");

@@ -2733,7 +2733,12 @@ const CreditScreen = ({
   const login = auth?.login;
   const accountLabel = auth?.walletLabel || auth?.userLabel;
   const scannedReceipts = etherfi?.receipts?.length || 0;
-  const reviewedReceipts = reviewedReceiptIds.length || userReviews.filter(hasReviewProof).length;
+  const reviewedReceiptSet = new Set(reviewedReceiptIds);
+  userReviews.filter(hasReviewProof).forEach((review) => {
+    const reviewReceiptId = review.receiptId || review.id;
+    if (reviewReceiptId) reviewedReceiptSet.add(reviewReceiptId);
+  });
+  const reviewedReceipts = reviewedReceiptSet.size;
   const mirroredState = activeSolana?.creditState;
   const drawPolicy = mirroredState?.policy;
   const localSolayerProofs = Array.isArray(solayerProofs) ? solayerProofs : [];
@@ -2744,6 +2749,9 @@ const CreditScreen = ({
       ? activeSolana.solayer.totalPositionUsd
       : localSolayerProofs.reduce((total, proof) => total + Number(proof?.positionUsd || 0), 0);
   const solayerPendingMirror = localSolayerProofs.length > 0 && mirroredSolayerProofs.length === 0;
+  const canRefreshSolanaMirror = credentials.some(
+    (credential) => credential?.status === 'minted' && credential?.solanaOwner,
+  );
   const verifiedSignals = mirroredState?.receiptCount ?? Math.max(mintedCredentials.length, reviewedReceipts);
   const hasReceiptInput = scannedReceipts > 0 || verifiedSignals > 0 || preparedCredentials.length > 0;
   const creditUnlocked = mirroredState?.unlocked ?? (verifiedSignals > 0 || mintedCredentials.length > 0);
@@ -3204,7 +3212,7 @@ const CreditScreen = ({
             >Upload proof</button>
             <button
               onClick={handleSolanaRefresh}
-              disabled={solayerBusy || localSolayerProofs.length === 0}
+              disabled={solayerBusy || !canRefreshSolanaMirror}
               style={{
                 border: '0.5px solid var(--rule)',
                 borderRadius: 12,
@@ -3214,8 +3222,8 @@ const CreditScreen = ({
                 fontFamily: 'var(--ui)',
                 fontSize: 13,
                 fontWeight: 800,
-                cursor: solayerBusy || localSolayerProofs.length === 0 ? 'default' : 'pointer',
-                opacity: solayerBusy || localSolayerProofs.length === 0 ? 0.55 : 1,
+                cursor: solayerBusy || !canRefreshSolanaMirror ? 'default' : 'pointer',
+                opacity: solayerBusy || !canRefreshSolanaMirror ? 0.55 : 1,
               }}
             >Refresh mirror</button>
           </div>

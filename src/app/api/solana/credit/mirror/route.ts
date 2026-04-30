@@ -35,8 +35,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "Solana credit mirror requires a JSON request." }, { status: 415 });
   }
 
+  let body: Record<string, any>;
+
   try {
-    const body = await request.json();
+    const rawBody = await request.text();
+    if (rawBody.length > 200_000) {
+      return Response.json({ error: "Solana credit mirror payload is too large." }, { status: 413 });
+    }
+    body = JSON.parse(rawBody);
     const sourceReceiptHash = cleanSourceReceiptHash(
       body?.sourceReceiptHash || body?.credential?.sourceReceiptHash,
     );
@@ -149,6 +155,10 @@ export async function POST(request: Request) {
 
     return Response.json(mirror);
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    }
+
     return Response.json(
       {
         error:
