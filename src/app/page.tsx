@@ -402,7 +402,7 @@ const webTabs: Array<{ id: Tab; label: string; sub: string }> = [
 ];
 
 const webShellStyles = `
-.jiagon-web-shell{min-height:100vh;display:grid;grid-template-columns:300px minmax(0,1fr);background:radial-gradient(circle at 10% 0%,oklch(0.98 0.008 105) 0 280px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink)}.jiagon-web-sidebar{min-height:100vh;padding:26px 18px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .74);backdrop-filter:blur(18px);display:flex;flex-direction:column;gap:18px}.jiagon-web-brand{display:flex;align-items:center;gap:13px;padding:4px 4px 12px}.jiagon-web-mark{width:54px;height:54px;border:3px solid var(--verified);border-radius:9px;background:var(--receipt);color:var(--verified);display:grid;place-items:center;position:relative;flex:0 0 auto;box-shadow:0 10px 24px rgba(24,58,38,.10)}.jiagon-web-mark span{font-family:Georgia,'Times New Roman',serif;font-size:36px;font-weight:700;line-height:1;transform:translateY(-2px)}.jiagon-web-mark i{position:absolute;left:9px;right:18px;bottom:8px;border-bottom:2px dotted var(--verified)}.jiagon-web-mark b{position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:999px;background:var(--ink);color:var(--receipt);display:grid;place-items:center;font-family:var(--ui);font-size:10px}.jiagon-web-wordmark{font-family:var(--display);font-size:36px;line-height:.9;color:var(--verified)}.jiagon-web-kicker{font-family:var(--mono);font-size:10px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:1px}.jiagon-web-primary{min-height:46px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-family:var(--ui);font-size:14px;font-weight:800;cursor:pointer}.jiagon-web-nav{display:grid;gap:7px}.jiagon-web-nav-item{text-align:left;border:.5px solid transparent;border-radius:10px;background:transparent;color:var(--ink);padding:12px;cursor:pointer}.jiagon-web-nav-item:hover,.jiagon-web-nav-item[data-active="true"]{border-color:var(--rule);background:var(--receipt);box-shadow:0 1px 0 rgba(24,24,24,.04)}.jiagon-web-nav-item span{display:block;font-family:var(--ui);font-size:14px;font-weight:800}.jiagon-web-nav-item small{display:block;margin-top:3px;font-family:var(--mono);font-size:9.5px;line-height:1.3;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.55px}.jiagon-web-status{margin-top:auto;border:.5px solid var(--rule);border-radius:12px;background:var(--receipt);padding:14px}.jiagon-web-status-grid{display:grid;grid-template-columns:1fr;gap:7px;margin-top:10px}.jiagon-web-status-grid div{display:flex;justify-content:space-between;gap:12px;font-family:var(--mono);font-size:10.5px;padding:6px 0;border-bottom:.5px dashed var(--rule)}.jiagon-web-status-grid span{color:var(--ink-muted)}.jiagon-web-status-grid strong{color:var(--ink)}.jiagon-web-status p{margin:10px 0 0;color:var(--ink-muted);font-size:12.5px;line-height:1.45}.jiagon-web-main{min-width:0;min-height:100vh;padding:28px clamp(22px,4vw,56px);position:relative}.jiagon-web-top{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:18px}.jiagon-web-top h1{margin:5px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(42px,5vw,70px);line-height:.92;color:var(--ink)}.jiagon-web-proofline{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.jiagon-web-proofline span{border:.5px solid var(--rule);border-radius:999px;background:var(--receipt);color:var(--ink-muted);padding:7px 10px;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.65px}.jiagon-web-workspace{min-height:0!important;border:0!important;border-radius:0!important;background:transparent!important;overflow:visible!important;box-shadow:none!important}.jiagon-web-content{max-width:1040px;position:relative;background:transparent!important}.jiagon-web-content>div{height:auto!important;min-height:0!important;background:transparent!important;overflow:visible!important}.jiagon-web-content>div>div:first-child{background:transparent!important}.jiagon-web-modal-root{position:absolute;inset:28px clamp(22px,4vw,56px);pointer-events:none;z-index:50}.jiagon-web-modal-root .screen{pointer-events:auto;position:absolute;inset:0;max-width:920px;margin:auto;border:.5px solid var(--rule);border-radius:12px;overflow:hidden;box-shadow:0 24px 90px rgba(24,24,24,.18)}@media(max-width:900px){.jiagon-web-shell{grid-template-columns:1fr}.jiagon-web-sidebar{min-height:auto;border-right:none;border-bottom:.5px solid var(--rule);padding:16px}.jiagon-web-nav{grid-template-columns:repeat(4,minmax(120px,1fr));overflow-x:auto}.jiagon-web-status{display:none}.jiagon-web-main{min-height:78vh;padding:18px 14px 28px}.jiagon-web-top{display:grid;align-items:start}.jiagon-web-proofline{justify-content:flex-start}.jiagon-web-workspace{min-height:0!important}}
+.jiagon-web-shell{min-height:100vh;display:grid;grid-template-columns:300px minmax(0,1fr);background:radial-gradient(circle at 10% 0%,oklch(0.98 0.008 105) 0 280px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink)}.jiagon-web-sidebar{min-height:100vh;padding:26px 18px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .74);backdrop-filter:blur(18px);display:flex;flex-direction:column;gap:18px}.jiagon-web-brand{display:flex;align-items:center;gap:13px;padding:4px 4px 12px}.jiagon-web-mark{width:54px;height:54px;border:3px solid var(--verified);border-radius:9px;background:var(--receipt);color:var(--verified);display:grid;place-items:center;position:relative;flex:0 0 auto;box-shadow:0 10px 24px rgba(24,58,38,.10)}.jiagon-web-mark span{font-family:Georgia,'Times New Roman',serif;font-size:36px;font-weight:700;line-height:1;transform:translateY(-2px)}.jiagon-web-mark i{position:absolute;left:9px;right:18px;bottom:8px;border-bottom:2px dotted var(--verified)}.jiagon-web-mark b{position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:999px;background:var(--ink);color:var(--receipt);display:grid;place-items:center;font-family:var(--ui);font-size:10px}.jiagon-web-wordmark{font-family:var(--display);font-size:36px;line-height:.9;color:var(--verified)}.jiagon-web-kicker{font-family:var(--mono);font-size:10px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:1px}.jiagon-web-primary{min-height:46px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-family:var(--ui);font-size:14px;font-weight:800;cursor:pointer}.jiagon-web-auth-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.jiagon-web-auth-button{min-height:44px;border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);color:var(--ink);font-family:var(--ui);font-size:13px;font-weight:800;cursor:pointer}.jiagon-web-auth-button-primary{border-color:transparent;background:var(--verified);color:var(--panel-text)}.jiagon-web-auth-button:disabled{cursor:not-allowed;opacity:.55}.jiagon-web-nav{display:grid;gap:7px}.jiagon-web-nav-item{text-align:left;border:.5px solid transparent;border-radius:10px;background:transparent;color:var(--ink);padding:12px;cursor:pointer}.jiagon-web-nav-item:hover,.jiagon-web-nav-item[data-active="true"]{border-color:var(--rule);background:var(--receipt);box-shadow:0 1px 0 rgba(24,24,24,.04)}.jiagon-web-nav-item span{display:block;font-family:var(--ui);font-size:14px;font-weight:800}.jiagon-web-nav-item small{display:block;margin-top:3px;font-family:var(--mono);font-size:9.5px;line-height:1.3;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.55px}.jiagon-web-status{margin-top:auto;border:.5px solid var(--rule);border-radius:12px;background:var(--receipt);padding:14px}.jiagon-web-status-grid{display:grid;grid-template-columns:1fr;gap:7px;margin-top:10px}.jiagon-web-status-grid div{display:flex;justify-content:space-between;gap:12px;font-family:var(--mono);font-size:10.5px;padding:6px 0;border-bottom:.5px dashed var(--rule)}.jiagon-web-status-grid span{color:var(--ink-muted)}.jiagon-web-status-grid strong{color:var(--ink)}.jiagon-web-status p{margin:10px 0 0;color:var(--ink-muted);font-size:12.5px;line-height:1.45}.jiagon-web-main{min-width:0;min-height:100vh;padding:28px clamp(22px,4vw,56px);position:relative}.jiagon-web-top{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:18px}.jiagon-web-top h1{margin:5px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(42px,5vw,70px);line-height:.92;color:var(--ink)}.jiagon-web-proofline{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.jiagon-web-proofline span{border:.5px solid var(--rule);border-radius:999px;background:var(--receipt);color:var(--ink-muted);padding:7px 10px;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.65px}.jiagon-web-workspace{min-height:0!important;border:0!important;border-radius:0!important;background:transparent!important;overflow:visible!important;box-shadow:none!important}.jiagon-web-content{max-width:1040px;position:relative;background:transparent!important}.jiagon-web-content>div{height:auto!important;min-height:0!important;background:transparent!important;overflow:visible!important}.jiagon-web-content>div>div:first-child{background:transparent!important}.jiagon-web-modal-root{position:absolute;inset:28px clamp(22px,4vw,56px);pointer-events:none;z-index:50}.jiagon-web-modal-root .screen{pointer-events:auto;position:absolute;inset:0;max-width:920px;margin:auto;border:.5px solid var(--rule);border-radius:12px;overflow:hidden;box-shadow:0 24px 90px rgba(24,24,24,.18)}@media(max-width:900px){.jiagon-web-shell{grid-template-columns:1fr}.jiagon-web-sidebar{min-height:auto;border-right:none;border-bottom:.5px solid var(--rule);padding:16px}.jiagon-web-nav{grid-template-columns:repeat(4,minmax(120px,1fr));overflow-x:auto}.jiagon-web-status{display:none}.jiagon-web-main{min-height:78vh;padding:18px 14px 28px}.jiagon-web-top{display:grid;align-items:start}.jiagon-web-proofline{justify-content:flex-start}.jiagon-web-workspace{min-height:0!important}}
 `;
 
 const logoMarkStyles = `
@@ -422,6 +422,7 @@ function WebNav({
   onChange,
   onImport,
   onConnect,
+  onSignup,
   authenticated,
   authReady,
   receiptCount,
@@ -431,6 +432,7 @@ function WebNav({
   onChange: (tab: Tab) => void;
   onImport: () => void;
   onConnect: () => void;
+  onSignup: () => void;
   authenticated: boolean;
   authReady: boolean;
   receiptCount: number;
@@ -446,9 +448,20 @@ function WebNav({
         </div>
       </div>
 
-      <button className="jiagon-web-primary" onClick={authenticated ? onImport : onConnect} disabled={!authReady}>
-        {authenticated ? "Scan spend tx" : authReady ? "Connect wallet" : "Loading wallet"}
-      </button>
+      {authenticated ? (
+        <button className="jiagon-web-primary" onClick={onImport} disabled={!authReady}>
+          Scan spend tx
+        </button>
+      ) : (
+        <div className="jiagon-web-auth-actions" aria-label="Privy authentication">
+          <button className="jiagon-web-auth-button jiagon-web-auth-button-primary" onClick={onConnect} disabled={!authReady}>
+            {authReady ? "Log in" : "Loading"}
+          </button>
+          <button className="jiagon-web-auth-button" onClick={onSignup} disabled={!authReady}>
+            Sign up
+          </button>
+        </div>
+      )}
 
       <nav className="jiagon-web-nav" aria-label="Jiagon sections">
         {webTabs.map((item) => (
@@ -470,7 +483,7 @@ function WebNav({
         <div className="jiagon-web-status-grid">
           <div>
             <span>Auth</span>
-            <strong>{authenticated ? "Connected" : "Not connected"}</strong>
+            <strong>{authenticated ? "Connected" : "Log in or sign up"}</strong>
           </div>
           <div>
             <span>Receipts</span>
@@ -1338,6 +1351,9 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
                 setTab("inbox");
               }}
               onConnect={() => {
+                auth.login();
+              }}
+              onSignup={() => {
                 auth.login();
               }}
               authReady={navAuthReady}
