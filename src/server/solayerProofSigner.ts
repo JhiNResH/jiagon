@@ -37,6 +37,13 @@ export function verifySolayerProofAdapter(proof: unknown, signingSecret: string)
   if (!proof || typeof proof !== "object") return null;
   const candidate = proof as SolayerCreditProof;
   if (!candidate.signedAdapter?.signature || !candidate.signedAdapter?.digest) return null;
+  if (!/^0x[a-fA-F0-9]{64}$/.test(candidate.signedAdapter.signature)) return null;
+  if (!/^0x[a-fA-F0-9]{64}$/.test(candidate.signedAdapter.digest)) return null;
+  if (!/^0x[a-fA-F0-9]{64}$/.test(candidate.proofHash || "")) return null;
+  if (!/^0x[a-fA-F0-9]{40}$/.test(candidate.owner || "")) return null;
+  if (candidate.provider !== "solayer" || candidate.status !== "adapter-attested") return null;
+  if (candidate.verificationStatus !== "wallet-attested") return null;
+  if (candidate.adapterMode !== "zktls-compatible-signed-adapter") return null;
 
   const unsigned = {
     ...candidate,

@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       proofHash,
       proofLevel: "B" as const,
       status: "adapter-attested" as const,
-      verificationStatus: normalized.verifierSignature ? "verifier-attested" as const : "wallet-attested" as const,
+      verificationStatus: "wallet-attested" as const,
       adapterMode: "zktls-compatible-signed-adapter" as const,
       generatedAt,
     };

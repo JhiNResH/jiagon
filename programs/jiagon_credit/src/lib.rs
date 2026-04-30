@@ -82,9 +82,15 @@ pub mod jiagon_credit {
         receipt.created_at = Clock::get()?.unix_timestamp;
 
         let state = &mut ctx.accounts.credit_state;
-        state.receipt_count = state.receipt_count.saturating_add(1);
-        state.total_spend_cents = state.total_spend_cents.saturating_add(spend_cents);
-        state.score = score_for(state.receipt_count, state.total_spend_cents);
+        state.receipt_count = state
+            .receipt_count
+            .checked_add(1)
+            .ok_or(JiagonError::ArithmeticOverflow)?;
+        state.total_spend_cents = state
+            .total_spend_cents
+            .checked_add(spend_cents)
+            .ok_or(JiagonError::ArithmeticOverflow)?;
+        state.score = score_for(state.receipt_count, state.total_spend_cents)?;
         state.available_credit_cents = credit_for(state.score);
         state.updated_at = Clock::get()?.unix_timestamp;
         Ok(())
@@ -234,12 +240,21 @@ pub enum JiagonError {
     InvalidCoreAsset,
     #[msg("Configured public key cannot be the zero address.")]
     ZeroAddress,
+    #[msg("Credit arithmetic overflowed.")]
+    ArithmeticOverflow,
 }
 
-fn score_for(receipt_count: u32, total_spend_cents: u64) -> u16 {
-    let receipt_points = receipt_count.saturating_mul(28);
+fn score_for(receipt_count: u32, total_spend_cents: u64) -> Result<u16> {
+    let receipt_points = receipt_count
+        .checked_mul(28)
+        .ok_or(JiagonError::ArithmeticOverflow)?;
     let spend_points = (total_spend_cents / 100).min(44) as u32;
-    receipt_points.saturating_add(spend_points).min(100) as u16
+    let score = receipt_points
+        .checked_add(spend_points)
+        .ok_or(JiagonError::ArithmeticOverflow)?
+        .min(100) as u16;
+
+    Ok(score)
 }
 
 fn credit_for(score: u16) -> u64 {
