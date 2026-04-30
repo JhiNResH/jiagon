@@ -2803,8 +2803,9 @@ const CreditScreen = ({
   const creditUnlocked = mirroredState?.unlocked ?? (verifiedSignals > 0 || mintedCredentials.length > 0);
   const drawn = drawState === 'drawn' || drawState === 'repaid';
   const repaid = drawState === 'repaid';
-  const baseCredit = mirroredState?.availableCreditUsd ?? 50;
-  const availableCredit = creditUnlocked ? (drawn && !repaid ? Math.max(0, baseCredit - 20) : baseCredit) : 0;
+  const depositCredit = mirroredState?.lending?.amountUsd ?? drawPolicy?.defaultDepositUsd ?? 10;
+  const baseCredit = mirroredState?.availableCreditUsd ?? 25;
+  const availableCredit = creditUnlocked ? (drawn && !repaid ? Math.max(0, baseCredit - depositCredit) : baseCredit) : 0;
   const score = mirroredState?.score ?? Math.min(100, verifiedSignals * 28 + scannedReceipts * 8 + (repaid ? 24 : 0));
   const shortValue = (value) => value ? `${String(value).slice(0, 6)}…${String(value).slice(-4)}` : 'not prepared';
   const passportRows = [
@@ -2813,8 +2814,10 @@ const CreditScreen = ({
     ['Solayer proofs', solayerProofCount],
     ['Credential receipts', mintedCredentials.length || preparedCredentials.length],
     ['Credit PDA', activeMirror?.pda?.creditState ? shortValue(activeMirror.pda.creditState) : creditUnlocked ? 'ready to update' : 'waiting for credential'],
+    ['CreditLine PDA', activeMirror?.pda?.creditLine ? shortValue(activeMirror.pda.creditLine) : 'ready after refresh'],
     ['Bubblegum cNFT', activeSolana?.bubblegum?.assetId ? shortValue(activeSolana.bubblegum.assetId) : activeMirror?.metaplexReceipt?.assetAddress ? shortValue(activeMirror.metaplexReceipt.assetAddress) : 'not prepared'],
     ['Credit state', creditUnlocked ? (repaid ? 'Starter+' : activeMirror?.creditState?.status || 'Starter') : 'Locked'],
+    ['Deposit PDA', activeMirror?.creditState?.lending?.purposeDraw ? shortValue(activeMirror.creditState.lending.purposeDraw) : 'ready after reserve'],
   ];
 
   const handleCreditAction = async () => {
@@ -2886,7 +2889,7 @@ const CreditScreen = ({
     <div className="jiagon-credit-screen" style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
       <TopBar
         title="Credit"
-        sub={creditUnlocked ? 'Purpose-bound credit unlocked by receipts' : 'Scan a receipt proof to unlock credit'}
+        sub={creditUnlocked ? 'Premium dining deposit credit unlocked by receipts' : 'Scan a receipt proof to unlock deposit credit'}
         left={<div style={{ width: 28 }} />}
         right={authenticated ? (
           <span style={{
@@ -2944,7 +2947,7 @@ const CreditScreen = ({
                 lineHeight: 1,
                 marginTop: 8,
                 color: 'var(--ink)',
-              }}>{creditUnlocked ? 'Receipt-backed.' : 'Locked.'}</div>
+              }}>{creditUnlocked ? `$${baseCredit} unlocked.` : 'Locked.'}</div>
               <div style={{
                 fontFamily: 'var(--ui)',
                 fontSize: 13.5,
@@ -2953,7 +2956,7 @@ const CreditScreen = ({
                 marginTop: 9,
               }}>
                 {creditUnlocked
-                  ? 'Verified receipt history can underwrite small credit without exposing raw private data.'
+                  ? 'Verified receipt history can underwrite a premium restaurant reservation deposit without exposing raw private data.'
                   : hasReceiptInput
                     ? 'Finish claim + mint to turn receipt proof into credit reputation.'
                     : 'Start by importing a supported card spend transaction.'}
@@ -2995,8 +2998,8 @@ const CreditScreen = ({
             }}>
               {[
                 ['Solana mode', activeMirror?.adapterMode || activeSolana.bubblegum?.status || activeSolana.status || 'adapter'],
-                ['PDA', shortValue(activeMirror?.pda?.creditState)],
-                ['cNFT', activeSolana.bubblegum?.assetId ? shortValue(activeSolana.bubblegum.assetId) : shortValue(activeMirror?.metaplexReceipt?.assetAddress)],
+                ['Credit PDA', shortValue(activeMirror?.pda?.creditState)],
+                ['Draw PDA', shortValue(activeMirror?.creditState?.lending?.purposeDraw || activeMirror?.pda?.purposeDraw)],
               ].map(([label, value]) => (
                 <div key={label} style={{
                   border: '0.5px solid var(--rule)',
@@ -3287,10 +3290,10 @@ const CreditScreen = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
             <div>
               <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                Purpose-bound draw
+                Premium dining credit
               </div>
               <div style={{ fontFamily: 'var(--ui)', fontSize: 18, fontWeight: 800, color: 'var(--ink)', marginTop: 6 }}>
-                $20 restaurant deposit
+                {`$${depositCredit} reservation deposit`}
               </div>
             </div>
             <span style={{
@@ -3307,10 +3310,10 @@ const CreditScreen = ({
 
           <div style={{ marginTop: 13 }}>
             {[
-              ['Max spend', drawPolicy ? `$${drawPolicy.maxDrawUsd}` : '$25'],
-              ['Recipient', drawPolicy?.allowedPurpose || 'merchant escrow'],
+              ['Credit line', `$${baseCredit}`],
+              ['Recipient', drawPolicy?.recipient || 'restaurant escrow'],
               ['Expiry', drawPolicy ? `${drawPolicy.expiryHours}h` : '24h'],
-              ['Raw receipt data', 'hidden'],
+              ['Use of funds', 'premium restaurant deposit'],
             ].map(([label, value], index) => (
               <div key={label} style={{
                 display: 'flex',
@@ -3343,7 +3346,7 @@ const CreditScreen = ({
                 cursor: creditUnlocked ? 'pointer' : 'default',
                 opacity: creditUnlocked ? 1 : 0.45,
               }}
-            >Authorize draw</button>
+            >Simulate reserve with Jiagon credit</button>
             <button
               onClick={() => creditUnlocked && setDrawState('repaid')}
               disabled={!creditUnlocked || !drawn}
@@ -3359,7 +3362,7 @@ const CreditScreen = ({
                 cursor: creditUnlocked && drawn ? 'pointer' : 'default',
                 opacity: creditUnlocked && drawn ? 1 : 0.55,
               }}
-            >Mark repaid</button>
+            >{`Simulate repay $${depositCredit}`}</button>
           </div>
 
           {drawn && (
@@ -3375,8 +3378,8 @@ const CreditScreen = ({
               lineHeight: 1.45,
             }}>
               {repaid
-                ? 'Repayment confirmed. Reputation moves to Starter+.'
-                : 'PurposeDraw PDA created. $20 devnet USDC held for one merchant task.'}
+                ? `Simulated repayment confirmed. $${depositCredit} restored to the credit line and reputation moves to Starter+.`
+                : `Simulated PurposeDraw. The Anchor instruction is ready to send $${depositCredit} devnet USDC from vault to restaurant escrow.`}
             </div>
           )}
         </div>

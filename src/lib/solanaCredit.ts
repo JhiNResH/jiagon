@@ -294,24 +294,40 @@ export function solanaCreditConfig() {
 export function deriveSolanaCreditPdas({
   owner,
   sourceReceiptHash,
+  drawId,
 }: {
   owner: string;
   sourceReceiptHash: string;
+  drawId?: string;
 }) {
   const { programId } = solanaCreditConfig();
   const ownerBytes = pubkeyBytes(owner);
   const receiptHashBytes = bytes32FromHex(sourceReceiptHash);
+  const drawIdBytes = Buffer.from((drawId || sha256Hex(`${owner}:${sourceReceiptHash}`)).slice(0, 32), "hex");
   const creditState = findProgramAddress([Buffer.from("jiagon-credit-state"), ownerBytes], programId);
+  const creditLine = findProgramAddress([Buffer.from("jiagon-credit-line"), ownerBytes], programId);
   const receipt = findProgramAddress([Buffer.from("jiagon-receipt"), ownerBytes, receiptHashBytes], programId);
   const globalReceipt = findProgramAddress([Buffer.from("jiagon-receipt-global"), receiptHashBytes], programId);
+  const purposeDraw = findProgramAddress([Buffer.from("jiagon-purpose-draw"), ownerBytes, drawIdBytes], programId);
+  const vaultConfig = findProgramAddress([Buffer.from("jiagon-vault-config")], programId);
+  const vaultAuthority = findProgramAddress([Buffer.from("jiagon-vault-authority")], programId);
 
   return {
     creditStatePda: creditState.address,
     creditStateBump: creditState.bump,
+    creditLinePda: creditLine.address,
+    creditLineBump: creditLine.bump,
     receiptPda: receipt.address,
     receiptBump: receipt.bump,
     globalReceiptPda: globalReceipt.address,
     globalReceiptBump: globalReceipt.bump,
+    purposeDrawPda: purposeDraw.address,
+    purposeDrawBump: purposeDraw.bump,
+    vaultConfigPda: vaultConfig.address,
+    vaultConfigBump: vaultConfig.bump,
+    vaultAuthorityPda: vaultAuthority.address,
+    vaultAuthorityBump: vaultAuthority.bump,
+    drawId: drawIdBytes.toString("hex"),
   };
 }
 
@@ -339,7 +355,8 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
   const amountUsd = parseUsd(receipt.amountUsd || receipt.amount);
   const solayerProofs = cleanSolayerProofs(input.solayerProofs);
   const solayerPositionUsd = solayerProofs.reduce((total, proof) => total + proof.positionUsd, 0);
-  const pdas = deriveSolanaCreditPdas({ owner, sourceReceiptHash });
+  const drawId = sha256Hex(`${owner}:${sourceReceiptHash}:premium-restaurant-deposit`).slice(0, 32);
+  const pdas = deriveSolanaCreditPdas({ owner, sourceReceiptHash, drawId });
   const config = solanaCreditConfig();
   const now = new Date().toISOString();
   const receiptCount = credential.status === "minted" || credential.status === "prepared" ? 1 : 0;
@@ -401,17 +418,29 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
     },
     pda: {
       creditState: pdas.creditStatePda,
+      creditLine: pdas.creditLinePda,
       receipt: pdas.receiptPda,
       globalReceipt: pdas.globalReceiptPda,
+      purposeDraw: pdas.purposeDrawPda,
+      vaultConfig: pdas.vaultConfigPda,
+      vaultAuthority: pdas.vaultAuthorityPda,
       bumps: {
         creditState: pdas.creditStateBump,
+        creditLine: pdas.creditLineBump,
         receipt: pdas.receiptBump,
         globalReceipt: pdas.globalReceiptBump,
+        purposeDraw: pdas.purposeDrawBump,
+        vaultConfig: pdas.vaultConfigBump,
+        vaultAuthority: pdas.vaultAuthorityBump,
       },
       seeds: {
         creditState: ["jiagon-credit-state", owner],
+        creditLine: ["jiagon-credit-line", owner],
         receipt: ["jiagon-receipt", owner, sourceReceiptHash],
         globalReceipt: ["jiagon-receipt-global", sourceReceiptHash],
+        purposeDraw: ["jiagon-purpose-draw", owner, drawId],
+        vaultConfig: ["jiagon-vault-config"],
+        vaultAuthority: ["jiagon-vault-authority"],
       },
     },
     creditState: {
@@ -426,8 +455,21 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
       purposeBound: true,
       policy: {
         maxDrawUsd: solayerProofs.length > 0 ? 50 : 25,
-        allowedPurpose: "merchant escrow",
+        defaultDepositUsd: 10,
+        allowedPurpose: "premium_restaurant_deposit",
+        recipient: "restaurant_merchant_or_escrow",
         expiryHours: 24,
+      },
+      lending: {
+        status: receiptCount > 0 ? "deposit-credit-ready" : "locked",
+        product: "premium_restaurant_deposit",
+        drawId,
+        amountUsd: 10,
+        token: "devnet USDC",
+        vault: pdas.vaultConfigPda,
+        vaultAuthority: pdas.vaultAuthorityPda,
+        purposeDraw: pdas.purposeDrawPda,
+        repaymentRestoresCredit: true,
       },
       updatedAt: now,
     },
