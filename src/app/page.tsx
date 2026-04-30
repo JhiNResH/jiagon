@@ -421,14 +421,18 @@ function WebNav({
   active,
   onChange,
   onImport,
+  onConnect,
   authenticated,
+  authReady,
   receiptCount,
   credentialCount,
 }: {
   active: Tab;
   onChange: (tab: Tab) => void;
   onImport: () => void;
+  onConnect: () => void;
   authenticated: boolean;
+  authReady: boolean;
   receiptCount: number;
   credentialCount: number;
 }) {
@@ -442,8 +446,8 @@ function WebNav({
         </div>
       </div>
 
-      <button className="jiagon-web-primary" onClick={onImport}>
-        Scan spend tx
+      <button className="jiagon-web-primary" onClick={authenticated ? onImport : onConnect} disabled={!authReady}>
+        {authenticated ? "Scan spend tx" : authReady ? "Connect wallet" : "Loading wallet"}
       </button>
 
       <nav className="jiagon-web-nav" aria-label="Jiagon sections">
@@ -466,7 +470,7 @@ function WebNav({
         <div className="jiagon-web-status-grid">
           <div>
             <span>Auth</span>
-            <strong>{authenticated ? "Connected" : "Local"}</strong>
+            <strong>{authenticated ? "Connected" : "Not connected"}</strong>
           </div>
           <div>
             <span>Receipts</span>
@@ -1332,6 +1336,10 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
                 setShowOnboard(false);
                 setTab("inbox");
               }}
+              onConnect={() => {
+                auth.login();
+              }}
+              authReady={auth.ready}
               authenticated={auth.authenticated}
               receiptCount={etherfi.receipts?.length || 0}
               credentialCount={credentialCount}

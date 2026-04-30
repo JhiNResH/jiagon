@@ -440,7 +440,7 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
               }} />
               Starting receipt sync…
             </>
-          ) : authenticated ? 'Import from spend tx' : 'Continue with Privy'}
+          ) : authenticated ? 'Import from spend tx' : 'Connect wallet'}
         </button>
         <button onClick={onDone} style={{
           width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
@@ -2355,7 +2355,7 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
           padding: '7px 11px', fontFamily: 'var(--mono)',
           fontSize: 10, cursor: ready ? 'pointer' : 'default',
           opacity: ready ? 1 : 0.55,
-        }}>Login</button>
+        }}>Connect wallet</button>
       )}
     />
 
@@ -2870,7 +2870,7 @@ const CreditScreen = ({
             cursor: ready ? 'pointer' : 'default',
             opacity: ready ? 1 : 0.55,
             whiteSpace: 'nowrap',
-          }}>{ready ? 'Login' : 'Loading'}</button>
+          }}>{ready ? 'Connect wallet' : 'Loading'}</button>
         )}
       />
 
@@ -3054,7 +3054,7 @@ const CreditScreen = ({
               fontWeight: 800,
               cursor: ready ? 'pointer' : 'default',
               opacity: ready ? 1 : 0.6,
-            }}>{!authenticated ? 'Continue with Privy' : hasReceiptInput ? 'Open receipts' : 'Scan tx'}</button>
+            }}>{!authenticated ? 'Connect wallet' : hasReceiptInput ? 'Open receipts' : 'Scan tx'}</button>
           </div>
         </div>
       )}
