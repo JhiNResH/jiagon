@@ -64,6 +64,13 @@ pub mod jiagon_credit {
             JiagonError::InvalidCoreAsset
         );
 
+        let global_receipt = &mut ctx.accounts.global_receipt;
+        global_receipt.source_receipt_hash = source_receipt_hash;
+        global_receipt.owner = ctx.accounts.owner.key();
+        global_receipt.receipt = ctx.accounts.receipt.key();
+        global_receipt.bump = ctx.bumps.global_receipt;
+        global_receipt.created_at = Clock::get()?.unix_timestamp;
+
         let receipt = &mut ctx.accounts.receipt;
         receipt.owner = ctx.accounts.owner.key();
         receipt.source_receipt_hash = source_receipt_hash;
@@ -154,6 +161,14 @@ pub struct RecordReceipt<'info> {
         bump
     )]
     pub receipt: Account<'info, ReceiptRecord>,
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + ReceiptGlobalRegistry::INIT_SPACE,
+        seeds = [b"jiagon-receipt-global", source_receipt_hash.as_ref()],
+        bump
+    )]
+    pub global_receipt: Account<'info, ReceiptGlobalRegistry>,
     /// CHECK: The program checks that this account is owned by the configured Metaplex Core program.
     pub core_asset: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
@@ -189,6 +204,16 @@ pub struct ReceiptRecord {
     pub spend_cents: u64,
     pub proof_level: u8,
     pub core_asset: Pubkey,
+    pub created_at: i64,
+    pub bump: u8,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct ReceiptGlobalRegistry {
+    pub source_receipt_hash: [u8; 32],
+    pub owner: Pubkey,
+    pub receipt: Pubkey,
     pub created_at: i64,
     pub bump: u8,
 }

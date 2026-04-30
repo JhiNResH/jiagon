@@ -2725,14 +2725,16 @@ const CreditScreen = ({
   const accountLabel = auth?.walletLabel || auth?.userLabel;
   const scannedReceipts = etherfi?.receipts?.length || 0;
   const reviewedReceipts = reviewedReceiptIds.length || userReviews.filter(hasReviewProof).length;
-  const verifiedSignals = Math.max(mintedCredentials.length, reviewedReceipts);
+  const mirroredState = activeSolana?.creditState;
+  const drawPolicy = mirroredState?.policy;
+  const verifiedSignals = mirroredState?.receiptCount ?? Math.max(mintedCredentials.length, reviewedReceipts);
   const hasReceiptInput = scannedReceipts > 0 || verifiedSignals > 0 || preparedCredentials.length > 0;
-  const creditUnlocked = Boolean(activeSolana?.creditState?.unlocked) || verifiedSignals > 0 || mintedCredentials.length > 0;
+  const creditUnlocked = mirroredState?.unlocked ?? (verifiedSignals > 0 || mintedCredentials.length > 0);
   const drawn = drawState === 'drawn' || drawState === 'repaid';
   const repaid = drawState === 'repaid';
-  const baseCredit = activeSolana?.creditState?.availableCreditUsd ?? 50;
+  const baseCredit = mirroredState?.availableCreditUsd ?? 50;
   const availableCredit = creditUnlocked ? (drawn && !repaid ? Math.max(0, baseCredit - 20) : baseCredit) : 0;
-  const score = activeSolana?.creditState?.score ?? Math.min(100, verifiedSignals * 28 + scannedReceipts * 8 + (repaid ? 24 : 0));
+  const score = mirroredState?.score ?? Math.min(100, verifiedSignals * 28 + scannedReceipts * 8 + (repaid ? 24 : 0));
   const shortValue = (value) => value ? `${String(value).slice(0, 6)}…${String(value).slice(-4)}` : 'not prepared';
   const passportRows = [
     ['Wallet', auth?.walletLabel || auth?.userLabel || 'Not connected'],
@@ -3012,9 +3014,9 @@ const CreditScreen = ({
 
           <div style={{ marginTop: 13 }}>
             {[
-              ['Max spend', '$25'],
-              ['Recipient', 'merchant escrow'],
-              ['Expiry', '24h'],
+              ['Max spend', drawPolicy ? `$${drawPolicy.maxDrawUsd}` : '$25'],
+              ['Recipient', drawPolicy?.allowedPurpose || 'merchant escrow'],
+              ['Expiry', drawPolicy ? `${drawPolicy.expiryHours}h` : '24h'],
               ['Raw receipt data', 'hidden'],
             ].map(([label, value], index) => (
               <div key={label} style={{

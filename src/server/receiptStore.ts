@@ -45,6 +45,7 @@ export type ReceiptReviewRecord = {
   reviewAttributes?: Record<string, unknown>;
   reviewText: string;
   amount?: string | null;
+  amountUsd?: string | null;
   token?: string | null;
   proofLevel: string;
   sourceReceiptHash: string;
@@ -181,6 +182,7 @@ async function ensureSchema(pool: Pool) {
         review_attributes jsonb not null default '{}'::jsonb,
         review_text text not null default '',
         amount text,
+        amount_usd text,
         token text,
         proof_level text not null,
         source_receipt_hash text not null unique,
@@ -205,6 +207,9 @@ async function ensureSchema(pool: Pool) {
       alter table jiagon_receipt_reviews
         add column if not exists place_provider text,
         add column if not exists google_place_id text;
+
+      alter table jiagon_receipt_reviews
+        add column if not exists amount_usd text;
 
       create index if not exists jiagon_receipt_reviews_google_place_id_idx
         on jiagon_receipt_reviews (google_place_id)
@@ -484,6 +489,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           review_attributes,
           review_text,
           amount,
+          amount_usd,
           token,
           proof_level,
           source_receipt_hash,
@@ -506,7 +512,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           $9, $10, $11, $12, $13, $14, $15,
           $16::jsonb, $17::jsonb, $18, $19, $20,
           $21, $22, $23, $24, $25, $26, $27,
-          $28, $29, $30, $31, $32, $33, $34, $35::jsonb
+          $28, $29, $30, $31, $32, $33, $34, $35, $36::jsonb
         )
         on conflict (source_receipt_hash) do update set
           updated_at = now(),
@@ -526,6 +532,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           review_attributes = excluded.review_attributes,
           review_text = excluded.review_text,
           amount = excluded.amount,
+          amount_usd = excluded.amount_usd,
           token = excluded.token,
           proof_level = excluded.proof_level,
           data_hash = excluded.data_hash,
@@ -562,6 +569,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
         JSON.stringify(record.reviewAttributes || {}),
         record.reviewText || "",
         record.amount || null,
+        record.amountUsd || null,
         record.token || null,
         record.proofLevel,
         record.sourceReceiptHash,
@@ -721,6 +729,7 @@ export async function getVerifiedReceiptReviewBySourceHash(sourceReceiptHash: st
           review_attributes,
           review_text,
           amount,
+          amount_usd,
           token,
           proof_level,
           source_receipt_hash,
@@ -774,6 +783,7 @@ export async function getVerifiedReceiptReviewBySourceHash(sourceReceiptHash: st
             : {},
         reviewText: row.review_text,
         amount: row.amount,
+        amountUsd: row.amount_usd,
         token: row.token,
         proofLevel: row.proof_level,
         sourceReceiptHash: row.source_receipt_hash,

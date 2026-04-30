@@ -1,4 +1,5 @@
 import { buildSolanaCreditMirror, isSolanaPubkey } from "@/lib/solanaCredit";
+import { buildSolanaOwnerLinkMessage } from "@/lib/solanaOwnerLink";
 import { getVerifiedReceiptReviewBySourceHash } from "@/server/receiptStore";
 import { recoverMessageAddress, type Hex } from "viem";
 
@@ -25,20 +26,6 @@ function cleanAddress(value: unknown) {
 function cleanSignature(value: unknown): Hex | null {
   if (typeof value !== "string") return null;
   return /^0x[a-fA-F0-9]{130}$/.test(value.trim()) ? value.trim() as Hex : null;
-}
-
-function buildSolanaOwnerLinkMessage({
-  sourceReceiptHash,
-  solanaOwner,
-}: {
-  sourceReceiptHash: string;
-  solanaOwner: string;
-}) {
-  return [
-    "Jiagon Solana credit mirror",
-    `Source receipt: ${sourceReceiptHash}`,
-    `Solana owner: ${solanaOwner}`,
-  ].join("\n");
 }
 
 export async function POST(request: Request) {
@@ -115,6 +102,7 @@ export async function POST(request: Request) {
         txHash: review.sourceTx,
         logIndex: review.logIndex,
         amount: review.amount || undefined,
+        amountUsd: review.amountUsd || undefined,
         token: review.token || undefined,
         safe: review.ownerSafe || undefined,
         blockNumber: review.sourceBlock || undefined,

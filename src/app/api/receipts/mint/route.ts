@@ -50,6 +50,7 @@ type JsonRpcResponse<T> = {
 
 type RpcLog = {
   address: string;
+  data: string;
   logIndex: string;
   topics: string[];
 };
@@ -163,6 +164,32 @@ function sourceReceiptHash(sourceTx: string, logIndex: number) {
 function wordToAddress(word?: string) {
   if (!word || word.length < 42) return undefined;
   return `0x${word.slice(-40)}`.toLowerCase();
+}
+
+function dataWords(data: string) {
+  const hex = data.startsWith("0x") ? data.slice(2) : data;
+  const words: string[] = [];
+
+  for (let i = 0; i < hex.length; i += 64) {
+    words.push(`0x${hex.slice(i, i + 64)}`);
+  }
+
+  return words;
+}
+
+function parseWord(word?: string) {
+  return BigInt(word || "0x0");
+}
+
+function formatUnits(value: bigint, decimals: number) {
+  const base = BigInt(10) ** BigInt(decimals);
+  const whole = value / base;
+  const fraction = value % base;
+
+  if (fraction === BigInt(0)) return whole.toString();
+
+  const fractionText = fraction.toString().padStart(decimals, "0").replace(/0+$/, "");
+  return `${whole}.${fractionText}`;
 }
 
 function configuredAddress(value: string | undefined) {
@@ -455,6 +482,7 @@ export async function verifyEtherfiSpend(sourceTx: string, expectedLogIndex?: nu
   return {
     blockNumber: receipt.blockNumber ? Number.parseInt(receipt.blockNumber, 16) : undefined,
     logIndex: Number.parseInt(spendLog.logIndex, 16),
+    amountUsd: formatUnits(parseWord(dataWords(spendLog.data)[0]), 6),
     safe: wordToAddress(spendLog.topics[1]),
     wallet: wordToAddress(spendLog.topics[2]),
   };
@@ -513,7 +541,8 @@ export async function handleMintReceiptRequest(request: Request, mintTokenOverri
         logIndex: verifiedSpend.logIndex,
         sourceReceiptHash: sourceHash,
         paymentProof: "A",
-        amount: body.receipt?.amount || (body.receipt?.amountUsd ? `$${body.receipt.amountUsd}` : undefined),
+        amount: `$${verifiedSpend.amountUsd}`,
+        amountUsd: verifiedSpend.amountUsd,
         token: body.receipt?.token || "OP USDC",
         safe: owner,
         wallet: verifiedSpend.wallet,
@@ -598,7 +627,8 @@ export async function handleMintReceiptRequest(request: Request, mintTokenOverri
         tags,
         reviewAttributes,
         reviewText: body.review?.text || "",
-        amount: body.receipt?.amount || (body.receipt?.amountUsd ? `$${body.receipt.amountUsd}` : null),
+        amount: `$${verifiedSpend.amountUsd}`,
+        amountUsd: verifiedSpend.amountUsd,
         token: body.receipt?.token || "OP USDC",
         proofLevel: "C",
         sourceReceiptHash: sourceHash,

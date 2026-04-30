@@ -104,8 +104,8 @@ function base58Decode(value: string) {
     bytes = Buffer.concat([Buffer.from([0]), bytes]);
   }
 
-  if (bytes.length > 32) throw new Error("Invalid Solana public key.");
-  return Buffer.concat([Buffer.alloc(32 - bytes.length), bytes]);
+  if (bytes.length !== 32) throw new Error("Invalid Solana public key.");
+  return bytes;
 }
 
 function pubkeyBytes(value: string) {
@@ -260,12 +260,15 @@ export function deriveSolanaCreditPdas({
   const receiptHashBytes = bytes32FromHex(sourceReceiptHash);
   const creditState = findProgramAddress([Buffer.from("jiagon-credit-state"), ownerBytes], programId);
   const receipt = findProgramAddress([Buffer.from("jiagon-receipt"), ownerBytes, receiptHashBytes], programId);
+  const globalReceipt = findProgramAddress([Buffer.from("jiagon-receipt-global"), receiptHashBytes], programId);
 
   return {
     creditStatePda: creditState.address,
     creditStateBump: creditState.bump,
     receiptPda: receipt.address,
     receiptBump: receipt.bump,
+    globalReceiptPda: globalReceipt.address,
+    globalReceiptBump: globalReceipt.bump,
   };
 }
 
@@ -334,13 +337,16 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
     pda: {
       creditState: pdas.creditStatePda,
       receipt: pdas.receiptPda,
+      globalReceipt: pdas.globalReceiptPda,
       bumps: {
         creditState: pdas.creditStateBump,
         receipt: pdas.receiptBump,
+        globalReceipt: pdas.globalReceiptBump,
       },
       seeds: {
         creditState: ["jiagon-credit-state", owner],
         receipt: ["jiagon-receipt", owner, sourceReceiptHash],
+        globalReceipt: ["jiagon-receipt-global", sourceReceiptHash],
       },
     },
     creditState: {

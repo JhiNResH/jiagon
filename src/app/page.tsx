@@ -7,6 +7,7 @@ import {
   ReviewDetailScreen, ProfileScreen, CreditScreen,
 } from "@/components/screens";
 import { buildReceiptPublishMessage } from "@/lib/receiptPublish";
+import { buildSolanaOwnerLinkMessage } from "@/lib/solanaOwnerLink";
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -354,6 +355,10 @@ function initialTabFromPath(): Tab {
   if (typeof window === "undefined") return "inbox";
   if (window.location.pathname === "/credit") return "credit";
   return "inbox";
+}
+
+function pathForTab(tab: Tab) {
+  return tab === "credit" ? "/credit" : "/";
 }
 
 const webTabs: Array<{ id: Tab; label: string; sub: string }> = [
@@ -935,12 +940,6 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       }),
     });
 
-  const buildSolanaOwnerLinkMessage = (credential: ReceiptCredential) => [
-    "Jiagon Solana credit mirror",
-    `Source receipt: ${credential.sourceReceiptHash}`,
-    `Solana owner: ${credential.solanaOwner}`,
-  ].join("\n");
-
   const signSolanaCreditMirror = async (credential: ReceiptCredential) => {
     const signer = authSession?.walletAddress;
 
@@ -959,7 +958,13 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
 
     const signature = await ethereum.request({
       method: "personal_sign",
-      params: [buildSolanaOwnerLinkMessage(credential), signer],
+      params: [
+        buildSolanaOwnerLinkMessage({
+          sourceReceiptHash: credential.sourceReceiptHash,
+          solanaOwner: credential.solanaOwner,
+        }),
+        signer,
+      ],
     });
 
     if (typeof signature !== "string") {
@@ -1109,6 +1114,28 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const syncFromPath = () => {
+      const nextTab = initialTabFromPath();
+      setTab(nextTab);
+      setShowOnboard(nextTab !== "credit");
+    };
+
+    window.addEventListener("popstate", syncFromPath);
+    return () => window.removeEventListener("popstate", syncFromPath);
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const nextPath = showOnboard ? "/" : pathForTab(tab);
+    if (window.location.pathname !== nextPath) {
+      window.history.replaceState(null, "", nextPath);
+    }
+  }, [mounted, showOnboard, tab]);
 
   useEffect(() => {
     if (!detail && !reviewing) return;
