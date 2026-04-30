@@ -8,6 +8,9 @@
     "start": "next start"
   },
   "dependencies": {
+    "@metaplex-foundation/mpl-bubblegum": "^5.0.2",
+    "@metaplex-foundation/umi": "^1.5.1",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.5.1",
     "@privy-io/react-auth": "^3.22.2",
     "next": "16.2.4",
     "pg": "^8.20.0",

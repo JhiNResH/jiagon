@@ -19,6 +19,16 @@ function cleanSolanaOwner(value: unknown) {
   return isSolanaPubkey(owner) ? owner : null;
 }
 
+function cleanSolanaPubkeyString(value: unknown) {
+  if (typeof value !== "string") return null;
+  const key = value.trim();
+  return isSolanaPubkey(key) ? key : null;
+}
+
+function cleanCredentialStandard(value: unknown) {
+  return value === "bubblegum-v2-cnft" ? value : null;
+}
+
 function cleanAddress(value: unknown) {
   if (typeof value !== "string") return null;
   const address = value.trim().toLowerCase();
@@ -149,6 +159,9 @@ export async function POST(request: Request) {
         dataHash: review.dataHash,
         storageUri: review.storageUri,
         proofLevel: review.proofLevel,
+        metaplexCoreAsset: cleanSolanaPubkeyString(body?.credential?.metaplexCoreAsset),
+        standard: cleanCredentialStandard(body?.credential?.standard),
+        merkleTree: cleanSolanaPubkeyString(body?.credential?.merkleTree),
       },
       solayerProofs: solayerProofs.filter((proof): proof is SolayerCreditProof => Boolean(proof)),
     }, { signingSecret });

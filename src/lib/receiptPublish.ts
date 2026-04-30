@@ -87,7 +87,7 @@ export function buildReceiptPublishMessage(input: ReceiptPublishMessageInput) {
 
   return [
     "Jiagon receipt publish",
-    "Purpose: mint a BNB testnet receipt credential for a verified ether.fi Cash Spend event.",
+    "Purpose: mint a Jiagon receipt credential for a verified ether.fi Cash Spend event.",
     `Source chain: optimism`,
     `Provider: ether.fi Cash`,
     `Source tx: ${input.sourceTx.toLowerCase()}`,
