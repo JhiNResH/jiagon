@@ -8,6 +8,11 @@ import {
 } from "@/components/screens";
 import { buildReceiptPublishMessage } from "@/lib/receiptPublish";
 import { buildSolanaOwnerLinkMessage } from "@/lib/solanaOwnerLink";
+import {
+  buildSolayerProofMessage,
+  type SolayerCreditProof,
+  type SolayerProofInput,
+} from "@/lib/solayerProof";
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -43,6 +48,7 @@ type PrivyBridge = {
 
 const authStorageKey = "jiagon:privy-session";
 const etherfiStorageKey = "jiagon:etherfi-sync";
+const solayerProofsStorageKey = "jiagon:solayer-proofs";
 const reviewsStorageKey = "jiagon:published-reviews";
 const reviewedReceiptsStorageKey = "jiagon:reviewed-receipts";
 const receiptCredentialsStorageKey = "jiagon:receipt-credentials";
@@ -322,8 +328,29 @@ function writeStoredEtherfiSync(state: EtherfiSyncState) {
   window.localStorage.setItem(etherfiStorageKey, JSON.stringify(normalized));
 }
 
+function normalizeRestoredSolayerProofs(value: unknown): SolayerCreditProof[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((proof): proof is SolayerCreditProof => {
+      const record = proof && typeof proof === "object" ? proof as Record<string, any> : null;
+      return Boolean(
+        record &&
+        record.provider === "solayer" &&
+        record.status === "adapter-attested" &&
+        typeof record.proofHash === "string" &&
+        typeof record.signedAdapter?.signature === "string",
+      );
+    })
+    .slice(0, 25);
+}
+
+function writeStoredSolayerProofs(proofs: SolayerCreditProof[]) {
+  window.localStorage.setItem(solayerProofsStorageKey, JSON.stringify(normalizeRestoredSolayerProofs(proofs)));
+}
+
 function hydrateLocalPrivateState(
   setEtherfiSyncState: (state: EtherfiSyncState) => void,
+  setSolayerProofsState: (proofs: SolayerCreditProof[]) => void,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setReviewsState: (reviews: any[]) => void,
   setReviewedIdsState: (ids: string[]) => void,
@@ -333,6 +360,12 @@ function hydrateLocalPrivateState(
   if (storedEtherfiSync) {
     setEtherfiSyncState(storedEtherfiSync);
     writeStoredEtherfiSync(storedEtherfiSync);
+  }
+
+  const storedSolayerProofs = normalizeRestoredSolayerProofs(readStoredJson(solayerProofsStorageKey));
+  if (storedSolayerProofs.length > 0) {
+    setSolayerProofsState(storedSolayerProofs);
+    writeStoredSolayerProofs(storedSolayerProofs);
   }
 
   const storedReviews = readStoredJson(reviewsStorageKey);
@@ -377,7 +410,7 @@ const logoMarkStyles = `
 `;
 
 const webUiPolishStyles = `
-.jiagon-web-shell{grid-template-columns:280px minmax(0,1fr)!important;height:100vh!important;min-height:100vh!important;overflow:hidden!important}.jiagon-web-sidebar{padding:24px 18px!important;gap:16px!important;height:100vh!important;min-height:100vh!important;position:sticky!important;top:0!important;overflow:hidden!important}.jiagon-web-brand{gap:10px!important}.jiagon-web-wordmark{font-size:34px!important}.jiagon-web-main{padding:24px clamp(24px,4vw,64px) 42px!important;height:100vh!important;min-height:0!important;overflow-y:auto!important;overscroll-behavior:contain!important}.jiagon-web-top{align-items:center!important;margin-bottom:22px!important}.jiagon-web-top h1{display:none!important}.jiagon-web-proofline{margin-left:auto}.jiagon-web-content{max-width:1120px!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child{padding-top:0!important;padding-bottom:14px!important;position:relative!important;top:auto!important;background:transparent!important;border-bottom:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child>div:first-child{padding-left:0!important;padding-right:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child>div:last-child{padding-left:0!important;padding-right:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar{padding-top:0!important;padding-bottom:18px!important;position:relative!important;top:auto!important;z-index:1!important;background:transparent!important;border-bottom:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-controls{display:none!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-copy{padding:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-title{font-size:clamp(42px,4.6vw,58px)!important;line-height:.9!important;letter-spacing:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-sub{margin-top:8px!important;font-size:10px!important}.jiagon-web-nav{gap:6px!important}.jiagon-web-nav-item{padding:12px!important}.jiagon-web-nav-item[data-active="true"]{background:oklch(0.992 0.004 100)!important;border-color:color-mix(in oklch,var(--verified) 24%,var(--rule))!important}.jiagon-web-status{background:oklch(0.992 0.004 100 / .82)!important;padding:12px!important}.jiagon-web-status-grid{gap:4px!important;margin-top:8px!important}.jiagon-web-status-grid div{padding:5px 0!important}.jiagon-web-status p{font-size:11.5px!important;line-height:1.35!important;margin-top:8px!important}.jiagon-web-primary{box-shadow:0 8px 22px rgba(0,96,48,.16)}.jiagon-credit-screen{height:auto!important;overflow:visible!important;background:transparent!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(330px,380px)!important;gap:14px!important;align-items:start!important}.jiagon-credit-screen .jiagon-topbar{grid-column:1/-1}.jiagon-credit-panel-wrap{padding:0!important;min-width:0}.jiagon-credit-panel-wrap>div{border-radius:10px!important}.jiagon-credit-panel-wrap button{border-radius:10px!important}.jiagon-credit-passport-wrap{grid-column:1/-1}.jiagon-credit-next-wrap{grid-column:1}.jiagon-credit-draw-wrap{grid-column:2}.jiagon-credit-draw-wrap-unlocked{grid-column:1/-1}@media(max-height:980px) and (min-width:901px){.jiagon-web-sidebar{gap:12px!important}.jiagon-web-brand{padding-bottom:6px!important}.jiagon-web-status{display:none!important}.jiagon-web-nav-item{padding:10px 12px!important}}@media(max-width:1100px){.jiagon-credit-screen{grid-template-columns:1fr!important}.jiagon-credit-passport-wrap,.jiagon-credit-next-wrap,.jiagon-credit-draw-wrap{grid-column:1/-1!important}}@media(max-width:900px){.jiagon-web-shell{grid-template-columns:1fr!important;height:auto!important;min-height:100vh!important;overflow:visible!important}.jiagon-web-sidebar{height:auto!important;min-height:auto!important;position:relative!important;overflow:visible!important}.jiagon-web-main{padding:16px 14px 30px!important;height:auto!important;min-height:78vh!important;overflow:visible!important}.jiagon-web-top{display:grid!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child{padding-top:0!important}}
+.jiagon-web-shell{grid-template-columns:280px minmax(0,1fr)!important;height:100vh!important;min-height:100vh!important;overflow:hidden!important}.jiagon-web-sidebar{padding:24px 18px!important;gap:16px!important;height:100vh!important;min-height:100vh!important;position:sticky!important;top:0!important;overflow:hidden!important}.jiagon-web-brand{gap:10px!important}.jiagon-web-wordmark{font-size:34px!important}.jiagon-web-main{padding:24px clamp(24px,4vw,64px) 42px!important;height:100vh!important;min-height:0!important;overflow-y:auto!important;overscroll-behavior:contain!important}.jiagon-web-top{align-items:center!important;margin-bottom:22px!important}.jiagon-web-top h1{display:none!important}.jiagon-web-proofline{margin-left:auto}.jiagon-web-content{max-width:1120px!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child{padding-top:0!important;padding-bottom:14px!important;position:relative!important;top:auto!important;background:transparent!important;border-bottom:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child>div:first-child{padding-left:0!important;padding-right:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child>div:last-child{padding-left:0!important;padding-right:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar{padding-top:0!important;padding-bottom:18px!important;position:relative!important;top:auto!important;z-index:1!important;background:transparent!important;border-bottom:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-controls{display:none!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-copy{padding:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-title{font-size:clamp(42px,4.6vw,58px)!important;line-height:.9!important;letter-spacing:0!important}.jiagon-web-content:not(.jiagon-web-content-onboarding) .jiagon-topbar-sub{margin-top:8px!important;font-size:10px!important}.jiagon-web-nav{gap:6px!important}.jiagon-web-nav-item{padding:12px!important}.jiagon-web-nav-item[data-active="true"]{background:oklch(0.992 0.004 100)!important;border-color:color-mix(in oklch,var(--verified) 24%,var(--rule))!important}.jiagon-web-status{background:oklch(0.992 0.004 100 / .82)!important;padding:12px!important}.jiagon-web-status-grid{gap:4px!important;margin-top:8px!important}.jiagon-web-status-grid div{padding:5px 0!important}.jiagon-web-status p{font-size:11.5px!important;line-height:1.35!important;margin-top:8px!important}.jiagon-web-primary{box-shadow:0 8px 22px rgba(0,96,48,.16)}.jiagon-credit-screen{height:auto!important;overflow:visible!important;background:transparent!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(330px,380px)!important;gap:14px!important;align-items:start!important}.jiagon-credit-screen .jiagon-topbar{grid-column:1/-1}.jiagon-credit-panel-wrap{padding:0!important;min-width:0}.jiagon-credit-panel-wrap>div{border-radius:10px!important}.jiagon-credit-panel-wrap button{border-radius:10px!important}.jiagon-credit-passport-wrap{grid-column:1/-1}.jiagon-credit-next-wrap,.jiagon-credit-solayer-wrap{grid-column:1}.jiagon-credit-draw-wrap{grid-column:2}.jiagon-credit-draw-wrap-unlocked{grid-column:1/-1}@media(max-height:980px) and (min-width:901px){.jiagon-web-sidebar{gap:12px!important}.jiagon-web-brand{padding-bottom:6px!important}.jiagon-web-status{display:none!important}.jiagon-web-nav-item{padding:10px 12px!important}}@media(max-width:1100px){.jiagon-credit-screen{grid-template-columns:1fr!important}.jiagon-credit-passport-wrap,.jiagon-credit-next-wrap,.jiagon-credit-solayer-wrap,.jiagon-credit-draw-wrap{grid-column:1/-1!important}}@media(max-width:900px){.jiagon-web-shell{grid-template-columns:1fr!important;height:auto!important;min-height:100vh!important;overflow:visible!important}.jiagon-web-sidebar{height:auto!important;min-height:auto!important;position:relative!important;overflow:visible!important}.jiagon-web-main{padding:16px 14px 30px!important;height:auto!important;min-height:78vh!important;overflow:visible!important}.jiagon-web-top{display:grid!important}.jiagon-web-content:not(.jiagon-web-content-onboarding)>div>div:first-child{padding-top:0!important}}
 `;
 
 const webDialogStyles = `
@@ -461,6 +494,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [authBusy, setAuthBusy] = useState(false);
   const [authSession, setAuthSession] = useState<StoredSession | null>(null);
   const [etherfiSync, setEtherfiSync] = useState<EtherfiSyncState>(emptyEtherfiSync);
+  const [solayerProofs, setSolayerProofs] = useState<SolayerCreditProof[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [publishedReviews, setPublishedReviews] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -507,10 +541,12 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     localHydratedUserRef.current = null;
     lastPersistableEtherfiSyncRef.current = null;
     setEtherfiSync(emptyEtherfiSync);
+    setSolayerProofs([]);
     setPublishedReviews([]);
     setReviewedReceiptIds([]);
     setReceiptCredentials({});
     window.localStorage.removeItem(etherfiStorageKey);
+    window.localStorage.removeItem(solayerProofsStorageKey);
     window.localStorage.removeItem(reviewsStorageKey);
     window.localStorage.removeItem(reviewedReceiptsStorageKey);
     window.localStorage.removeItem(receiptCredentialsStorageKey);
@@ -537,7 +573,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     privyUserIdRef.current = privyUserId;
     if (privyUserId) {
       if (!accountChanged && storedPrivyUserId === privyUserId && localHydratedUserRef.current !== privyUserId) {
-        hydrateLocalPrivateState(setEtherfiSync, setPublishedReviews, setReviewedReceiptIds, setReceiptCredentials);
+        hydrateLocalPrivateState(setEtherfiSync, setSolayerProofs, setPublishedReviews, setReviewedReceiptIds, setReceiptCredentials);
         localHydratedUserRef.current = privyUserId;
       }
 
@@ -594,6 +630,12 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       if (restoredEtherfiSync) {
         setEtherfiSync(restoredEtherfiSync);
         writeStoredEtherfiSync(restoredEtherfiSync);
+      }
+
+      const restoredSolayerProofs = normalizeRestoredSolayerProofs(state.solayerProofs);
+      if (restoredSolayerProofs.length > 0) {
+        setSolayerProofs(restoredSolayerProofs);
+        writeStoredSolayerProofs(restoredSolayerProofs);
       }
 
       if (Array.isArray(state.publishedReviews)) {
@@ -672,6 +714,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
           ifUnmodifiedSince: accountStateUpdatedAt,
           state: {
             etherfiSync: persistableEtherfiSync,
+            solayerProofs,
             publishedReviews,
             reviewedReceiptIds,
             receiptCredentials,
@@ -686,6 +729,11 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
             if (restoredEtherfiSync) {
               setEtherfiSync(restoredEtherfiSync);
               writeStoredEtherfiSync(restoredEtherfiSync);
+            }
+            const restoredSolayerProofs = normalizeRestoredSolayerProofs(state.solayerProofs);
+            if (restoredSolayerProofs.length > 0) {
+              setSolayerProofs(restoredSolayerProofs);
+              writeStoredSolayerProofs(restoredSolayerProofs);
             }
             if (Array.isArray(state.publishedReviews)) {
               setPublishedReviews(state.publishedReviews);
@@ -726,6 +774,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     publishedReviews,
     receiptCredentials,
     reviewedReceiptIds,
+    solayerProofs,
   ]);
 
   useEffect(() => {
@@ -870,6 +919,51 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     scan: scanEtherfiProof,
   };
 
+  const uploadSolayerProof = async (proof: SolayerProofInput) => {
+    const signer = authSession?.walletAddress;
+
+    if (!signer) {
+      throw new Error("Wallet login is required before uploading Solayer proof.");
+    }
+
+    const ethereum = window.ethereum as EthereumProvider | undefined;
+    if (!ethereum) {
+      throw new Error("Wallet signature is required before uploading Solayer proof.");
+    }
+
+    const signature = await ethereum.request({
+      method: "personal_sign",
+      params: [buildSolayerProofMessage({ wallet: signer, proof }), signer],
+    });
+
+    if (typeof signature !== "string") {
+      throw new Error("Wallet did not return a valid Solayer proof signature.");
+    }
+
+    const response = await fetch("/api/solayer/proofs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        wallet: signer,
+        proof,
+        ownership: {
+          signer,
+          signature,
+        },
+      }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload?.error || "Unable to upload Solayer proof.");
+    }
+
+    const nextProofs = [payload, ...solayerProofs.filter((item) => item.id !== payload.id)].slice(0, 25);
+    setSolayerProofs(nextProofs);
+    writeStoredSolayerProofs(nextProofs);
+    return payload as SolayerCreditProof;
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const signReceiptPublish = async (review: any, receipt: any) => {
@@ -991,6 +1085,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         solanaOwner: credential.solanaOwner,
         ownerSigner: ownership.signer,
         ownerSignature: ownership.signature,
+        solayerProofs,
       }),
     });
 
@@ -1063,6 +1158,30 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     }
 
     return credential;
+  };
+
+  const refreshSolanaCreditMirror = async () => {
+    const credential = Object.values(receiptCredentials)
+      .slice()
+      .reverse()
+      .find((item) => item?.sourceReceiptHash && item?.solanaOwner);
+
+    if (!credential) {
+      throw new Error("Mint a receipt credential with a Solana owner before refreshing the credit mirror.");
+    }
+
+    const solana = await mirrorSolanaCredit(credential);
+    const nextCredentials = {
+      ...receiptCredentials,
+      [credential.receiptId]: {
+        ...credential,
+        solana,
+      },
+    };
+
+    setReceiptCredentials(nextCredentials);
+    window.localStorage.setItem(receiptCredentialsStorageKey, JSON.stringify(nextCredentials));
+    return solana;
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1175,6 +1294,9 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         userReviews={publishedReviews}
         reviewedReceiptIds={reviewedReceiptIds}
         receiptCredentials={receiptCredentials}
+        solayerProofs={solayerProofs}
+        onUploadSolayer={uploadSolayerProof}
+        onRefreshSolana={refreshSolanaCreditMirror}
         onScan={() => {
           setShowOnboard(false);
           setTab("inbox");

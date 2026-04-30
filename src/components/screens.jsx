@@ -2706,11 +2706,20 @@ const CreditScreen = ({
   etherfi,
   userReviews = /** @type {Array<any>} */ ([]),
   receiptCredentials = /** @type {Record<string, any>} */ ({}),
+  solayerProofs = /** @type {Array<any>} */ ([]),
   reviewedReceiptIds = /** @type {Array<string>} */ ([]),
+  onUploadSolayer,
+  onRefreshSolana,
   onScan,
 }) => {
   const [drawState, setDrawState] = _useState('idle');
   const [authError, setAuthError] = _useState('');
+  const [solayerAccount, setSolayerAccount] = _useState('');
+  const [solayerAmount, setSolayerAmount] = _useState('');
+  const [solayerAsset, setSolayerAsset] = _useState('sSOL');
+  const [solayerSource, setSolayerSource] = _useState('');
+  const [solayerStatus, setSolayerStatus] = _useState('');
+  const [solayerBusy, setSolayerBusy] = _useState(false);
   const credentials = Object.values(receiptCredentials || {});
   const mintedCredentials = credentials.filter(credential => credential?.status === 'minted');
   const preparedCredentials = credentials.filter(credential => credential && credential?.status !== 'minted');
@@ -2727,6 +2736,14 @@ const CreditScreen = ({
   const reviewedReceipts = reviewedReceiptIds.length || userReviews.filter(hasReviewProof).length;
   const mirroredState = activeSolana?.creditState;
   const drawPolicy = mirroredState?.policy;
+  const localSolayerProofs = Array.isArray(solayerProofs) ? solayerProofs : [];
+  const mirroredSolayerProofs = activeSolana?.solayer?.proofs || [];
+  const solayerProofCount = activeSolana?.solayer?.proofs ? mirroredSolayerProofs.length : localSolayerProofs.length;
+  const solayerPositionUsd =
+    typeof activeSolana?.solayer?.totalPositionUsd === 'number'
+      ? activeSolana.solayer.totalPositionUsd
+      : localSolayerProofs.reduce((total, proof) => total + Number(proof?.positionUsd || 0), 0);
+  const solayerPendingMirror = localSolayerProofs.length > 0 && mirroredSolayerProofs.length === 0;
   const verifiedSignals = mirroredState?.receiptCount ?? Math.max(mintedCredentials.length, reviewedReceipts);
   const hasReceiptInput = scannedReceipts > 0 || verifiedSignals > 0 || preparedCredentials.length > 0;
   const creditUnlocked = mirroredState?.unlocked ?? (verifiedSignals > 0 || mintedCredentials.length > 0);
@@ -2739,6 +2756,7 @@ const CreditScreen = ({
   const passportRows = [
     ['Wallet', auth?.walletLabel || auth?.userLabel || 'Not connected'],
     ['Receipt proofs', scannedReceipts],
+    ['Solayer proofs', solayerProofCount],
     ['Credential receipts', mintedCredentials.length || preparedCredentials.length],
     ['Credit PDA', activeSolana?.pda?.creditState ? shortValue(activeSolana.pda.creditState) : creditUnlocked ? 'ready to update' : 'waiting for credential'],
     ['Core receipt', activeSolana?.metaplexCore?.assetAddress ? shortValue(activeSolana.metaplexCore.assetAddress) : 'not prepared'],
@@ -2758,6 +2776,56 @@ const CreditScreen = ({
     }
 
     onScan?.();
+  };
+
+  const handleSolayerUpload = async () => {
+    setSolayerStatus('');
+
+    if (!authenticated) {
+      try {
+        await login?.();
+      } catch (error) {
+        setSolayerStatus(error instanceof Error ? error.message : 'Privy login was cancelled.');
+      }
+      return;
+    }
+
+    if (!solayerAccount.trim() || !solayerAmount.trim()) {
+      setSolayerStatus('Add a Solayer account and USD position amount.');
+      return;
+    }
+
+    setSolayerBusy(true);
+    try {
+      await onUploadSolayer?.({
+        account: solayerAccount,
+        asset: solayerAsset,
+        positionUsd: solayerAmount,
+        sourceUri: solayerSource,
+        proofType: 'solayer-position',
+      });
+      setSolayerStatus('Solayer proof uploaded. Refresh mirror after a receipt credential exists.');
+      setSolayerAccount('');
+      setSolayerAmount('');
+      setSolayerSource('');
+    } catch (error) {
+      setSolayerStatus(error instanceof Error ? error.message : 'Unable to upload Solayer proof.');
+    } finally {
+      setSolayerBusy(false);
+    }
+  };
+
+  const handleSolanaRefresh = async () => {
+    setSolayerStatus('');
+    setSolayerBusy(true);
+    try {
+      await onRefreshSolana?.();
+      setSolayerStatus('Solana credit mirror refreshed with A+B signals.');
+    } catch (error) {
+      setSolayerStatus(error instanceof Error ? error.message : 'Unable to refresh Solana mirror.');
+    } finally {
+      setSolayerBusy(false);
+    }
   };
 
   return (
@@ -2982,6 +3050,177 @@ const CreditScreen = ({
           </div>
         </div>
       )}
+
+      <div className="jiagon-credit-panel-wrap jiagon-credit-solayer-wrap" style={{ padding: '0 18px 14px' }}>
+        <div style={{
+          background: 'var(--surface)',
+          border: '0.5px solid var(--rule)',
+          borderRadius: 16,
+          padding: 16,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                Solayer offchain proof
+              </div>
+              <div style={{ fontFamily: 'var(--ui)', fontSize: 18, fontWeight: 800, color: 'var(--ink)', marginTop: 6 }}>
+                B signal for underwriting
+              </div>
+            </div>
+            <span style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              color: solayerProofCount > 0 ? 'var(--verified)' : 'var(--ink-muted)',
+              background: solayerProofCount > 0 ? 'var(--verified-soft)' : 'var(--bg)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 999,
+              padding: '6px 8px',
+              whiteSpace: 'nowrap',
+            }}>{solayerProofCount > 0 ? `${solayerProofCount} proof` : 'Optional'}</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8, marginTop: 13 }}>
+            <input
+              value={solayerAccount}
+              onChange={event => setSolayerAccount(event.target.value)}
+              placeholder="Solayer account / wallet"
+              style={{
+                minWidth: 0,
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '11px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+            <input
+              value={solayerAmount}
+              onChange={event => setSolayerAmount(event.target.value)}
+              placeholder="$ position"
+              inputMode="decimal"
+              style={{
+                minWidth: 0,
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '11px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8, marginTop: 8 }}>
+            <input
+              value={solayerAsset}
+              onChange={event => setSolayerAsset(event.target.value)}
+              placeholder="sSOL"
+              style={{
+                minWidth: 0,
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '11px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+            <input
+              value={solayerSource}
+              onChange={event => setSolayerSource(event.target.value)}
+              placeholder="zkTLS / API proof URI"
+              style={{
+                minWidth: 0,
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '11px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+          </div>
+
+          <div style={{ marginTop: 13 }}>
+            {[
+              ['Included position', solayerPositionUsd > 0 ? `$${solayerPositionUsd}` : '$0'],
+              ['Proof level', solayerProofCount > 0 ? 'B · offchain adapter' : 'not uploaded'],
+              ['Mirror state', solayerPendingMirror ? 'pending refresh' : solayerProofCount > 0 ? 'included' : 'none'],
+            ].map(([label, value], index) => (
+              <div key={label} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '7px 0',
+                borderBottom: index === 2 ? 'none' : '0.5px dashed var(--rule)',
+                fontFamily: 'var(--mono)',
+                fontSize: 10.5,
+              }}>
+                <span style={{ color: 'var(--ink-muted)' }}>{label}</span>
+                <span style={{ color: 'var(--ink)', fontWeight: 700 }}>{value}</span>
+              </div>
+            ))}
+          </div>
+
+          {solayerStatus && (
+            <div style={{
+              marginTop: 11,
+              background: solayerStatus.includes('Unable') || solayerStatus.includes('required') || solayerStatus.includes('Add ') ? 'var(--accent-soft)' : 'var(--verified-soft)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 10,
+              color: solayerStatus.includes('Unable') || solayerStatus.includes('required') || solayerStatus.includes('Add ') ? 'var(--accent)' : 'var(--verified)',
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              lineHeight: 1.45,
+              padding: '9px 10px',
+            }}>{solayerStatus}</div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 13 }}>
+            <button
+              onClick={handleSolayerUpload}
+              disabled={solayerBusy}
+              style={{
+                border: 'none',
+                borderRadius: 12,
+                background: 'var(--ink)',
+                color: 'var(--bg)',
+                padding: '12px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: solayerBusy ? 'default' : 'pointer',
+                opacity: solayerBusy ? 0.6 : 1,
+              }}
+            >Upload proof</button>
+            <button
+              onClick={handleSolanaRefresh}
+              disabled={solayerBusy || localSolayerProofs.length === 0}
+              style={{
+                border: '0.5px solid var(--rule)',
+                borderRadius: 12,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '12px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: solayerBusy || localSolayerProofs.length === 0 ? 'default' : 'pointer',
+                opacity: solayerBusy || localSolayerProofs.length === 0 ? 0.55 : 1,
+              }}
+            >Refresh mirror</button>
+          </div>
+        </div>
+      </div>
 
       <div className={`jiagon-credit-panel-wrap jiagon-credit-draw-wrap ${creditUnlocked ? 'jiagon-credit-draw-wrap-unlocked' : ''}`} style={{ padding: '0 18px 14px' }}>
         <div style={{

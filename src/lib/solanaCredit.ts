@@ -52,6 +52,21 @@ type CredentialLike = {
   metaplexCoreAsset?: string | null;
 };
 
+type SolayerProofLike = {
+  id?: string;
+  owner?: string;
+  provider?: string;
+  account?: string;
+  asset?: string;
+  positionUsd?: number | string;
+  proofHash?: string;
+  proofLevel?: string;
+  status?: string;
+  verificationStatus?: string;
+  adapterMode?: string;
+  generatedAt?: string;
+};
+
 export type SolanaCreditMirrorInput = {
   owner?: string | null;
   solanaOwner?: string | null;
@@ -59,6 +74,7 @@ export type SolanaCreditMirrorInput = {
   receipt?: ReceiptLike | null;
   review?: ReviewLike | null;
   credential?: CredentialLike | null;
+  solayerProofs?: SolayerProofLike[] | null;
 };
 
 type SolanaCreditMirrorOptions = {
@@ -234,6 +250,31 @@ function parseUsd(value?: string | null) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function cleanSolayerProofs(proofs?: SolayerProofLike[] | null) {
+  if (!Array.isArray(proofs)) return [];
+
+  return proofs
+    .filter((proof) => proof?.provider === "solayer" && proof.proofHash && proof.status === "adapter-attested")
+    .slice(0, 5)
+    .map((proof) => {
+      const positionUsd = Number(proof.positionUsd || 0);
+      return {
+        id: proof.id || `solayer-${String(proof.proofHash).slice(2, 14)}`,
+        provider: "solayer",
+        account: proof.account || "unknown",
+        asset: proof.asset || "sSOL",
+        positionUsd: Number.isFinite(positionUsd) && positionUsd > 0 ? positionUsd : 0,
+        proofHash: proof.proofHash,
+        proofLevel: proof.proofLevel || "B",
+        status: proof.status,
+        verificationStatus: proof.verificationStatus || "wallet-attested",
+        adapterMode: proof.adapterMode || "zktls-compatible-signed-adapter",
+        generatedAt: proof.generatedAt || null,
+      };
+    })
+    .filter((proof) => proof.positionUsd > 0);
+}
+
 export function solanaCreditConfig() {
   const programId =
     process.env.SOLANA_CREDIT_PROGRAM_ID ||
@@ -294,13 +335,16 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
     credential.credentialId ||
     `solana-ready-${sha256Hex(`${sourceReceiptHash}:${dataHash}:${owner}`).slice(0, 12)}`;
   const amountUsd = parseUsd(receipt.amountUsd || receipt.amount);
+  const solayerProofs = cleanSolayerProofs(input.solayerProofs);
+  const solayerPositionUsd = solayerProofs.reduce((total, proof) => total + proof.positionUsd, 0);
   const pdas = deriveSolanaCreditPdas({ owner, sourceReceiptHash });
   const config = solanaCreditConfig();
   const now = new Date().toISOString();
   const receiptCount = credential.status === "minted" || credential.status === "prepared" ? 1 : 0;
   const spendCents = Math.floor(amountUsd * 100);
-  const score = Math.min(100, receiptCount * 28 + Math.min(44, Math.floor(spendCents / 100)));
-  const creditLimitCents = score >= 70 ? 10_000 : score >= 35 ? 5_000 : score > 0 ? 2_500 : 0;
+  const solayerBonus = solayerProofs.length > 0 ? 18 + Math.min(22, Math.floor(solayerPositionUsd / 100)) : 0;
+  const score = Math.min(100, receiptCount * 28 + Math.min(44, Math.floor(spendCents / 100)) + solayerBonus);
+  const creditLimitCents = score >= 80 ? 15_000 : score >= 70 ? 10_000 : score >= 35 ? 5_000 : score > 0 ? 2_500 : 0;
   const creditLimitUsd = creditLimitCents / 100;
 
   const mirror = {
@@ -318,6 +362,16 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
       logIndex,
       sourceReceiptHash,
       amountUsd,
+      signals: {
+        etherfiOnchainReceipt: receiptCount > 0,
+        solayerOffchainProofs: solayerProofs.length,
+      },
+    },
+    solayer: {
+      status: solayerProofs.length > 0 ? "included" : "not-provided",
+      proofLevel: solayerProofs.length > 0 ? "B" : null,
+      totalPositionUsd: solayerPositionUsd,
+      proofs: solayerProofs,
     },
     metaplexCore: {
       status: credential.metaplexCoreAsset ? "asset-provided" : "core-asset-required",
@@ -354,11 +408,13 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
       unlocked: receiptCount > 0,
       score,
       receiptCount,
+      signalCount: receiptCount + solayerProofs.length,
       totalSpendUsd: amountUsd,
+      solayerPositionUsd,
       availableCreditUsd: creditLimitUsd,
       purposeBound: true,
       policy: {
-        maxDrawUsd: 25,
+        maxDrawUsd: solayerProofs.length > 0 ? 50 : 25,
         allowedPurpose: "merchant escrow",
         expiryHours: 24,
       },

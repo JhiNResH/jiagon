@@ -1,6 +1,8 @@
 import { buildSolanaCreditMirror, isSolanaPubkey } from "@/lib/solanaCredit";
+import type { SolayerCreditProof } from "@/lib/solayerProof";
 import { buildSolanaOwnerLinkMessage } from "@/lib/solanaOwnerLink";
 import { getVerifiedReceiptReviewBySourceHash } from "@/server/receiptStore";
+import { solayerProofSigningSecret, verifySolayerProofAdapter } from "@/server/solayerProofSigner";
 import { recoverMessageAddress, type Hex } from "viem";
 
 export const runtime = "nodejs";
@@ -42,6 +44,7 @@ export async function POST(request: Request) {
     const ownerSigner = cleanAddress(body?.ownerSigner || body?.ownership?.signer);
     const ownerSignature = cleanSignature(body?.ownerSignature || body?.ownership?.signature);
     const signingSecret = (process.env.JIAGON_SOLANA_ADAPTER_SECRET || "").trim();
+    const submittedSolayerProofs = Array.isArray(body?.solayerProofs) ? body.solayerProofs.slice(0, 5) : [];
 
     if (!sourceReceiptHash) {
       return Response.json({ error: "A valid source receipt hash is required." }, { status: 400 });
@@ -94,6 +97,20 @@ export async function POST(request: Request) {
       return Response.json({ error: "Solana mirror ownership verification failed." }, { status: 403 });
     }
 
+    const solayerSigningSecret = solayerProofSigningSecret();
+    if (submittedSolayerProofs.length > 0 && solayerSigningSecret.length < 32) {
+      return Response.json({ error: "Solayer adapter signing secret is not configured." }, { status: 500 });
+    }
+    const solayerProofs: Array<SolayerCreditProof | null> = submittedSolayerProofs.map((proof: unknown) =>
+      verifySolayerProofAdapter(proof, solayerSigningSecret),
+    );
+    if (solayerProofs.some((proof: SolayerCreditProof | null) => !proof)) {
+      return Response.json({ error: "A submitted Solayer proof adapter signature is invalid." }, { status: 400 });
+    }
+    if (solayerProofs.some((proof) => proof?.owner.toLowerCase() !== expectedSigner)) {
+      return Response.json({ error: "Submitted Solayer proof owner does not match the receipt owner." }, { status: 403 });
+    }
+
     const mirror = buildSolanaCreditMirror({
       solanaOwner,
       sourceOwner: review.ownerSafe || review.wallet,
@@ -127,6 +144,7 @@ export async function POST(request: Request) {
         storageUri: review.storageUri,
         proofLevel: review.proofLevel,
       },
+      solayerProofs: solayerProofs.filter((proof): proof is SolayerCreditProof => Boolean(proof)),
     }, { signingSecret });
 
     return Response.json(mirror);

@@ -112,6 +112,7 @@ export type AgentMerchantSignal = {
 
 export type PrivateAccountState = {
   etherfiSync?: unknown;
+  solayerProofs?: unknown[];
   publishedReviews?: unknown[];
   reviewedReceiptIds?: string[];
   receiptCredentials?: Record<string, unknown>;
@@ -258,6 +259,7 @@ function cleanPrivateAccountState(value: unknown): PrivateAccountState {
 
   return {
     etherfiSync: input.etherfiSync && typeof input.etherfiSync === "object" ? input.etherfiSync : undefined,
+    solayerProofs: Array.isArray(input.solayerProofs) ? input.solayerProofs.slice(0, 25) : [],
     publishedReviews: Array.isArray(input.publishedReviews) ? input.publishedReviews.slice(0, 250) : [],
     reviewedReceiptIds: cleanStringList(input.reviewedReceiptIds),
     receiptCredentials,
@@ -290,6 +292,13 @@ function mergePrivateAccountState(current: unknown, next: unknown): PrivateAccou
 
   return {
     etherfiSync: nextState.etherfiSync || currentState.etherfiSync,
+    solayerProofs: Array.from(
+      new Map(
+        [...(currentState.solayerProofs || []), ...(nextState.solayerProofs || [])]
+          .filter((proof): proof is Record<string, unknown> => Boolean(proof && typeof proof === "object" && !Array.isArray(proof)))
+          .map((proof) => [typeof proof.id === "string" ? proof.id : JSON.stringify(proof).slice(0, 120), proof]),
+      ).values(),
+    ).slice(0, 25),
     publishedReviews: Array.from(reviewsById.values()).slice(0, 250),
     reviewedReceiptIds: Array.from(
       new Set([...(currentState.reviewedReceiptIds || []), ...(nextState.reviewedReceiptIds || [])]),
