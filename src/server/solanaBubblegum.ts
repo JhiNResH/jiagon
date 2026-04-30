@@ -102,7 +102,7 @@ export async function mintJiagonBubblegumReceipt({
     status: "minted" as const,
     network: `Solana ${config.cluster}`,
     cluster: config.cluster,
-    credentialChain: "solana-devnet",
+    credentialChain: `solana-${config.cluster}`,
     standard: "bubblegum-v2-cnft",
     merkleTree: config.merkleTree,
     leafOwner,

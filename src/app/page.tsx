@@ -1145,7 +1145,8 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       bubblegumError = error instanceof Error ? error.message : "Unable to mint Solana Bubblegum receipt cNFT.";
     }
 
-    const primaryPayload = bubblegumPayload?.status === "minted" ? bubblegumPayload : payload;
+    const primaryPayload = bubblegumPayload || payload;
+    const bubblegumMeta = bubblegumPayload || {};
     const credential: ReceiptCredential = {
       receiptId: receipt.id,
       reviewId: review.id,
@@ -1153,7 +1154,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       network: primaryPayload.network,
       chainId: primaryPayload.chainId,
       credentialChain: primaryPayload.credentialChain,
-      credentialId: primaryPayload.credentialId || primaryPayload.assetId,
+      credentialId: primaryPayload.credentialId || primaryPayload.assetId || payload.credentialId,
       preparedCredentialId: payload.preparedCredentialId,
       credentialTx: primaryPayload.credentialTx,
       explorerUrl: primaryPayload.explorerUrl,
@@ -1174,9 +1175,16 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       persistence: payload.persistence,
       onchain: payload.onchain,
       solanaOwner: primaryPayload.solanaOwner || payload.solanaOwner || receipt.solanaOwner || review.solanaOwner,
-      metaplexCoreAsset: primaryPayload.metaplexCoreAsset || primaryPayload.assetId,
-      merkleTree: primaryPayload.merkleTree,
-      standard: primaryPayload.standard,
+      metaplexCoreAsset:
+        primaryPayload.metaplexCoreAsset ||
+        primaryPayload.assetId ||
+        bubblegumMeta.metaplexCoreAsset ||
+        bubblegumMeta.assetId,
+      merkleTree:
+        primaryPayload.merkleTree ||
+        bubblegumMeta.merkleTree ||
+        bubblegumMeta.metaplexBubblegum?.tree,
+      standard: primaryPayload.standard || bubblegumMeta.standard,
     };
     credential.solana = {
       ...(credential.solana || {}),

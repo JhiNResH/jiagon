@@ -123,22 +123,29 @@ export async function POST(request: Request) {
 
     const body = JSON.parse(rawBody) as SolanaReceiptMintRequest;
     const sourceTx = cleanTxHash(body.receipt?.txFull || body.receipt?.txHash);
-    const logIndex = body.receipt?.logIndex;
+    const logIndex = Number(body.receipt?.logIndex);
     const merchant = cleanText(body.review?.merchant);
     const branch = cleanText(body.review?.branch);
-    const rating = Number(body.review?.rating || 0);
-    const solanaOwner = cleanText(
-      body.solanaOwner || body.review?.solanaOwner || process.env.SOLANA_BUBBLEGUM_DEFAULT_LEAF_OWNER,
-      64,
-    );
+    const rating = Number(body.review?.rating);
+    const rawSolanaOwner =
+      body.solanaOwner || body.review?.solanaOwner || process.env.SOLANA_BUBBLEGUM_DEFAULT_LEAF_OWNER;
+    const solanaOwner = typeof rawSolanaOwner === "string" ? rawSolanaOwner.trim() : "";
 
     if (!sourceTx) {
       return Response.json({ error: "A valid ether.fi Cash Optimism source transaction is required." }, { status: 400 });
     }
-    if (typeof logIndex !== "number") {
+    if (!Number.isInteger(logIndex) || logIndex < 0) {
       return Response.json({ error: "Receipt log index is required before Solana Bubblegum minting." }, { status: 400 });
     }
-    if (!merchant || merchant.length < 3 || !branch || branch.length < 2 || rating < 1 || rating > 5) {
+    if (
+      !merchant ||
+      merchant.length < 3 ||
+      !branch ||
+      branch.length < 2 ||
+      !Number.isInteger(rating) ||
+      rating < 1 ||
+      rating > 5
+    ) {
       return Response.json({ error: "Merchant, branch, and rating are required before Solana Bubblegum minting." }, { status: 400 });
     }
     if (!isSolanaPubkey(solanaOwner)) {
@@ -241,8 +248,10 @@ export async function POST(request: Request) {
         status: "prepared",
         mode: "bubblegum-prepare-only",
         network: `Solana ${config.cluster}`,
-        credentialChain: "solana-devnet",
+        credentialChain: `solana-${config.cluster}`,
         standard: "bubblegum-v2-cnft",
+        merkleTree: config.merkleTree,
+        credentialId: `bubblegum-ready-${sourceHash.slice(2, 14)}`,
         sourceReceiptHash: sourceHash,
         dataHash: receiptDataHash,
         storageUri: metadataUri,
