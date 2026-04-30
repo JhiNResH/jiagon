@@ -120,13 +120,13 @@ const Hatched = ({ tint, label, height = 180, radius = 14 }) => (
 // Top bar (custom — replaces IOSNavBar)
 // ─────────────────────────────────────────────────────────────
 const TopBar = ({ title, left, right, big = true, sub }) => (
-  <div style={{
+  <div className="jiagon-topbar" style={{
     paddingTop: 56, paddingBottom: big ? 12 : 10,
     background: 'var(--bg)',
     position: 'sticky', top: 0, zIndex: 10,
     borderBottom: big ? 'none' : '0.5px solid var(--rule)',
   }}>
-    <div style={{
+    <div className="jiagon-topbar-controls" style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '8px 18px 4px', minHeight: 32,
     }}>
@@ -139,13 +139,13 @@ const TopBar = ({ title, left, right, big = true, sub }) => (
       <div style={{ minWidth: 44, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>{right}</div>
     </div>
     {big && (
-      <div style={{ padding: '4px 20px 0' }}>
-        <div style={{
+      <div className="jiagon-topbar-copy" style={{ padding: '4px 20px 0' }}>
+        <div className="jiagon-topbar-title" style={{
           fontFamily: 'var(--display)', fontSize: 38, lineHeight: 1.02,
           color: 'var(--ink)', letterSpacing: -0.5, fontWeight: 400,
           fontStyle: 'italic',
         }}>{title}</div>
-        {sub && <div style={{
+        {sub && <div className="jiagon-topbar-sub" style={{
           fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-muted)',
           textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4,
         }}>{sub}</div>}
@@ -177,6 +177,13 @@ const TabBar = ({ active, onChange }) => {
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2V3z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
         <path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+      </svg>
+    )},
+    { id: 'credit', label: 'Credit', icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M4.5 7.5h15v9h-15z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/>
+        <path d="M7.5 11.5h4M15.5 11.5h1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M8 17.5v2M16 17.5v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       </svg>
     )},
     { id: 'profile', label: 'Profile', icon: (

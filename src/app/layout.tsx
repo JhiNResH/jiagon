@@ -22,8 +22,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Jiagon — receipt-backed reviews",
-  description: "Agent-ready local reviews backed by verified ether.fi Cash receipts.",
+  title: "Jiagon — Solana credit passport",
+  description: "Solana-first credit reputation for purpose-bound undercollateralized lending.",
 };
 
 export default function RootLayout({

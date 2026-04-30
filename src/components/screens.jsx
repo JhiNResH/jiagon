@@ -68,6 +68,21 @@ const hasReviewProof = (review = {}) => Boolean(
   typeof review.dataMatchesRequest === 'boolean'
 );
 
+const JiagonLogoAsset = ({ size = 92 }) => (
+  <img
+    src="/jiagon-logo-mark.png"
+    alt=""
+    aria-hidden="true"
+    style={{
+      width: size,
+      height: Math.round(size * 224 / 204),
+      objectFit: 'contain',
+      flexShrink: 0,
+      filter: 'drop-shadow(0 10px 20px rgba(24,58,38,0.10))',
+    }}
+  />
+);
+
 const credentialKey = (credential = {}) => (
   credential.credentialTx ||
   credential.credentialId ||
@@ -76,6 +91,14 @@ const credentialKey = (credential = {}) => (
   credential.receiptId ||
   null
 );
+
+const solanaMirrorLabel = (credential = {}) => {
+  const creditState = credential?.solana?.pda?.creditState;
+  if (creditState) return `Solana PDA ${String(creditState).slice(0, 6)}…${String(creditState).slice(-4)}`;
+  if (credential?.solana?.status) return `Solana mirror ${credential.solana.status}`;
+  if (credential?.solana?.error) return credential.solana.error;
+  return 'Solana PDA mirror pending';
+};
 
 const uniqueCredentialsForProfile = (receiptCredentials = {}, reviews = []) => {
   const byKey = new Map();
@@ -297,7 +320,7 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
           fontFamily: 'var(--mono)', fontSize: 11, marginTop: 14,
           color: 'var(--ink-muted)', textTransform: 'uppercase',
           letterSpacing: 1.2,
-        }}>Verified local data for agents</div>
+        }}>Receipt-backed credit on Solana</div>
       </div>
 
       <div style={{
@@ -319,7 +342,7 @@ const OnboardingScreen = ({ onDone, onImportDone = onDone, auth, etherfi }) => {
           ['01', 'Sign in with Privy', 'wallet, email, or social login'],
           ['02', 'Add a card spend proof', 'paste a supported onchain card tx'],
           ['03', 'Verify payment evidence', synced ? `${detected} payments found` : 'auto-detect provider where supported'],
-          ['04', 'Build taste graph', 'claim merchant, then publish if useful'],
+          ['04', 'Unlock credit passport', 'claim merchant, then mint credential'],
         ].map(([n, t, s]) => (
           <div key={n} style={{ display: 'flex', gap: 12, padding: '7px 0', alignItems: 'baseline' }}>
             <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{n}</span>
@@ -797,9 +820,9 @@ const CredentialBadge = ({ credential }) => {
 const TasteMemoryPanel = ({ synced, showReceiptStats = synced, eventCount, totalSpend, unclaimedCount, reviewedCount, lastSync, onAction, topSignals = [] }) => {
   const agentReadiness = synced
     ? unclaimedCount > 0
-      ? `${eventCount} payment proofs ready. Claim merchants to unlock place-level recommendations.`
-      : `${eventCount} verified taste signals ready for agent recommendations.`
-    : 'Import one supported card spend tx to build a private taste graph from real payments.';
+      ? `${eventCount} payment proofs ready. Claim merchants to unlock credit reputation.`
+      : `${eventCount} verified receipt signals ready for credit underwriting.`
+    : 'Import one supported card spend tx to build private credit input from real payments.';
   const nextAction = synced
     ? unclaimedCount > 0
       ? `Claim ${Math.min(unclaimedCount, 3)} receipts`
@@ -831,7 +854,7 @@ const TasteMemoryPanel = ({ synced, showReceiptStats = synced, eventCount, total
           marginTop: 8,
           letterSpacing: -0.4,
           color: 'var(--ink)',
-        }}>Your receipts,<br/>usable by your agent.</div>
+        }}>Your receipts,<br/>usable for credit.</div>
         <div style={{
           fontFamily: 'var(--ui)',
           fontSize: 13.5,
@@ -1183,7 +1206,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
                 fontSize: 9.5,
                 color: 'var(--ink-muted)',
                 marginTop: 3,
-              }}>{authenticated ? 'Refresh private taste graph' : 'Privy required'}</div>
+              }}>{authenticated ? 'Refresh private credit inputs' : 'Privy required'}</div>
             </div>
             {!authenticated && (
               <button
@@ -1277,7 +1300,7 @@ const InboxScreen = ({ onOpenReceipt, auth, etherfi, reviewedReceiptIds = /** @t
             fontSize: 13.5,
             lineHeight: 1.45,
             color: 'var(--ink-muted)',
-          }}>Paste an ether.fi Cash spend transaction to scan your account and build a private taste graph.</p>
+          }}>Paste an ether.fi Cash spend transaction to scan your account and build private credit input.</p>
         </div>
       )}
 
@@ -1832,16 +1855,16 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
               }}>Credential path</div>
               {[
                 ['Source proof', 'Optimism · ether.fi Spend'],
-                ['Credential', 'BNB mint when server authorized'],
-                ['Data object', 'Greenfield testnet pointer'],
-                ['Agent proof', 'C · payment verified, owner pending'],
+                ['Credential', 'BNB mint + Solana PDA mirror'],
+                ['Core receipt', 'Metaplex Core adapter payload'],
+                ['Credit state', 'Jiagon PDA seeds prepared'],
               ].map(([k, v]) => (
                 <div key={k} style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   gap: 12,
                   padding: '6px 0',
-                  borderBottom: k === 'Agent proof' ? 'none' : '0.5px solid var(--rule)',
+                  borderBottom: k === 'Credit state' ? 'none' : '0.5px solid var(--rule)',
                   fontFamily: 'var(--mono)',
                   fontSize: 10.5,
                 }}>
@@ -1951,6 +1974,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 ? 'existing BNB credential found'
                 : 'BNB testnet credential minted'
               : 'BNB payload prepared'}<br/>
+            {solanaMirrorLabel(credential)}<br/>
             {credential?.persistence?.persisted ? 'saved to Jiagon API' : 'local receipt view saved'}<br/>
             {credential?.credentialTx ? `${credential.credentialTx.slice(0, 8)}…${credential.credentialTx.slice(-6)}` : credential?.credentialId || 'Greenfield object ready'}
             {credential?.dataMatchesRequest === false && <><br/>submitted review differs from onchain data</>}
@@ -2674,7 +2698,650 @@ const ProfileScreen = ({ verifyStyle, auth, etherfi, userReviews = /** @type {Ar
   );
 };
 
+// ─────────────────────────────────────────────────────────────
+// CREDIT PASSPORT + PURPOSE-BOUND DRAW
+// ─────────────────────────────────────────────────────────────
+const CreditScreen = ({
+  auth,
+  etherfi,
+  userReviews = /** @type {Array<any>} */ ([]),
+  receiptCredentials = /** @type {Record<string, any>} */ ({}),
+  solayerProofs = /** @type {Array<any>} */ ([]),
+  reviewedReceiptIds = /** @type {Array<string>} */ ([]),
+  onUploadSolayer,
+  onRefreshSolana,
+  onScan,
+}) => {
+  const [drawState, setDrawState] = _useState('idle');
+  const [authError, setAuthError] = _useState('');
+  const [solayerAccount, setSolayerAccount] = _useState('');
+  const [solayerAmount, setSolayerAmount] = _useState('');
+  const [solayerAsset, setSolayerAsset] = _useState('sSOL');
+  const [solayerSource, setSolayerSource] = _useState('');
+  const [solayerStatus, setSolayerStatus] = _useState('');
+  const [solayerBusy, setSolayerBusy] = _useState(false);
+  const credentials = Object.values(receiptCredentials || {});
+  const mintedCredentials = credentials.filter(credential => credential?.status === 'minted');
+  const preparedCredentials = credentials.filter(credential => credential && credential?.status !== 'minted');
+  const solanaMirrors = credentials.map(credential => credential?.solana).filter(Boolean);
+  const activeSolana =
+    [...solanaMirrors].reverse().find(mirror => mirror?.pda?.creditState) ||
+    solanaMirrors[solanaMirrors.length - 1] ||
+    null;
+  const ready = auth?.ready ?? true;
+  const authenticated = auth?.authenticated ?? false;
+  const login = auth?.login;
+  const accountLabel = auth?.walletLabel || auth?.userLabel;
+  const scannedReceipts = etherfi?.receipts?.length || 0;
+  const reviewedReceiptSet = new Set(reviewedReceiptIds);
+  userReviews.filter(hasReviewProof).forEach((review) => {
+    const reviewReceiptId = review.receiptId || review.id;
+    if (reviewReceiptId) reviewedReceiptSet.add(reviewReceiptId);
+  });
+  const reviewedReceipts = reviewedReceiptSet.size;
+  const mirroredState = activeSolana?.creditState;
+  const drawPolicy = mirroredState?.policy;
+  const localSolayerProofs = Array.isArray(solayerProofs) ? solayerProofs : [];
+  const mirroredSolayerProofs = activeSolana?.solayer?.proofs || [];
+  const solayerProofCount = activeSolana?.solayer?.proofs ? mirroredSolayerProofs.length : localSolayerProofs.length;
+  const solayerPositionUsd =
+    typeof activeSolana?.solayer?.totalPositionUsd === 'number'
+      ? activeSolana.solayer.totalPositionUsd
+      : localSolayerProofs.reduce((total, proof) => total + Number(proof?.positionUsd || 0), 0);
+  const solayerPendingMirror = localSolayerProofs.length > 0 && mirroredSolayerProofs.length === 0;
+  const canRefreshSolanaMirror = credentials.some(
+    (credential) => credential?.status === 'minted' && credential?.solanaOwner,
+  );
+  const verifiedSignals = mirroredState?.receiptCount ?? Math.max(mintedCredentials.length, reviewedReceipts);
+  const hasReceiptInput = scannedReceipts > 0 || verifiedSignals > 0 || preparedCredentials.length > 0;
+  const creditUnlocked = mirroredState?.unlocked ?? (verifiedSignals > 0 || mintedCredentials.length > 0);
+  const drawn = drawState === 'drawn' || drawState === 'repaid';
+  const repaid = drawState === 'repaid';
+  const baseCredit = mirroredState?.availableCreditUsd ?? 50;
+  const availableCredit = creditUnlocked ? (drawn && !repaid ? Math.max(0, baseCredit - 20) : baseCredit) : 0;
+  const score = mirroredState?.score ?? Math.min(100, verifiedSignals * 28 + scannedReceipts * 8 + (repaid ? 24 : 0));
+  const shortValue = (value) => value ? `${String(value).slice(0, 6)}…${String(value).slice(-4)}` : 'not prepared';
+  const passportRows = [
+    ['Wallet', auth?.walletLabel || auth?.userLabel || 'Not connected'],
+    ['Receipt proofs', scannedReceipts],
+    ['Solayer proofs', solayerProofCount],
+    ['Credential receipts', mintedCredentials.length || preparedCredentials.length],
+    ['Credit PDA', activeSolana?.pda?.creditState ? shortValue(activeSolana.pda.creditState) : creditUnlocked ? 'ready to update' : 'waiting for credential'],
+    ['Core receipt', activeSolana?.metaplexCore?.assetAddress ? shortValue(activeSolana.metaplexCore.assetAddress) : 'not prepared'],
+    ['Credit state', creditUnlocked ? (repaid ? 'Starter+' : activeSolana?.creditState?.status || 'Starter') : 'Locked'],
+  ];
+
+  const handleCreditAction = async () => {
+    setAuthError('');
+
+    if (!authenticated) {
+      try {
+        await login?.();
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : 'Privy login was cancelled.');
+      }
+      return;
+    }
+
+    onScan?.();
+  };
+
+  const handleSolayerUpload = async () => {
+    setSolayerStatus('');
+
+    if (!authenticated) {
+      try {
+        await login?.();
+      } catch (error) {
+        setSolayerStatus(error instanceof Error ? error.message : 'Privy login was cancelled.');
+      }
+      return;
+    }
+
+    if (!solayerAccount.trim() || !solayerAmount.trim()) {
+      setSolayerStatus('Add a Solayer account and USD position amount.');
+      return;
+    }
+
+    setSolayerBusy(true);
+    try {
+      await onUploadSolayer?.({
+        account: solayerAccount,
+        asset: solayerAsset,
+        positionUsd: solayerAmount,
+        sourceUri: solayerSource,
+        proofType: 'solayer-position',
+      });
+      setSolayerStatus('Solayer proof uploaded. Refresh mirror after a receipt credential exists.');
+      setSolayerAccount('');
+      setSolayerAmount('');
+      setSolayerSource('');
+    } catch (error) {
+      setSolayerStatus(error instanceof Error ? error.message : 'Unable to upload Solayer proof.');
+    } finally {
+      setSolayerBusy(false);
+    }
+  };
+
+  const handleSolanaRefresh = async () => {
+    setSolayerStatus('');
+    setSolayerBusy(true);
+    try {
+      await onRefreshSolana?.();
+      setSolayerStatus('Solana credit mirror refreshed with A+B signals.');
+    } catch (error) {
+      setSolayerStatus(error instanceof Error ? error.message : 'Unable to refresh Solana mirror.');
+    } finally {
+      setSolayerBusy(false);
+    }
+  };
+
+  return (
+    <div className="jiagon-credit-screen" style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
+      <TopBar
+        title="Credit"
+        sub={creditUnlocked ? 'Purpose-bound credit unlocked by receipts' : 'Scan a receipt proof to unlock credit'}
+        left={<div style={{ width: 28 }} />}
+        right={authenticated ? (
+          <span style={{
+            border: '0.5px solid var(--rule)',
+            background: 'var(--surface)',
+            color: 'var(--verified)',
+            borderRadius: 999,
+            padding: '7px 10px',
+            fontFamily: 'var(--mono)',
+            fontSize: 10,
+            fontWeight: 700,
+            maxWidth: 116,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>{accountLabel || 'Wallet'}</span>
+        ) : (
+          <button onClick={handleCreditAction} disabled={!ready} style={{
+            border: '0.5px solid var(--rule)',
+            background: 'var(--ink)',
+            color: 'var(--bg)',
+            borderRadius: 999,
+            padding: '8px 11px',
+            fontFamily: 'var(--mono)',
+            fontSize: 10,
+            fontWeight: 800,
+            cursor: ready ? 'pointer' : 'default',
+            opacity: ready ? 1 : 0.55,
+            whiteSpace: 'nowrap',
+          }}>{ready ? 'Login' : 'Loading'}</button>
+        )}
+      />
+
+      <div className="jiagon-credit-panel-wrap jiagon-credit-passport-wrap" style={{ padding: '0 18px 14px' }}>
+        <div style={{
+          background: 'var(--surface-raised)',
+          border: '0.5px solid var(--rule)',
+          borderRadius: 18,
+          padding: 16,
+          boxShadow: '0 8px 28px rgba(49,44,36,0.06)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start' }}>
+            <div>
+              <div style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 10,
+                color: 'var(--ink-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: 0.8,
+              }}>Metaplex Core passport</div>
+              <div style={{
+                fontFamily: 'var(--display)',
+                fontStyle: 'italic',
+                fontSize: 34,
+                lineHeight: 1,
+                marginTop: 8,
+                color: 'var(--ink)',
+              }}>{creditUnlocked ? 'Receipt-backed.' : 'Locked.'}</div>
+              <div style={{
+                fontFamily: 'var(--ui)',
+                fontSize: 13.5,
+                lineHeight: 1.45,
+                color: 'var(--ink-muted)',
+                marginTop: 9,
+              }}>
+                {creditUnlocked
+                  ? 'Verified receipt history can underwrite small credit without exposing raw private data.'
+                  : hasReceiptInput
+                    ? 'Finish claim + mint to turn receipt proof into credit reputation.'
+                    : 'Start by importing a supported card spend transaction.'}
+              </div>
+            </div>
+            <JiagonLogoAsset size={92} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 16 }}>
+            {[
+              ['Credit', `$${availableCredit}`],
+              ['Score', score],
+              ['Receipts', verifiedSignals],
+            ].map(([k, v]) => (
+              <div key={k} style={{
+                background: 'var(--bg)',
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                padding: '9px 8px',
+              }}>
+                <div style={{
+                  fontFamily: 'var(--mono)',
+                  fontSize: 8.5,
+                  color: 'var(--ink-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.7,
+                }}>{k}</div>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 13, marginTop: 4, fontWeight: 800, color: 'var(--ink)' }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          {activeSolana && (
+            <div style={{
+              marginTop: 14,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gap: 8,
+            }}>
+              {[
+                ['Solana mode', activeSolana.adapterMode || activeSolana.status || 'adapter'],
+                ['PDA', shortValue(activeSolana.pda?.creditState)],
+                ['Core asset', shortValue(activeSolana.metaplexCore?.assetAddress)],
+              ].map(([label, value]) => (
+                <div key={label} style={{
+                  border: '0.5px solid var(--rule)',
+                  borderRadius: 10,
+                  background: 'var(--verified-soft)',
+                  padding: '9px 10px',
+                  minWidth: 0,
+                }}>
+                  <div style={{
+                    fontFamily: 'var(--mono)',
+                    fontSize: 8.5,
+                    color: 'var(--ink-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.7,
+                  }}>{label}</div>
+                  <div style={{
+                    fontFamily: 'var(--mono)',
+                    fontSize: 10.5,
+                    marginTop: 5,
+                    color: 'var(--verified)',
+                    fontWeight: 800,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ marginTop: 14 }}>
+            {passportRows.map(([label, value], index) => (
+              <div key={label} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 14,
+                padding: '8px 0',
+                borderBottom: index === passportRows.length - 1 ? 'none' : '0.5px dashed var(--rule)',
+                fontFamily: 'var(--mono)',
+                fontSize: 10.5,
+              }}>
+                <span style={{ color: 'var(--ink-muted)' }}>{label}</span>
+                <span style={{
+                  color: 'var(--ink)',
+                  textAlign: 'right',
+                  maxWidth: 205,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontWeight: 700,
+                }}>{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {!creditUnlocked && (
+        <div className="jiagon-credit-panel-wrap jiagon-credit-next-wrap" style={{ padding: '0 18px 14px' }}>
+          <div style={{
+            background: 'var(--surface)',
+            border: '0.5px solid var(--rule)',
+            borderRadius: 16,
+            padding: 16,
+          }}>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+              Next action
+            </div>
+            <div style={{ fontFamily: 'var(--display)', fontStyle: 'italic', fontSize: 26, lineHeight: 1.05, color: 'var(--ink)', marginTop: 8 }}>
+              {!authenticated ? 'Connect wallet.' : hasReceiptInput ? 'Claim a receipt.' : 'Scan a spend tx.'}
+            </div>
+            <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-muted)', margin: '8px 0 14px' }}>
+              {!authenticated
+                ? 'Use Privy to connect the wallet that owns the card spend. Jiagon needs this session to sign receipt and Solana mirror proofs.'
+                : hasReceiptInput
+                ? 'A payment proof exists. Add merchant context and mint the receipt credential to make it usable for underwriting.'
+                : 'Paste an ether.fi Cash spend transaction in Receipts. Jiagon turns the verified payment into private credit input.'}
+            </p>
+            {authError && (
+              <div style={{
+                background: 'var(--accent-soft)',
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                color: 'var(--accent)',
+                fontFamily: 'var(--mono)',
+                fontSize: 10,
+                lineHeight: 1.45,
+                padding: '9px 10px',
+                marginBottom: 10,
+              }}>{authError}</div>
+            )}
+            <button onClick={handleCreditAction} disabled={!ready} style={{
+              width: '100%',
+              border: 'none',
+              borderRadius: 999,
+              background: 'var(--ink)',
+              color: 'var(--bg)',
+              padding: '14px 16px',
+              fontFamily: 'var(--ui)',
+              fontSize: 15,
+              fontWeight: 800,
+              cursor: ready ? 'pointer' : 'default',
+              opacity: ready ? 1 : 0.6,
+            }}>{!authenticated ? 'Continue with Privy' : hasReceiptInput ? 'Open receipts' : 'Scan tx'}</button>
+          </div>
+        </div>
+      )}
+
+      <div className="jiagon-credit-panel-wrap jiagon-credit-solayer-wrap" style={{ padding: '0 18px 14px' }}>
+        <div style={{
+          background: 'var(--surface)',
+          border: '0.5px solid var(--rule)',
+          borderRadius: 16,
+          padding: 16,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                Solayer offchain proof
+              </div>
+              <div style={{ fontFamily: 'var(--ui)', fontSize: 18, fontWeight: 800, color: 'var(--ink)', marginTop: 6 }}>
+                B signal for underwriting
+              </div>
+            </div>
+            <span style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              color: solayerProofCount > 0 ? 'var(--verified)' : 'var(--ink-muted)',
+              background: solayerProofCount > 0 ? 'var(--verified-soft)' : 'var(--bg)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 999,
+              padding: '6px 8px',
+              whiteSpace: 'nowrap',
+            }}>{solayerProofCount > 0 ? `${solayerProofCount} proof` : 'Optional'}</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 8, marginTop: 13 }}>
+            <input
+              value={solayerAccount}
+              onChange={event => setSolayerAccount(event.target.value)}
+              placeholder="Solayer account / wallet"
+              style={{
+                minWidth: 0,
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '11px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+            <input
+              value={solayerAmount}
+              onChange={event => setSolayerAmount(event.target.value)}
+              placeholder="$ position"
+              inputMode="decimal"
+              style={{
+                minWidth: 0,
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '11px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8, marginTop: 8 }}>
+            <input
+              value={solayerAsset}
+              onChange={event => setSolayerAsset(event.target.value)}
+              placeholder="sSOL"
+              style={{
+                minWidth: 0,
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '11px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+            <input
+              value={solayerSource}
+              onChange={event => setSolayerSource(event.target.value)}
+              placeholder="zkTLS / API proof URI"
+              style={{
+                minWidth: 0,
+                border: '0.5px solid var(--rule)',
+                borderRadius: 10,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '11px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+          </div>
+
+          <div style={{ marginTop: 13 }}>
+            {[
+              ['Included position', solayerPositionUsd > 0 ? `$${solayerPositionUsd}` : '$0'],
+              ['Proof level', solayerProofCount > 0 ? 'B · offchain adapter' : 'not uploaded'],
+              ['Mirror state', solayerPendingMirror ? 'pending refresh' : solayerProofCount > 0 ? 'included' : 'none'],
+            ].map(([label, value], index) => (
+              <div key={label} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '7px 0',
+                borderBottom: index === 2 ? 'none' : '0.5px dashed var(--rule)',
+                fontFamily: 'var(--mono)',
+                fontSize: 10.5,
+              }}>
+                <span style={{ color: 'var(--ink-muted)' }}>{label}</span>
+                <span style={{ color: 'var(--ink)', fontWeight: 700 }}>{value}</span>
+              </div>
+            ))}
+          </div>
+
+          {solayerStatus && (
+            <div style={{
+              marginTop: 11,
+              background: solayerStatus.includes('Unable') || solayerStatus.includes('required') || solayerStatus.includes('Add ') ? 'var(--accent-soft)' : 'var(--verified-soft)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 10,
+              color: solayerStatus.includes('Unable') || solayerStatus.includes('required') || solayerStatus.includes('Add ') ? 'var(--accent)' : 'var(--verified)',
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              lineHeight: 1.45,
+              padding: '9px 10px',
+            }}>{solayerStatus}</div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 13 }}>
+            <button
+              onClick={handleSolayerUpload}
+              disabled={solayerBusy}
+              style={{
+                border: 'none',
+                borderRadius: 12,
+                background: 'var(--ink)',
+                color: 'var(--bg)',
+                padding: '12px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: solayerBusy ? 'default' : 'pointer',
+                opacity: solayerBusy ? 0.6 : 1,
+              }}
+            >Upload proof</button>
+            <button
+              onClick={handleSolanaRefresh}
+              disabled={solayerBusy || !canRefreshSolanaMirror}
+              style={{
+                border: '0.5px solid var(--rule)',
+                borderRadius: 12,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '12px 12px',
+                fontFamily: 'var(--ui)',
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: solayerBusy || !canRefreshSolanaMirror ? 'default' : 'pointer',
+                opacity: solayerBusy || !canRefreshSolanaMirror ? 0.55 : 1,
+              }}
+            >Refresh mirror</button>
+          </div>
+        </div>
+      </div>
+
+      <div className={`jiagon-credit-panel-wrap jiagon-credit-draw-wrap ${creditUnlocked ? 'jiagon-credit-draw-wrap-unlocked' : ''}`} style={{ padding: '0 18px 14px' }}>
+        <div style={{
+          background: creditUnlocked ? 'var(--surface)' : 'color-mix(in oklch, var(--surface) 70%, var(--bg))',
+          border: '0.5px solid var(--rule)',
+          borderRadius: 16,
+          padding: 16,
+          opacity: creditUnlocked ? 1 : 0.72,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                Purpose-bound draw
+              </div>
+              <div style={{ fontFamily: 'var(--ui)', fontSize: 18, fontWeight: 800, color: 'var(--ink)', marginTop: 6 }}>
+                $20 restaurant deposit
+              </div>
+            </div>
+            <span style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              color: creditUnlocked ? 'var(--verified)' : 'var(--ink-muted)',
+              background: creditUnlocked ? 'var(--verified-soft)' : 'var(--bg)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 999,
+              padding: '6px 8px',
+              whiteSpace: 'nowrap',
+            }}>{creditUnlocked ? 'Eligible' : 'Locked'}</span>
+          </div>
+
+          <div style={{ marginTop: 13 }}>
+            {[
+              ['Max spend', drawPolicy ? `$${drawPolicy.maxDrawUsd}` : '$25'],
+              ['Recipient', drawPolicy?.allowedPurpose || 'merchant escrow'],
+              ['Expiry', drawPolicy ? `${drawPolicy.expiryHours}h` : '24h'],
+              ['Raw receipt data', 'hidden'],
+            ].map(([label, value], index) => (
+              <div key={label} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '7px 0',
+                borderBottom: index === 3 ? 'none' : '0.5px dashed var(--rule)',
+                fontFamily: 'var(--mono)',
+                fontSize: 10.5,
+              }}>
+                <span style={{ color: 'var(--ink-muted)' }}>{label}</span>
+                <span style={{ color: 'var(--ink)', fontWeight: 700 }}>{value}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 9, marginTop: 15 }}>
+            <button
+              onClick={() => creditUnlocked && setDrawState('drawn')}
+              disabled={!creditUnlocked}
+              style={{
+                border: 'none',
+                borderRadius: 12,
+                background: 'var(--verified)',
+                color: 'var(--panel-text)',
+                padding: '13px 14px',
+                fontFamily: 'var(--ui)',
+                fontSize: 14,
+                fontWeight: 800,
+                cursor: creditUnlocked ? 'pointer' : 'default',
+                opacity: creditUnlocked ? 1 : 0.45,
+              }}
+            >Authorize draw</button>
+            <button
+              onClick={() => creditUnlocked && setDrawState('repaid')}
+              disabled={!creditUnlocked || !drawn}
+              style={{
+                border: '0.5px solid var(--rule)',
+                borderRadius: 12,
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                padding: '13px 14px',
+                fontFamily: 'var(--ui)',
+                fontSize: 14,
+                fontWeight: 800,
+                cursor: creditUnlocked && drawn ? 'pointer' : 'default',
+                opacity: creditUnlocked && drawn ? 1 : 0.55,
+              }}
+            >Mark repaid</button>
+          </div>
+
+          {drawn && (
+            <div style={{
+              marginTop: 13,
+              background: repaid ? 'var(--verified-soft)' : 'var(--info-soft)',
+              border: '0.5px solid var(--rule)',
+              borderRadius: 12,
+              padding: 12,
+              fontFamily: 'var(--mono)',
+              fontSize: 10.5,
+              color: repaid ? 'var(--verified)' : 'var(--info)',
+              lineHeight: 1.45,
+            }}>
+              {repaid
+                ? 'Repayment confirmed. Reputation moves to Starter+.'
+                : 'PurposeDraw PDA created. $20 devnet USDC held for one merchant task.'}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ height: 110 }} />
+    </div>
+  );
+};
+
 export { 
   OnboardingScreen, FeedScreen, InboxScreen, WriteReviewScreen,
-  ReviewDetailScreen, DiscoverScreen, ProfileScreen,
+  ReviewDetailScreen, DiscoverScreen, ProfileScreen, CreditScreen,
  };

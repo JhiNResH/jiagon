@@ -15,6 +15,7 @@
 /coverage
 /cache/
 /broadcast/
+/target/
 
 # next.js
 /.next/

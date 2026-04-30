@@ -45,6 +45,7 @@ export type ReceiptReviewRecord = {
   reviewAttributes?: Record<string, unknown>;
   reviewText: string;
   amount?: string | null;
+  amountUsd?: string | null;
   token?: string | null;
   proofLevel: string;
   sourceReceiptHash: string;
@@ -111,6 +112,7 @@ export type AgentMerchantSignal = {
 
 export type PrivateAccountState = {
   etherfiSync?: unknown;
+  solayerProofs?: unknown[];
   publishedReviews?: unknown[];
   reviewedReceiptIds?: string[];
   receiptCredentials?: Record<string, unknown>;
@@ -181,6 +183,7 @@ async function ensureSchema(pool: Pool) {
         review_attributes jsonb not null default '{}'::jsonb,
         review_text text not null default '',
         amount text,
+        amount_usd text,
         token text,
         proof_level text not null,
         source_receipt_hash text not null unique,
@@ -205,6 +208,9 @@ async function ensureSchema(pool: Pool) {
       alter table jiagon_receipt_reviews
         add column if not exists place_provider text,
         add column if not exists google_place_id text;
+
+      alter table jiagon_receipt_reviews
+        add column if not exists amount_usd text;
 
       create index if not exists jiagon_receipt_reviews_google_place_id_idx
         on jiagon_receipt_reviews (google_place_id)
@@ -253,6 +259,7 @@ function cleanPrivateAccountState(value: unknown): PrivateAccountState {
 
   return {
     etherfiSync: input.etherfiSync && typeof input.etherfiSync === "object" ? input.etherfiSync : undefined,
+    solayerProofs: Array.isArray(input.solayerProofs) ? input.solayerProofs.slice(0, 25) : [],
     publishedReviews: Array.isArray(input.publishedReviews) ? input.publishedReviews.slice(0, 250) : [],
     reviewedReceiptIds: cleanStringList(input.reviewedReceiptIds),
     receiptCredentials,
@@ -285,6 +292,13 @@ function mergePrivateAccountState(current: unknown, next: unknown): PrivateAccou
 
   return {
     etherfiSync: nextState.etherfiSync || currentState.etherfiSync,
+    solayerProofs: Array.from(
+      new Map(
+        [...(currentState.solayerProofs || []), ...(nextState.solayerProofs || [])]
+          .filter((proof): proof is Record<string, unknown> => Boolean(proof && typeof proof === "object" && !Array.isArray(proof)))
+          .map((proof) => [typeof proof.id === "string" ? proof.id : JSON.stringify(proof).slice(0, 120), proof]),
+      ).values(),
+    ).slice(0, 25),
     publishedReviews: Array.from(reviewsById.values()).slice(0, 250),
     reviewedReceiptIds: Array.from(
       new Set([...(currentState.reviewedReceiptIds || []), ...(nextState.reviewedReceiptIds || [])]),
@@ -484,6 +498,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           review_attributes,
           review_text,
           amount,
+          amount_usd,
           token,
           proof_level,
           source_receipt_hash,
@@ -506,7 +521,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           $9, $10, $11, $12, $13, $14, $15,
           $16::jsonb, $17::jsonb, $18, $19, $20,
           $21, $22, $23, $24, $25, $26, $27,
-          $28, $29, $30, $31, $32, $33, $34, $35::jsonb
+          $28, $29, $30, $31, $32, $33, $34, $35, $36::jsonb
         )
         on conflict (source_receipt_hash) do update set
           updated_at = now(),
@@ -526,6 +541,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
           review_attributes = excluded.review_attributes,
           review_text = excluded.review_text,
           amount = excluded.amount,
+          amount_usd = excluded.amount_usd,
           token = excluded.token,
           proof_level = excluded.proof_level,
           data_hash = excluded.data_hash,
@@ -562,6 +578,7 @@ export async function persistReceiptReview(record: ReceiptReviewRecord): Promise
         JSON.stringify(record.reviewAttributes || {}),
         record.reviewText || "",
         record.amount || null,
+        record.amountUsd || null,
         record.token || null,
         record.proofLevel,
         record.sourceReceiptHash,
@@ -659,8 +676,11 @@ export async function listReceiptReviews(limit = 50): Promise<{
         merchant: row.merchant,
         branch: row.branch,
         rating: row.rating,
-        tags: Array.isArray(row.tags) ? row.tags : [],
-        reviewAttributes: row.review_attributes && typeof row.review_attributes === "object" ? row.review_attributes : {},
+        tags: Array.isArray(row.tags) ? row.tags.filter((tag: unknown): tag is string => typeof tag === "string") : [],
+        reviewAttributes:
+          row.review_attributes && typeof row.review_attributes === "object" && !Array.isArray(row.review_attributes)
+            ? row.review_attributes
+            : {},
         reviewText: row.review_text,
         token: row.token,
         proofLevel: row.proof_level,
@@ -681,6 +701,120 @@ export async function listReceiptReviews(limit = 50): Promise<{
     return {
       configured: true,
       reviews: [],
+      error: "Receipt review query failed.",
+    };
+  }
+}
+
+export async function getVerifiedReceiptReviewBySourceHash(sourceReceiptHash: string): Promise<{
+  configured: boolean;
+  review: ReceiptReviewRecord | null;
+  error?: string;
+}> {
+  const pool = getPool();
+  if (!pool) return { configured: false, review: null };
+
+  try {
+    await ensureSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          receipt_id,
+          review_id,
+          status,
+          mode,
+          source_chain,
+          source_tx,
+          source_block,
+          log_index,
+          owner_safe,
+          wallet,
+          place_provider,
+          google_place_id,
+          merchant,
+          branch,
+          rating,
+          tags,
+          review_attributes,
+          review_text,
+          amount,
+          amount_usd,
+          token,
+          proof_level,
+          source_receipt_hash,
+          data_hash,
+          requested_data_hash,
+          data_matches_request,
+          storage_uri,
+          requested_storage_uri,
+          credential_chain,
+          chain_id,
+          credential_id,
+          credential_tx,
+          explorer_url,
+          registry_address,
+          minter,
+          payload
+        from jiagon_receipt_reviews
+        where source_receipt_hash = $1
+          and status = 'minted'
+          and data_matches_request is true
+        limit 1
+      `,
+      [sourceReceiptHash],
+    );
+    const row = result.rows[0];
+
+    if (!row) return { configured: true, review: null };
+
+    return {
+      configured: true,
+      review: {
+        receiptId: row.receipt_id,
+        reviewId: row.review_id,
+        status: row.status,
+        mode: row.mode,
+        sourceChain: row.source_chain,
+        sourceTx: row.source_tx,
+        sourceBlock: row.source_block,
+        logIndex: row.log_index,
+        ownerSafe: row.owner_safe,
+        wallet: row.wallet,
+        placeProvider: row.place_provider,
+        googlePlaceId: row.google_place_id,
+        merchant: row.merchant,
+        branch: row.branch,
+        rating: row.rating,
+        tags: Array.isArray(row.tags) ? row.tags.filter((tag: unknown): tag is string => typeof tag === "string") : [],
+        reviewAttributes:
+          row.review_attributes && typeof row.review_attributes === "object" && !Array.isArray(row.review_attributes)
+            ? row.review_attributes
+            : {},
+        reviewText: row.review_text,
+        amount: row.amount,
+        amountUsd: row.amount_usd,
+        token: row.token,
+        proofLevel: row.proof_level,
+        sourceReceiptHash: row.source_receipt_hash,
+        dataHash: row.data_hash,
+        requestedDataHash: row.requested_data_hash,
+        dataMatchesRequest: row.data_matches_request,
+        storageUri: row.storage_uri,
+        requestedStorageUri: row.requested_storage_uri,
+        credentialChain: row.credential_chain,
+        chainId: row.chain_id,
+        credentialId: row.credential_id,
+        credentialTx: row.credential_tx,
+        explorerUrl: row.explorer_url,
+        registryAddress: row.registry_address,
+        minter: row.minter,
+        payload: row.payload,
+      },
+    };
+  } catch {
+    return {
+      configured: true,
+      review: null,
       error: "Receipt review query failed.",
     };
   }

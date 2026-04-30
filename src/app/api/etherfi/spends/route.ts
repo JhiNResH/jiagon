@@ -91,6 +91,36 @@ const wordToAddress = (word?: string) => {
   return `0x${word.slice(-40)}`;
 };
 
+const spendAmountAtomic = (log: RpcLog) => {
+  const [amount] = dataWords(log.data);
+  return parseWord(amount);
+};
+
+const spendDedupKey = (log: RpcLog) =>
+  `${log.transactionHash.toLowerCase()}:${log.logIndex.toLowerCase()}`;
+
+const dedupeSpendLogs = (logs: RpcLog[]) => {
+  const groups = new Map<string, RpcLog[]>();
+
+  for (const log of logs) {
+    const key = spendDedupKey(log);
+    const group = groups.get(key);
+    if (group) {
+      group.push(log);
+    } else {
+      groups.set(key, [log]);
+    }
+  }
+
+  const dedupedLogs = Array.from(groups.values()).map((group) => group[0]);
+
+  return dedupedLogs.sort((a, b) => {
+    const blockDiff = Number.parseInt(b.blockNumber, 16) - Number.parseInt(a.blockNumber, 16);
+    if (blockDiff !== 0) return blockDiff;
+    return Number.parseInt(b.logIndex, 16) - Number.parseInt(a.logIndex, 16);
+  });
+};
+
 const getSafeFromSpendReceipt = (receipt: RpcReceipt) => {
   const spendLog = receipt.logs.find(
     (log) =>
@@ -328,9 +358,9 @@ export async function GET(request: Request) {
       if (blockDiff !== 0) return blockDiff;
       return Number.parseInt(b.logIndex, 16) - Number.parseInt(a.logIndex, 16);
     });
-    // A single OP transaction can emit multiple ether.fi Cash Spend events.
-    // Each log is a separate receipt proof, so keep log-level granularity.
-    const paymentLogs = sortedLogs;
+    // Source and range scans can overlap. Collapse only exact log identities so
+    // same-amount Spend events in one transaction remain separate underwriting inputs.
+    const paymentLogs = dedupeSpendLogs(sortedLogs);
 
     const visibleLogs = paymentLogs.slice(0, limit);
     const blockNumbers = [...new Set(visibleLogs.map((log) => log.blockNumber))];
@@ -344,8 +374,10 @@ export async function GET(request: Request) {
       blocks.map((block) => [block.number.toLowerCase(), Number.parseInt(block.timestamp, 16)]),
     );
     const totalSpendAtomic = paymentLogs.reduce((total, log) => {
-      const [amount] = dataWords(log.data);
-      return total + parseWord(amount);
+      return total + spendAmountAtomic(log);
+    }, BigInt(0));
+    const rawTotalSpendAtomic = sortedLogs.reduce((total, log) => {
+      return total + spendAmountAtomic(log);
     }, BigInt(0));
 
     const receipts = visibleLogs.map((log) => {
@@ -392,6 +424,8 @@ export async function GET(request: Request) {
       rawEventCount: sortedLogs.length,
       returned: receipts.length,
       totalSpendUsd: formatUsd(totalSpendAtomic),
+      rawTotalSpendUsd: formatUsd(rawTotalSpendAtomic),
+      dedupeStrategy: "transactionHash+amountAtomic only when mirrored safe/card indexes conflict",
       receipts,
     });
   } catch (error) {
