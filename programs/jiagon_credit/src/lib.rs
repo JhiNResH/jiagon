@@ -1,10 +1,33 @@
 use anchor_lang::prelude::*;
 
-declare_id!("7BtBtDPEe79rvfDpUzBfBSngBtsFvccyQQNRyhtabzC4");
+declare_id!("J1gUW4ZJwSeff33p5kvMLzPHtNMwCy4D7BAPizQzNGjB");
 
 #[program]
 pub mod jiagon_credit {
     use super::*;
+
+    pub fn initialize_verifier_config(
+        ctx: Context<InitializeVerifierConfig>,
+        verifier: Pubkey,
+        metaplex_core_program: Pubkey,
+    ) -> Result<()> {
+        require_keys_neq!(verifier, Pubkey::default(), JiagonError::ZeroAddress);
+        require_keys_neq!(metaplex_core_program, Pubkey::default(), JiagonError::ZeroAddress);
+
+        let config = &mut ctx.accounts.verifier_config;
+        config.admin = ctx.accounts.admin.key();
+        config.verifier = verifier;
+        config.metaplex_core_program = metaplex_core_program;
+        config.bump = ctx.bumps.verifier_config;
+        Ok(())
+    }
+
+    pub fn set_verifier(ctx: Context<SetVerifier>, verifier: Pubkey) -> Result<()> {
+        require_keys_neq!(verifier, Pubkey::default(), JiagonError::ZeroAddress);
+
+        ctx.accounts.verifier_config.verifier = verifier;
+        Ok(())
+    }
 
     pub fn initialize_credit_state(ctx: Context<InitializeCreditState>) -> Result<()> {
         let state = &mut ctx.accounts.credit_state;
@@ -24,10 +47,14 @@ pub mod jiagon_credit {
         data_hash: [u8; 32],
         spend_cents: u64,
         proof_level: u8,
-        core_asset: Pubkey,
     ) -> Result<()> {
         require!(spend_cents > 0, JiagonError::InvalidSpend);
         require!(proof_level >= 3, JiagonError::InsufficientProof);
+        require_keys_eq!(
+            *ctx.accounts.core_asset.owner,
+            ctx.accounts.verifier_config.metaplex_core_program,
+            JiagonError::InvalidCoreAsset
+        );
 
         let receipt = &mut ctx.accounts.receipt;
         receipt.owner = ctx.accounts.owner.key();
@@ -35,7 +62,7 @@ pub mod jiagon_credit {
         receipt.data_hash = data_hash;
         receipt.spend_cents = spend_cents;
         receipt.proof_level = proof_level;
-        receipt.core_asset = core_asset;
+        receipt.core_asset = ctx.accounts.core_asset.key();
         receipt.bump = ctx.bumps.receipt;
         receipt.created_at = Clock::get()?.unix_timestamp;
 
@@ -47,6 +74,33 @@ pub mod jiagon_credit {
         state.updated_at = Clock::get()?.unix_timestamp;
         Ok(())
     }
+}
+
+#[derive(Accounts)]
+pub struct InitializeVerifierConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        init,
+        payer = admin,
+        space = 8 + VerifierConfig::INIT_SPACE,
+        seeds = [b"jiagon-verifier-config"],
+        bump
+    )]
+    pub verifier_config: Account<'info, VerifierConfig>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SetVerifier<'info> {
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [b"jiagon-verifier-config"],
+        bump = verifier_config.bump,
+        has_one = admin @ JiagonError::UnauthorizedVerifier
+    )]
+    pub verifier_config: Account<'info, VerifierConfig>,
 }
 
 #[derive(Accounts)]
@@ -72,20 +126,38 @@ pub struct RecordReceipt<'info> {
     /// CHECK: Receipt owner can be a delegated wallet controlled by the app.
     pub owner: UncheckedAccount<'info>,
     #[account(
+        seeds = [b"jiagon-verifier-config"],
+        bump = verifier_config.bump,
+        constraint = verifier_config.verifier == authority.key() @ JiagonError::UnauthorizedVerifier
+    )]
+    pub verifier_config: Account<'info, VerifierConfig>,
+    #[account(
         mut,
         seeds = [b"jiagon-credit-state", owner.key().as_ref()],
         bump = credit_state.bump,
+        constraint = credit_state.owner == owner.key() @ JiagonError::OwnerMismatch
     )]
     pub credit_state: Account<'info, CreditState>,
     #[account(
         init,
         payer = authority,
         space = 8 + ReceiptRecord::INIT_SPACE,
-        seeds = [b"jiagon-receipt", source_receipt_hash.as_ref()],
+        seeds = [b"jiagon-receipt", owner.key().as_ref(), source_receipt_hash.as_ref()],
         bump
     )]
     pub receipt: Account<'info, ReceiptRecord>,
+    /// CHECK: The program checks that this account is owned by the configured Metaplex Core program.
+    pub core_asset: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct VerifierConfig {
+    pub admin: Pubkey,
+    pub verifier: Pubkey,
+    pub metaplex_core_program: Pubkey,
+    pub bump: u8,
 }
 
 #[account]
@@ -119,6 +191,14 @@ pub enum JiagonError {
     InvalidSpend,
     #[msg("Receipt proof level is not high enough for credit state.")]
     InsufficientProof,
+    #[msg("Verifier is not authorized to record Jiagon receipts.")]
+    UnauthorizedVerifier,
+    #[msg("Credit state owner does not match receipt owner.")]
+    OwnerMismatch,
+    #[msg("Core asset is not owned by the configured Metaplex Core program.")]
+    InvalidCoreAsset,
+    #[msg("Configured public key cannot be the zero address.")]
+    ZeroAddress,
 }
 
 fn score_for(receipt_count: u32, total_spend_cents: u64) -> u16 {

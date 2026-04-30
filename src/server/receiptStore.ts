@@ -686,6 +686,115 @@ export async function listReceiptReviews(limit = 50): Promise<{
   }
 }
 
+export async function getVerifiedReceiptReviewBySourceHash(sourceReceiptHash: string): Promise<{
+  configured: boolean;
+  review: ReceiptReviewRecord | null;
+  error?: string;
+}> {
+  const pool = getPool();
+  if (!pool) return { configured: false, review: null };
+
+  try {
+    await ensureSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          receipt_id,
+          review_id,
+          status,
+          mode,
+          source_chain,
+          source_tx,
+          source_block,
+          log_index,
+          owner_safe,
+          wallet,
+          place_provider,
+          google_place_id,
+          merchant,
+          branch,
+          rating,
+          tags,
+          review_attributes,
+          review_text,
+          amount,
+          token,
+          proof_level,
+          source_receipt_hash,
+          data_hash,
+          requested_data_hash,
+          data_matches_request,
+          storage_uri,
+          requested_storage_uri,
+          credential_chain,
+          chain_id,
+          credential_id,
+          credential_tx,
+          explorer_url,
+          registry_address,
+          minter,
+          payload
+        from jiagon_receipt_reviews
+        where source_receipt_hash = $1
+          and status = 'minted'
+          and data_matches_request is true
+        limit 1
+      `,
+      [sourceReceiptHash],
+    );
+    const row = result.rows[0];
+
+    if (!row) return { configured: true, review: null };
+
+    return {
+      configured: true,
+      review: {
+        receiptId: row.receipt_id,
+        reviewId: row.review_id,
+        status: row.status,
+        mode: row.mode,
+        sourceChain: row.source_chain,
+        sourceTx: row.source_tx,
+        sourceBlock: row.source_block,
+        logIndex: row.log_index,
+        ownerSafe: row.owner_safe,
+        wallet: row.wallet,
+        placeProvider: row.place_provider,
+        googlePlaceId: row.google_place_id,
+        merchant: row.merchant,
+        branch: row.branch,
+        rating: row.rating,
+        tags: Array.isArray(row.tags) ? row.tags : [],
+        reviewAttributes: row.review_attributes && typeof row.review_attributes === "object" ? row.review_attributes : {},
+        reviewText: row.review_text,
+        amount: row.amount,
+        token: row.token,
+        proofLevel: row.proof_level,
+        sourceReceiptHash: row.source_receipt_hash,
+        dataHash: row.data_hash,
+        requestedDataHash: row.requested_data_hash,
+        dataMatchesRequest: row.data_matches_request,
+        storageUri: row.storage_uri,
+        requestedStorageUri: row.requested_storage_uri,
+        credentialChain: row.credential_chain,
+        chainId: row.chain_id,
+        credentialId: row.credential_id,
+        credentialTx: row.credential_tx,
+        explorerUrl: row.explorer_url,
+        registryAddress: row.registry_address,
+        minter: row.minter,
+        payload: row.payload,
+      },
+    };
+  } catch {
+    return {
+      configured: true,
+      review: null,
+      error: "Receipt review query failed.",
+    };
+  }
+}
+
 export async function listAgentMerchantSignals(limit = 25): Promise<{
   configured: boolean;
   merchants: AgentMerchantSignal[];

@@ -112,18 +112,25 @@ const shouldPreferSpendLog = (candidate: RpcLog, current: RpcLog, safe: string) 
 };
 
 const dedupeSpendLogs = (logs: RpcLog[], safe: string) => {
-  const bySpend = new Map<string, RpcLog>();
+  const groups = new Map<string, RpcLog[]>();
 
   for (const log of logs) {
     const key = spendDedupKey(log);
-    const current = bySpend.get(key);
-
-    if (!current || shouldPreferSpendLog(log, current, safe)) {
-      bySpend.set(key, log);
-    }
+    groups.set(key, [...(groups.get(key) || []), log]);
   }
 
-  return Array.from(bySpend.values()).sort((a, b) => {
+  const dedupedLogs = Array.from(groups.values()).flatMap((group) => {
+    if (
+      group.length === 2 &&
+      isSafeIndexedWalletLog(group[0], safe) !== isSafeIndexedWalletLog(group[1], safe)
+    ) {
+      return [shouldPreferSpendLog(group[0], group[1], safe) ? group[0] : group[1]];
+    }
+
+    return group;
+  });
+
+  return dedupedLogs.sort((a, b) => {
     const blockDiff = Number.parseInt(b.blockNumber, 16) - Number.parseInt(a.blockNumber, 16);
     if (blockDiff !== 0) return blockDiff;
     return Number.parseInt(b.logIndex, 16) - Number.parseInt(a.logIndex, 16);
@@ -435,7 +442,7 @@ export async function GET(request: Request) {
       returned: receipts.length,
       totalSpendUsd: formatUsd(totalSpendAtomic),
       rawTotalSpendUsd: formatUsd(rawTotalSpendAtomic),
-      dedupeStrategy: "transactionHash+amountAtomic; prefer safe-indexed wallet log",
+      dedupeStrategy: "transactionHash+amountAtomic only when mirrored safe/card indexes conflict",
       receipts,
     });
   } catch (error) {

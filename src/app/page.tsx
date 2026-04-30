@@ -168,6 +168,7 @@ type ReceiptCredential = {
   storageUri: string;
   requestedStorageUri?: string;
   sourceReceiptHash?: string;
+  solanaOwner?: string;
   dataHash: string;
   requestedDataHash?: string;
   dataMatchesRequest?: boolean;
@@ -934,15 +935,17 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       }),
     });
 
-  const mirrorSolanaCredit = async (credential: ReceiptCredential, review: any, receipt: any) => {
+  const mirrorSolanaCredit = async (credential: ReceiptCredential) => {
+    if (!credential.sourceReceiptHash) {
+      throw new Error("A verified source receipt hash is required before Solana mirroring.");
+    }
+
     const response = await fetch("/api/solana/credit/mirror", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        owner: receipt.safe || authSession?.walletAddress || authSession?.walletLabel || "privy-user",
-        receipt,
-        review,
-        credential,
+        sourceReceiptHash: credential.sourceReceiptHash,
+        solanaOwner: credential.solanaOwner,
       }),
     });
 
@@ -998,7 +1001,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     };
 
     try {
-      credential.solana = await mirrorSolanaCredit(credential, review, receipt);
+      credential.solana = await mirrorSolanaCredit(credential);
     } catch (error) {
       credential.solana = {
         status: "adapter-error",

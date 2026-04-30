@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-jiagon_credit = "7BtBtDPEe79rvfDpUzBfBSngBtsFvccyQQNRyhtabzC4"
+jiagon_credit = "J1gUW4ZJwSeff33p5kvMLzPHtNMwCy4D7BAPizQzNGjB"
 
 [registry]
 url = "https://api.apr.dev"
