@@ -1038,6 +1038,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       note: payload.note,
       persistence: payload.persistence,
       onchain: payload.onchain,
+      solanaOwner: payload.solanaOwner || receipt.solanaOwner || review.solanaOwner,
     };
 
     if (credential.solanaOwner) {

@@ -1,6 +1,9 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::pubkey;
 
 declare_id!("J1gUW4ZJwSeff33p5kvMLzPHtNMwCy4D7BAPizQzNGjB");
+
+const INITIAL_ADMIN: Pubkey = pubkey!("3z6edmobZbGBQP1pxfYi3XuxqEFeZn1rZfGBegtJ2GAh");
 
 #[program]
 pub mod jiagon_credit {
@@ -11,6 +14,11 @@ pub mod jiagon_credit {
         verifier: Pubkey,
         metaplex_core_program: Pubkey,
     ) -> Result<()> {
+        require_keys_eq!(
+            ctx.accounts.admin.key(),
+            INITIAL_ADMIN,
+            JiagonError::UnauthorizedAdmin
+        );
         require_keys_neq!(verifier, Pubkey::default(), JiagonError::ZeroAddress);
         require_keys_neq!(metaplex_core_program, Pubkey::default(), JiagonError::ZeroAddress);
 
@@ -187,6 +195,8 @@ pub struct ReceiptRecord {
 
 #[error_code]
 pub enum JiagonError {
+    #[msg("Admin is not authorized to initialize verifier config.")]
+    UnauthorizedAdmin,
     #[msg("Spend amount must be greater than zero.")]
     InvalidSpend,
     #[msg("Receipt proof level is not high enough for credit state.")]

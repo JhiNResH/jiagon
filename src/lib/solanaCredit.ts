@@ -208,6 +208,16 @@ function assertSolanaPubkey(value: string | null | undefined, label: string) {
   return value;
 }
 
+export function isSolanaPubkey(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    pubkeyBytes(value.trim());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -250,18 +260,12 @@ export function deriveSolanaCreditPdas({
   const receiptHashBytes = bytes32FromHex(sourceReceiptHash);
   const creditState = findProgramAddress([Buffer.from("jiagon-credit-state"), ownerBytes], programId);
   const receipt = findProgramAddress([Buffer.from("jiagon-receipt"), ownerBytes, receiptHashBytes], programId);
-  const creditLine = findProgramAddress(
-    [Buffer.from("jiagon-purpose-credit"), ownerBytes, Buffer.from("starter")],
-    programId,
-  );
 
   return {
     creditStatePda: creditState.address,
     creditStateBump: creditState.bump,
     receiptPda: receipt.address,
     receiptBump: receipt.bump,
-    creditLinePda: creditLine.address,
-    creditLineBump: creditLine.bump,
   };
 }
 
@@ -330,16 +334,13 @@ export function buildSolanaCreditMirror(input: SolanaCreditMirrorInput, options:
     pda: {
       creditState: pdas.creditStatePda,
       receipt: pdas.receiptPda,
-      purposeCreditLine: pdas.creditLinePda,
       bumps: {
         creditState: pdas.creditStateBump,
         receipt: pdas.receiptBump,
-        purposeCreditLine: pdas.creditLineBump,
       },
       seeds: {
         creditState: ["jiagon-credit-state", owner],
         receipt: ["jiagon-receipt", owner, sourceReceiptHash],
-        purposeCreditLine: ["jiagon-purpose-credit", owner, "starter"],
       },
     },
     creditState: {

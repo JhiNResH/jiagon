@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 type DemoState = "fresh" | "verified" | "drawn" | "repaid";
 export type JiagonView = "passport" | "verify" | "credit" | "api";
@@ -332,9 +332,14 @@ function readInitialState(): DemoState {
 }
 
 export function JiagonApp({ view = "passport" }: { view?: JiagonView }) {
-  const [state, setStateValue] = useState<DemoState>(readInitialState);
+  const [state, setStateValue] = useState<DemoState>("fresh");
   const copy = viewContent[view];
   const showSidePassport = view !== "passport";
+
+  useEffect(() => {
+    const stored = readInitialState();
+    if (stored !== "fresh") setStateValue(stored);
+  }, []);
 
   const setState = (next: DemoState) => {
     setStateValue(next);

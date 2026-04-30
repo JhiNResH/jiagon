@@ -97,12 +97,9 @@ const spendAmountAtomic = (log: RpcLog) => {
 };
 
 const spendDedupKey = (log: RpcLog) =>
-  `${log.transactionHash.toLowerCase()}:${spendAmountAtomic(log).toString()}`;
+  `${log.transactionHash.toLowerCase()}:${log.logIndex.toLowerCase()}`;
 
-const isSafeIndexedWalletLog = (log: RpcLog, safe: string) =>
-  wordToAddress(log.topics[2])?.toLowerCase() === safe.toLowerCase();
-
-const dedupeSpendLogs = (logs: RpcLog[], safe: string) => {
+const dedupeSpendLogs = (logs: RpcLog[]) => {
   const groups = new Map<string, RpcLog[]>();
 
   for (const log of logs) {
@@ -115,13 +112,7 @@ const dedupeSpendLogs = (logs: RpcLog[], safe: string) => {
     }
   }
 
-  const dedupedLogs = Array.from(groups.values()).flatMap((group) => {
-    const safeIndexedLogs = group.filter((log) => isSafeIndexedWalletLog(log, safe));
-    const hasMirroredIndexes = safeIndexedLogs.length > 0 && safeIndexedLogs.length < group.length;
-    if (hasMirroredIndexes) return safeIndexedLogs;
-
-    return group;
-  });
+  const dedupedLogs = Array.from(groups.values()).map((group) => group[0]);
 
   return dedupedLogs.sort((a, b) => {
     const blockDiff = Number.parseInt(b.blockNumber, 16) - Number.parseInt(a.blockNumber, 16);
@@ -367,10 +358,9 @@ export async function GET(request: Request) {
       if (blockDiff !== 0) return blockDiff;
       return Number.parseInt(b.logIndex, 16) - Number.parseInt(a.logIndex, 16);
     });
-    // A single ether.fi Cash transaction can mirror the same spend under both
-    // the Safe/account and card wallet indexes. Underwriting should count the
-    // spend once, not once per emitted log.
-    const paymentLogs = dedupeSpendLogs(sortedLogs, safe);
+    // Source and range scans can overlap. Collapse only exact log identities so
+    // same-amount Spend events in one transaction remain separate underwriting inputs.
+    const paymentLogs = dedupeSpendLogs(sortedLogs);
 
     const visibleLogs = paymentLogs.slice(0, limit);
     const blockNumbers = [...new Set(visibleLogs.map((log) => log.blockNumber))];

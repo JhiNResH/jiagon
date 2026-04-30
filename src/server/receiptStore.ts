@@ -659,8 +659,11 @@ export async function listReceiptReviews(limit = 50): Promise<{
         merchant: row.merchant,
         branch: row.branch,
         rating: row.rating,
-        tags: Array.isArray(row.tags) ? row.tags : [],
-        reviewAttributes: row.review_attributes && typeof row.review_attributes === "object" ? row.review_attributes : {},
+        tags: Array.isArray(row.tags) ? row.tags.filter((tag: unknown): tag is string => typeof tag === "string") : [],
+        reviewAttributes:
+          row.review_attributes && typeof row.review_attributes === "object" && !Array.isArray(row.review_attributes)
+            ? row.review_attributes
+            : {},
         reviewText: row.review_text,
         token: row.token,
         proofLevel: row.proof_level,
@@ -764,8 +767,11 @@ export async function getVerifiedReceiptReviewBySourceHash(sourceReceiptHash: st
         merchant: row.merchant,
         branch: row.branch,
         rating: row.rating,
-        tags: Array.isArray(row.tags) ? row.tags : [],
-        reviewAttributes: row.review_attributes && typeof row.review_attributes === "object" ? row.review_attributes : {},
+        tags: Array.isArray(row.tags) ? row.tags.filter((tag: unknown): tag is string => typeof tag === "string") : [],
+        reviewAttributes:
+          row.review_attributes && typeof row.review_attributes === "object" && !Array.isArray(row.review_attributes)
+            ? row.review_attributes
+            : {},
         reviewText: row.review_text,
         amount: row.amount,
         token: row.token,

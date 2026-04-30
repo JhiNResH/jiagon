@@ -92,6 +92,14 @@ const credentialKey = (credential = {}) => (
   null
 );
 
+const solanaMirrorLabel = (credential = {}) => {
+  const creditState = credential?.solana?.pda?.creditState;
+  if (creditState) return `Solana PDA ${String(creditState).slice(0, 6)}…${String(creditState).slice(-4)}`;
+  if (credential?.solana?.status) return `Solana mirror ${credential.solana.status}`;
+  if (credential?.solana?.error) return credential.solana.error;
+  return 'Solana PDA mirror pending';
+};
+
 const uniqueCredentialsForProfile = (receiptCredentials = {}, reviews = []) => {
   const byKey = new Map();
 
@@ -1966,9 +1974,7 @@ const WriteReviewScreen = ({ receipt, onClose, onSubmit }) => {
                 ? 'existing BNB credential found'
                 : 'BNB testnet credential minted'
               : 'BNB payload prepared'}<br/>
-            {credential?.solana?.pda?.creditState
-              ? `Solana PDA ${String(credential.solana.pda.creditState).slice(0, 6)}…${String(credential.solana.pda.creditState).slice(-4)}`
-              : 'Solana PDA mirror pending'}<br/>
+            {solanaMirrorLabel(credential)}<br/>
             {credential?.persistence?.persisted ? 'saved to Jiagon API' : 'local receipt view saved'}<br/>
             {credential?.credentialTx ? `${credential.credentialTx.slice(0, 8)}…${credential.credentialTx.slice(-6)}` : credential?.credentialId || 'Greenfield object ready'}
             {credential?.dataMatchesRequest === false && <><br/>submitted review differs from onchain data</>}

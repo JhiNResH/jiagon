@@ -1,4 +1,4 @@
-import { buildSolanaCreditMirror } from "@/lib/solanaCredit";
+import { buildSolanaCreditMirror, isSolanaPubkey } from "@/lib/solanaCredit";
 import { getVerifiedReceiptReviewBySourceHash } from "@/server/receiptStore";
 import { recoverMessageAddress, type Hex } from "viem";
 
@@ -11,7 +11,9 @@ function cleanSourceReceiptHash(value: unknown) {
 }
 
 function cleanSolanaOwner(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  if (typeof value !== "string") return null;
+  const owner = value.trim();
+  return isSolanaPubkey(owner) ? owner : null;
 }
 
 function cleanAddress(value: unknown) {
@@ -84,14 +86,23 @@ export async function POST(request: Request) {
 
     const review = stored.review;
     const expectedSigner = cleanAddress(review.wallet || review.ownerSafe);
-    if (!expectedSigner || !ownerSigner || ownerSigner !== expectedSigner || !ownerSignature) {
+    if (!ownerSigner || !ownerSignature) {
+      return Response.json({ error: "A valid wallet signer and ownership signature are required." }, { status: 400 });
+    }
+
+    if (!expectedSigner || ownerSigner !== expectedSigner) {
       return Response.json({ error: "Solana mirror ownership verification failed." }, { status: 403 });
     }
 
-    const recovered = await recoverMessageAddress({
-      message: buildSolanaOwnerLinkMessage({ sourceReceiptHash, solanaOwner }),
-      signature: ownerSignature,
-    });
+    let recovered: string;
+    try {
+      recovered = await recoverMessageAddress({
+        message: buildSolanaOwnerLinkMessage({ sourceReceiptHash, solanaOwner }),
+        signature: ownerSignature,
+      });
+    } catch {
+      return Response.json({ error: "Solana mirror ownership signature is malformed." }, { status: 400 });
+    }
     if (recovered.toLowerCase() !== expectedSigner) {
       return Response.json({ error: "Solana mirror ownership verification failed." }, { status: 403 });
     }
