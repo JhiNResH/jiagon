@@ -18,7 +18,7 @@ type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
 
-type Tab = "feed" | "inbox" | "credit" | "profile";
+type Tab = "passport" | "feed" | "inbox" | "credit" | "profile";
 type VerifyStyle = "chip" | "stamp";
 type Density = "compact" | "comfy";
 
@@ -52,6 +52,7 @@ const solayerProofsStorageKey = "jiagon:solayer-proofs";
 const reviewsStorageKey = "jiagon:published-reviews";
 const reviewedReceiptsStorageKey = "jiagon:reviewed-receipts";
 const receiptCredentialsStorageKey = "jiagon:receipt-credentials";
+const merchantReceiptsStorageKey = "jiagon:merchant-receipts";
 const accountUserStorageKey = "jiagon:account-user-id";
 const localDemoHosts = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -198,6 +199,29 @@ type ReceiptCredential = {
   onchain?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   solana?: any;
+};
+
+type MerchantPassportReceipt = {
+  id: string;
+  merchantName: string;
+  location?: string | null;
+  receiptNumber: string;
+  amountUsd: string;
+  currency?: string;
+  category?: string;
+  purpose?: string;
+  status: string;
+  receiptHash: string;
+  signature?: string | null;
+  signatureAlgorithm?: string;
+  issuedAt?: string;
+  claimedAt?: string | null;
+  mintStatus?: string;
+  creditImpact?: {
+    eligible?: boolean;
+    unlockedCreditUsd?: number;
+    reason?: string;
+  };
 };
 
 const emptyEtherfiSync: EtherfiSyncState = {
@@ -352,6 +376,54 @@ function writeStoredSolayerProofs(proofs: SolayerCreditProof[]) {
   window.localStorage.setItem(solayerProofsStorageKey, JSON.stringify(normalizeRestoredSolayerProofs(proofs)));
 }
 
+function normalizeRestoredMerchantReceipts(value: unknown): MerchantPassportReceipt[] {
+  if (!Array.isArray(value)) return [];
+  const receiptsById = new Map<string, MerchantPassportReceipt>();
+
+  for (const item of value) {
+    const record = item && typeof item === "object" ? item as Partial<MerchantPassportReceipt> : null;
+    if (
+      !record ||
+      typeof record.id !== "string" ||
+      typeof record.merchantName !== "string" ||
+      typeof record.receiptHash !== "string"
+    ) {
+      continue;
+    }
+
+    receiptsById.set(record.id, {
+      id: record.id,
+      merchantName: record.merchantName,
+      location: typeof record.location === "string" ? record.location : null,
+      receiptNumber: typeof record.receiptNumber === "string" ? record.receiptNumber : record.id,
+      amountUsd: typeof record.amountUsd === "string" ? record.amountUsd : "0.00",
+      currency: typeof record.currency === "string" ? record.currency : "USD",
+      category: typeof record.category === "string" ? record.category : "Merchant",
+      purpose: typeof record.purpose === "string" ? record.purpose : "merchant_receipt",
+      status: typeof record.status === "string" ? record.status : "claimed",
+      receiptHash: record.receiptHash,
+      signature: typeof record.signature === "string" ? record.signature : null,
+      signatureAlgorithm: typeof record.signatureAlgorithm === "string" ? record.signatureAlgorithm : "local-demo",
+      issuedAt: typeof record.issuedAt === "string" ? record.issuedAt : undefined,
+      claimedAt: typeof record.claimedAt === "string" ? record.claimedAt : null,
+      mintStatus: typeof record.mintStatus === "string" ? record.mintStatus : "ready",
+      creditImpact: record.creditImpact && typeof record.creditImpact === "object" ? record.creditImpact : undefined,
+    });
+  }
+
+  return Array.from(receiptsById.values()).slice(0, 250);
+}
+
+function writeStoredMerchantReceipts(receipts: MerchantPassportReceipt[]) {
+  window.localStorage.setItem(merchantReceiptsStorageKey, JSON.stringify(normalizeRestoredMerchantReceipts(receipts)));
+}
+
+function mergeRestoredMerchantReceipts(restored: unknown) {
+  const cached = normalizeRestoredMerchantReceipts(readStoredJson(merchantReceiptsStorageKey));
+  const incoming = normalizeRestoredMerchantReceipts(restored);
+  return normalizeRestoredMerchantReceipts([...cached, ...incoming]);
+}
+
 function hydrateLocalPrivateState(
   setEtherfiSyncState: (state: EtherfiSyncState) => void,
   setSolayerProofsState: (proofs: SolayerCreditProof[]) => void,
@@ -359,6 +431,7 @@ function hydrateLocalPrivateState(
   setReviewsState: (reviews: any[]) => void,
   setReviewedIdsState: (ids: string[]) => void,
   setCredentialsState: (credentials: Record<string, ReceiptCredential>) => void,
+  setMerchantReceiptsState: (receipts: MerchantPassportReceipt[]) => void,
 ) {
   const storedEtherfiSync = normalizeRestoredEtherfiSync(readStoredJson(etherfiStorageKey));
   if (storedEtherfiSync) {
@@ -386,27 +459,37 @@ function hydrateLocalPrivateState(
   ) {
     setCredentialsState(storedReceiptCredentials as Record<string, ReceiptCredential>);
   }
+
+  const storedMerchantReceipts = normalizeRestoredMerchantReceipts(readStoredJson(merchantReceiptsStorageKey));
+  if (storedMerchantReceipts.length > 0) {
+    setMerchantReceiptsState(storedMerchantReceipts);
+    writeStoredMerchantReceipts(storedMerchantReceipts);
+  }
 }
 
 function initialTabFromPath(): Tab {
-  if (typeof window === "undefined") return "inbox";
+  if (typeof window === "undefined") return "passport";
   if (window.location.pathname === "/credit") return "credit";
-  return "inbox";
+  if (window.location.pathname === "/passport") return "passport";
+  return "passport";
 }
 
 function pathForTab(tab: Tab) {
-  return tab === "credit" ? "/credit" : "/";
+  if (tab === "credit") return "/credit";
+  if (tab === "passport") return "/passport";
+  return "/";
 }
 
 const webTabs: Array<{ id: Tab; label: string; sub: string }> = [
-  { id: "inbox", label: "Receipts", sub: "Scan tx and claim proof" },
+  { id: "passport", label: "Passport", sub: "On-chain receipt wallet" },
+  { id: "inbox", label: "Scan", sub: "Import tx proof" },
   { id: "credit", label: "Credit", sub: "Passport and draw" },
   { id: "feed", label: "Taste", sub: "Published proof feed" },
   { id: "profile", label: "Profile", sub: "Wallet and reputation" },
 ];
 
 const webShellStyles = `
-.jiagon-web-shell{min-height:100vh;display:grid;grid-template-columns:300px minmax(0,1fr);background:radial-gradient(circle at 10% 0%,oklch(0.98 0.008 105) 0 280px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink)}.jiagon-web-sidebar{min-height:100vh;padding:26px 18px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .74);backdrop-filter:blur(18px);display:flex;flex-direction:column;gap:18px}.jiagon-web-brand{display:flex;align-items:center;gap:13px;padding:4px 4px 12px}.jiagon-web-mark{width:54px;height:54px;border:3px solid var(--verified);border-radius:9px;background:var(--receipt);color:var(--verified);display:grid;place-items:center;position:relative;flex:0 0 auto;box-shadow:0 10px 24px rgba(24,58,38,.10)}.jiagon-web-mark span{font-family:Georgia,'Times New Roman',serif;font-size:36px;font-weight:700;line-height:1;transform:translateY(-2px)}.jiagon-web-mark i{position:absolute;left:9px;right:18px;bottom:8px;border-bottom:2px dotted var(--verified)}.jiagon-web-mark b{position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:999px;background:var(--ink);color:var(--receipt);display:grid;place-items:center;font-family:var(--ui);font-size:10px}.jiagon-web-wordmark{font-family:var(--display);font-size:36px;line-height:.9;color:var(--verified)}.jiagon-web-kicker{font-family:var(--mono);font-size:10px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:1px}.jiagon-web-primary{min-height:46px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-family:var(--ui);font-size:14px;font-weight:800;cursor:pointer}.jiagon-web-auth-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.jiagon-web-session-actions{display:grid;gap:8px}.jiagon-web-session-actions button{width:100%}.jiagon-web-auth-button{min-height:44px;border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);color:var(--ink);font-family:var(--ui);font-size:13px;font-weight:800;cursor:pointer}.jiagon-web-auth-button-primary{border-color:transparent;background:var(--verified);color:var(--panel-text)}.jiagon-web-auth-button:disabled{cursor:not-allowed;opacity:.55}.jiagon-web-nav{display:grid;gap:7px}.jiagon-web-nav-item{text-align:left;border:.5px solid transparent;border-radius:10px;background:transparent;color:var(--ink);padding:12px;cursor:pointer}.jiagon-web-nav-item:hover,.jiagon-web-nav-item[data-active="true"]{border-color:var(--rule);background:var(--receipt);box-shadow:0 1px 0 rgba(24,24,24,.04)}.jiagon-web-nav-item span{display:block;font-family:var(--ui);font-size:14px;font-weight:800}.jiagon-web-nav-item small{display:block;margin-top:3px;font-family:var(--mono);font-size:9.5px;line-height:1.3;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.55px}.jiagon-web-status{margin-top:auto;border:.5px solid var(--rule);border-radius:12px;background:var(--receipt);padding:14px}.jiagon-web-status-grid{display:grid;grid-template-columns:1fr;gap:7px;margin-top:10px}.jiagon-web-status-grid div{display:flex;justify-content:space-between;gap:12px;font-family:var(--mono);font-size:10.5px;padding:6px 0;border-bottom:.5px dashed var(--rule)}.jiagon-web-status-grid span{color:var(--ink-muted)}.jiagon-web-status-grid strong{color:var(--ink)}.jiagon-web-status p{margin:10px 0 0;color:var(--ink-muted);font-size:12.5px;line-height:1.45}.jiagon-web-main{min-width:0;min-height:100vh;padding:28px clamp(22px,4vw,56px);position:relative}.jiagon-web-top{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:18px}.jiagon-web-top h1{margin:5px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(42px,5vw,70px);line-height:.92;color:var(--ink)}.jiagon-web-proofline{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.jiagon-web-proofline span{border:.5px solid var(--rule);border-radius:999px;background:var(--receipt);color:var(--ink-muted);padding:7px 10px;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.65px}.jiagon-web-workspace{min-height:0!important;border:0!important;border-radius:0!important;background:transparent!important;overflow:visible!important;box-shadow:none!important}.jiagon-web-content{max-width:1040px;position:relative;background:transparent!important}.jiagon-web-content>div{height:auto!important;min-height:0!important;background:transparent!important;overflow:visible!important}.jiagon-web-content>div>div:first-child{background:transparent!important}.jiagon-web-modal-root{position:absolute;inset:28px clamp(22px,4vw,56px);pointer-events:none;z-index:50}.jiagon-web-modal-root .screen{pointer-events:auto;position:absolute;inset:0;max-width:920px;margin:auto;border:.5px solid var(--rule);border-radius:12px;overflow:hidden;box-shadow:0 24px 90px rgba(24,24,24,.18)}@media(max-width:900px){.jiagon-web-shell{grid-template-columns:1fr}.jiagon-web-sidebar{min-height:auto;border-right:none;border-bottom:.5px solid var(--rule);padding:16px}.jiagon-web-nav{grid-template-columns:repeat(4,minmax(120px,1fr));overflow-x:auto}.jiagon-web-status{display:none}.jiagon-web-main{min-height:78vh;padding:18px 14px 28px}.jiagon-web-top{display:grid;align-items:start}.jiagon-web-proofline{justify-content:flex-start}.jiagon-web-workspace{min-height:0!important}}
+.jiagon-web-shell{min-height:100vh;display:grid;grid-template-columns:300px minmax(0,1fr);background:radial-gradient(circle at 10% 0%,oklch(0.98 0.008 105) 0 280px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink)}.jiagon-web-sidebar{min-height:100vh;padding:26px 18px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .74);backdrop-filter:blur(18px);display:flex;flex-direction:column;gap:18px}.jiagon-web-brand{display:flex;align-items:center;gap:13px;padding:4px 4px 12px}.jiagon-web-mark{width:54px;height:54px;border:3px solid var(--verified);border-radius:9px;background:var(--receipt);color:var(--verified);display:grid;place-items:center;position:relative;flex:0 0 auto;box-shadow:0 10px 24px rgba(24,58,38,.10)}.jiagon-web-mark span{font-family:Georgia,'Times New Roman',serif;font-size:36px;font-weight:700;line-height:1;transform:translateY(-2px)}.jiagon-web-mark i{position:absolute;left:9px;right:18px;bottom:8px;border-bottom:2px dotted var(--verified)}.jiagon-web-mark b{position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:999px;background:var(--ink);color:var(--receipt);display:grid;place-items:center;font-family:var(--ui);font-size:10px}.jiagon-web-wordmark{font-family:var(--display);font-size:36px;line-height:.9;color:var(--verified)}.jiagon-web-kicker{font-family:var(--mono);font-size:10px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:1px}.jiagon-web-primary{min-height:46px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-family:var(--ui);font-size:14px;font-weight:800;cursor:pointer}.jiagon-web-auth-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.jiagon-web-session-actions{display:grid;gap:8px}.jiagon-web-session-actions button{width:100%}.jiagon-web-auth-button{min-height:44px;border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);color:var(--ink);font-family:var(--ui);font-size:13px;font-weight:800;cursor:pointer}.jiagon-web-auth-button-primary{border-color:transparent;background:var(--verified);color:var(--panel-text)}.jiagon-web-auth-button:disabled{cursor:not-allowed;opacity:.55}.jiagon-web-nav{display:grid;gap:7px}.jiagon-web-nav-item{text-align:left;border:.5px solid transparent;border-radius:10px;background:transparent;color:var(--ink);padding:12px;cursor:pointer}.jiagon-web-nav-item:hover,.jiagon-web-nav-item[data-active="true"]{border-color:var(--rule);background:var(--receipt);box-shadow:0 1px 0 rgba(24,24,24,.04)}.jiagon-web-nav-item span{display:block;font-family:var(--ui);font-size:14px;font-weight:800}.jiagon-web-nav-item small{display:block;margin-top:3px;font-family:var(--mono);font-size:9.5px;line-height:1.3;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.55px}.jiagon-web-status{margin-top:auto;border:.5px solid var(--rule);border-radius:12px;background:var(--receipt);padding:14px}.jiagon-web-status-grid{display:grid;grid-template-columns:1fr;gap:7px;margin-top:10px}.jiagon-web-status-grid div{display:flex;justify-content:space-between;gap:12px;font-family:var(--mono);font-size:10.5px;padding:6px 0;border-bottom:.5px dashed var(--rule)}.jiagon-web-status-grid span{color:var(--ink-muted)}.jiagon-web-status-grid strong{color:var(--ink)}.jiagon-web-status p{margin:10px 0 0;color:var(--ink-muted);font-size:12.5px;line-height:1.45}.jiagon-web-main{min-width:0;min-height:100vh;padding:28px clamp(22px,4vw,56px);position:relative}.jiagon-web-top{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:18px}.jiagon-web-top h1{margin:5px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(42px,5vw,70px);line-height:.92;color:var(--ink)}.jiagon-web-proofline{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.jiagon-web-proofline span{border:.5px solid var(--rule);border-radius:999px;background:var(--receipt);color:var(--ink-muted);padding:7px 10px;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.65px}.jiagon-web-workspace{min-height:0!important;border:0!important;border-radius:0!important;background:transparent!important;overflow:visible!important;box-shadow:none!important}.jiagon-web-content{max-width:1040px;position:relative;background:transparent!important}.jiagon-web-content>div{height:auto!important;min-height:0!important;background:transparent!important;overflow:visible!important}.jiagon-web-content>div>div:first-child{background:transparent!important}.jiagon-web-modal-root{position:absolute;inset:28px clamp(22px,4vw,56px);pointer-events:none;z-index:50}.jiagon-web-modal-root .screen{pointer-events:auto;position:absolute;inset:0;max-width:920px;margin:auto;border:.5px solid var(--rule);border-radius:12px;overflow:hidden;box-shadow:0 24px 90px rgba(24,24,24,.18)}@media(max-width:900px){.jiagon-web-shell{grid-template-columns:1fr}.jiagon-web-sidebar{min-height:auto;border-right:none;border-bottom:.5px solid var(--rule);padding:16px}.jiagon-web-nav{grid-template-columns:repeat(5,minmax(120px,1fr));overflow-x:auto}.jiagon-web-status{display:none}.jiagon-web-main{min-height:78vh;padding:18px 14px 28px}.jiagon-web-top{display:grid;align-items:start}.jiagon-web-proofline{justify-content:flex-start}.jiagon-web-workspace{min-height:0!important}}
 `;
 
 const logoMarkStyles = `
@@ -419,6 +502,10 @@ const webUiPolishStyles = `
 
 const webDialogStyles = `
 .jiagon-web-modal-root-active{position:fixed!important;inset:0!important;z-index:1000!important;pointer-events:auto!important;background:rgba(24,32,26,.28)!important;backdrop-filter:blur(8px);display:grid!important;place-items:center!important;padding:36px!important}.jiagon-web-modal-root-active .screen{position:relative!important;inset:auto!important;width:min(920px,calc(100vw - 72px))!important;height:min(820px,calc(100vh - 72px))!important;max-width:none!important;margin:0!important;border-radius:12px!important}.jiagon-web-modal-close{position:fixed;top:18px;right:18px;z-index:1100;border:.5px solid var(--rule);border-radius:999px;background:var(--receipt);color:var(--ink);min-height:38px;padding:0 14px;font-family:var(--ui);font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 10px 28px rgba(24,24,24,.14)}.jiagon-web-modal-close:hover{background:var(--verified-soft)}@media(max-width:900px){.jiagon-web-modal-root-active{padding:12px!important;place-items:stretch!important}.jiagon-web-modal-root-active .screen{width:100%!important;height:calc(100vh - 24px)!important}.jiagon-web-modal-close{top:18px;right:18px}}
+`;
+
+const passportStyles = `
+.jiagon-passport-screen{display:grid;gap:16px}.jiagon-passport-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);gap:18px;align-items:end}.jiagon-passport-hero h1{max-width:720px;margin:8px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(52px,6vw,78px);line-height:.9;color:var(--ink)}.jiagon-passport-hero p{max-width:650px;margin:14px 0 0;color:var(--ink-muted);font-size:15px;line-height:1.55}.jiagon-passport-summary{display:grid;grid-template-columns:1fr 1fr;border:.5px solid var(--rule);border-radius:12px;overflow:hidden;background:oklch(0.992 0.004 100 / .86);box-shadow:0 18px 54px rgba(24,58,38,.08)}.jiagon-passport-summary div{display:grid;gap:5px;padding:14px;border-right:.5px solid var(--rule);border-bottom:.5px solid var(--rule)}.jiagon-passport-summary div:nth-child(2n){border-right:none}.jiagon-passport-summary div:nth-last-child(-n+2){border-bottom:none}.jiagon-passport-summary span,.jiagon-passport-row span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.jiagon-passport-summary strong{font-family:var(--display);font-style:italic;font-size:28px;font-weight:400;line-height:1;color:var(--ink)}.jiagon-passport-actions{display:flex;flex-wrap:wrap;gap:10px}.jiagon-passport-actions button{min-height:42px;border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);color:var(--ink);padding:0 14px;font-weight:850;cursor:pointer}.jiagon-passport-actions button:first-child{border-color:transparent;background:var(--verified);color:var(--panel-text);box-shadow:0 8px 22px rgba(0,96,48,.14)}.jiagon-passport-list{display:grid;gap:10px}.jiagon-passport-empty,.jiagon-passport-row{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .84);box-shadow:0 14px 42px rgba(24,58,38,.06)}.jiagon-passport-empty{padding:26px}.jiagon-passport-empty h2{margin:8px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:42px;line-height:.95}.jiagon-passport-empty p{max-width:560px;margin:10px 0 0;color:var(--ink-muted);font-size:14px;line-height:1.5}.jiagon-passport-row{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(120px,.55fr));gap:12px;align-items:center;padding:14px}.jiagon-passport-row>div:not(:first-child){display:grid;gap:5px}.jiagon-passport-row strong{font-size:14px;color:var(--ink)}.jiagon-passport-row-title{font-family:var(--display);font-style:italic;font-size:28px;line-height:.95;color:var(--ink)}.jiagon-passport-row-sub{margin-top:6px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.65px;color:var(--ink-muted)}@media(max-width:980px){.jiagon-passport-hero,.jiagon-passport-row{grid-template-columns:1fr}.jiagon-passport-summary{grid-template-columns:1fr 1fr}}@media(max-width:560px){.jiagon-passport-summary{grid-template-columns:1fr}.jiagon-passport-summary div{border-right:none}.jiagon-passport-summary div:nth-last-child(-n+2){border-bottom:.5px solid var(--rule)}.jiagon-passport-summary div:last-child{border-bottom:none}}
 `;
 
 function WebNav({
@@ -511,6 +598,95 @@ function WebNav({
   );
 }
 
+function PassportScreen({
+  auth,
+  merchantReceipts,
+  receiptCredentials,
+  onClaim,
+  onScan,
+}: {
+  auth: AuthState;
+  merchantReceipts: MerchantPassportReceipt[];
+  receiptCredentials: Record<string, ReceiptCredential>;
+  onClaim: () => void;
+  onScan: () => void;
+}) {
+  const credentialCount = Object.keys(receiptCredentials).length;
+  const verifiedSpend = merchantReceipts.reduce((sum, receipt) => sum + Number(receipt.amountUsd || 0), 0);
+  const creditUnlocked = merchantReceipts.some((receipt) => receipt.creditImpact?.eligible);
+
+  return (
+    <section className="jiagon-passport-screen">
+      <div className="jiagon-passport-hero">
+        <div>
+          <div className="jiagon-web-kicker">Receipt passport</div>
+          <h1>Your receipts, usable for credit.</h1>
+          <p>
+            Claim merchant-issued receipts into a wallet-bound passport. Minting turns the private receipt into a
+            portable on-chain credential.
+          </p>
+        </div>
+        <div className="jiagon-passport-summary">
+          <div>
+            <span>Claimed receipts</span>
+            <strong>{merchantReceipts.length}</strong>
+          </div>
+          <div>
+            <span>Verified spend</span>
+            <strong>${verifiedSpend.toFixed(2)}</strong>
+          </div>
+          <div>
+            <span>Credentials</span>
+            <strong>{credentialCount}</strong>
+          </div>
+          <div>
+            <span>Credit</span>
+            <strong>{creditUnlocked ? "$25 unlocked" : "Locked"}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="jiagon-passport-actions">
+        <button type="button" onClick={onClaim}>Open merchant issuer</button>
+        <button type="button" onClick={onScan}>Scan tx proof</button>
+      </div>
+
+      <div className="jiagon-passport-list">
+        {merchantReceipts.length === 0 ? (
+          <div className="jiagon-passport-empty">
+            <div className="jiagon-web-kicker">No receipt passport entries</div>
+            <h2>{auth.authenticated ? "Issue and claim a receipt first." : "Log in, then claim a merchant receipt."}</h2>
+            <p>For the Consensus demo, open `/merchant`, issue a cafe receipt, then claim the generated link.</p>
+          </div>
+        ) : (
+          merchantReceipts.map((receipt) => (
+            <article className="jiagon-passport-row" key={receipt.id}>
+              <div>
+                <div className="jiagon-passport-row-title">{receipt.merchantName}</div>
+                <div className="jiagon-passport-row-sub">
+                  {receipt.category || "Merchant"} · {receipt.location || "Local"} · {receipt.receiptNumber}
+                </div>
+              </div>
+              <div>
+                <span>Amount</span>
+                <strong>${receipt.amountUsd}</strong>
+              </div>
+              <div>
+                <span>Status</span>
+                <strong>{receipt.mintStatus === "minted" ? "Minted" : "Ready to mint"}</strong>
+              </div>
+              <div>
+                <span>Credit impact</span>
+                <strong>{receipt.creditImpact?.eligible ? `+$${receipt.creditImpact.unlockedCreditUsd || 25}` : "Pending"}</strong>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
 function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>(initialTabFromPath);
@@ -518,7 +694,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [reviewing, setReviewing] = useState<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [detail, setDetail] = useState<any>(null);
-  const [showOnboard, setShowOnboard] = useState(() => initialTabFromPath() !== "credit");
+  const [showOnboard, setShowOnboard] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [authSession, setAuthSession] = useState<StoredSession | null>(null);
   const [etherfiSync, setEtherfiSync] = useState<EtherfiSyncState>(emptyEtherfiSync);
@@ -529,6 +705,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   const [publicReviews, setPublicReviews] = useState<any[]>([]);
   const [reviewedReceiptIds, setReviewedReceiptIds] = useState<string[]>([]);
   const [receiptCredentials, setReceiptCredentials] = useState<Record<string, ReceiptCredential>>({});
+  const [merchantReceipts, setMerchantReceipts] = useState<MerchantPassportReceipt[]>([]);
   const [accountStateReady, setAccountStateReady] = useState(false);
   const [accountStateUpdatedAt, setAccountStateUpdatedAt] = useState<string | null>(null);
   const privyUserIdRef = useRef<string | null>(null);
@@ -573,11 +750,13 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     setPublishedReviews([]);
     setReviewedReceiptIds([]);
     setReceiptCredentials({});
+    setMerchantReceipts([]);
     window.localStorage.removeItem(etherfiStorageKey);
     window.localStorage.removeItem(solayerProofsStorageKey);
     window.localStorage.removeItem(reviewsStorageKey);
     window.localStorage.removeItem(reviewedReceiptsStorageKey);
     window.localStorage.removeItem(receiptCredentialsStorageKey);
+    window.localStorage.removeItem(merchantReceiptsStorageKey);
   };
 
   useEffect(() => {
@@ -601,7 +780,14 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     privyUserIdRef.current = privyUserId;
     if (privyUserId) {
       if (!accountChanged && storedPrivyUserId === privyUserId && localHydratedUserRef.current !== privyUserId) {
-        hydrateLocalPrivateState(setEtherfiSync, setSolayerProofs, setPublishedReviews, setReviewedReceiptIds, setReceiptCredentials);
+        hydrateLocalPrivateState(
+          setEtherfiSync,
+          setSolayerProofs,
+          setPublishedReviews,
+          setReviewedReceiptIds,
+          setReceiptCredentials,
+          setMerchantReceipts,
+        );
         localHydratedUserRef.current = privyUserId;
       }
 
@@ -679,6 +865,10 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         window.localStorage.setItem(receiptCredentialsStorageKey, JSON.stringify(state.receiptCredentials));
       }
 
+      const restoredMerchantReceipts = mergeRestoredMerchantReceipts(state.merchantReceipts);
+      setMerchantReceipts(restoredMerchantReceipts);
+      writeStoredMerchantReceipts(restoredMerchantReceipts);
+
       setAccountStateUpdatedAt(payload?.updatedAt || null);
       setAccountStateReady(true);
     };
@@ -744,6 +934,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
             publishedReviews,
             reviewedReceiptIds,
             receiptCredentials,
+            merchantReceipts,
           },
         }),
       }).then(async (response) => {
@@ -771,6 +962,9 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
               setReceiptCredentials(state.receiptCredentials);
               window.localStorage.setItem(receiptCredentialsStorageKey, JSON.stringify(state.receiptCredentials));
             }
+            const restoredMerchantReceipts = mergeRestoredMerchantReceipts(state.merchantReceipts);
+            setMerchantReceipts(restoredMerchantReceipts);
+            writeStoredMerchantReceipts(restoredMerchantReceipts);
           }
           setAccountStateUpdatedAt(payload?.updatedAt || null);
           return;
@@ -791,6 +985,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     authSession?.walletAddress,
     authSession?.walletLabel,
     etherfiSync,
+    merchantReceipts,
     mounted,
     privy?.authenticated,
     privy?.getAccessToken,
@@ -1338,7 +1533,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     const syncFromPath = () => {
       const nextTab = initialTabFromPath();
       setTab(nextTab);
-      setShowOnboard(nextTab !== "credit");
+      setShowOnboard(false);
     };
 
     window.addEventListener("popstate", syncFromPath);
@@ -1368,6 +1563,20 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   }, [detail, reviewing]);
 
   const tabContent: Record<Tab, React.ReactNode> = {
+    passport: (
+      <PassportScreen
+        auth={auth}
+        merchantReceipts={merchantReceipts}
+        receiptCredentials={receiptCredentials}
+        onClaim={() => {
+          window.location.href = "/merchant";
+        }}
+        onScan={() => {
+          setShowOnboard(false);
+          setTab("inbox");
+        }}
+      />
+    ),
     feed: (
       <FeedScreen
         onOpenReview={(r: unknown) => setDetail(r)}
@@ -1415,7 +1624,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
 
   return (
     <>
-      <style>{webShellStyles + logoMarkStyles + webUiPolishStyles + webDialogStyles}</style>
+      <style>{webShellStyles + logoMarkStyles + webUiPolishStyles + webDialogStyles + passportStyles}</style>
       <div className="jiagon-web-shell" ref={stageRef} suppressHydrationWarning>
         {mounted && (
           <>
@@ -1440,7 +1649,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
               }}
               authReady={navAuthReady}
               authenticated={auth.authenticated}
-              receiptCount={etherfi.receipts?.length || 0}
+              receiptCount={(etherfi.receipts?.length || 0) + merchantReceipts.length}
               credentialCount={credentialCount}
             />
 

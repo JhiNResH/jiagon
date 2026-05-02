@@ -68,6 +68,44 @@ function getUserLabel(user: unknown, walletAddress?: string | null) {
   );
 }
 
+function mergeStoredMerchantReceipt(receipt: ClaimReceipt, privyUserId?: string | null) {
+  const storageKey = "jiagon:merchant-receipts";
+  const accountUserStorageKey = "jiagon:account-user-id";
+  let current: unknown = [];
+  try {
+    const stored = window.localStorage.getItem(storageKey);
+    current = stored ? JSON.parse(stored) : [];
+  } catch {
+    current = [];
+  }
+  const receipts = Array.isArray(current) ? current : [];
+  const nextReceipt = {
+    ...receipt,
+    source: "merchant-issued",
+    mintStatus: "ready",
+    creditImpact: {
+      eligible: true,
+      unlockedCreditUsd: 25,
+      reason: "Merchant-issued receipt claimed into Jiagon passport.",
+    },
+  };
+  const merged = [
+    nextReceipt,
+    ...receipts.filter((item) => {
+      const record = item && typeof item === "object" ? item as { id?: unknown } : null;
+      return record?.id !== receipt.id;
+    }),
+  ].slice(0, 250);
+  try {
+    if (privyUserId) {
+      window.localStorage.setItem(accountUserStorageKey, privyUserId);
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(merged));
+  } catch {
+    // Local cache is best-effort; the backend claim already succeeded.
+  }
+}
+
 function ClaimContent({ token }: { token: string }) {
   const { ready, authenticated, user, login, getAccessToken } = usePrivy();
   const [receipt, setReceipt] = useState<ClaimReceipt | null>(null);
@@ -123,6 +161,7 @@ function ClaimContent({ token }: { token: string }) {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || "Unable to claim receipt.");
       setReceipt(payload.receipt);
+      mergeStoredMerchantReceipt(payload.receipt, (user as { id?: string } | null)?.id);
       setClaimed(true);
     } catch (claimError) {
       setError(claimError instanceof Error ? claimError.message : "Unable to claim receipt.");
@@ -185,7 +224,7 @@ function ClaimContent({ token }: { token: string }) {
           {error && <div className="claim-error">{error}</div>}
           {claimed && (
             <div className="claim-success">
-              Receipt claimed into your Jiagon account. Passport view is the next atomic PR.
+              Receipt claimed into your Jiagon account. Open Passport to see the receipt-backed credit entry.
             </div>
           )}
 
@@ -201,7 +240,7 @@ function ClaimContent({ token }: { token: string }) {
                       ? "Already claimed"
                       : "Claim receipt"}
             </button>
-            <a href="/">Open Jiagon</a>
+            <a href="/passport">Open Passport</a>
           </div>
         </section>
       </section>
