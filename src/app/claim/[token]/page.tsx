@@ -96,10 +96,14 @@ function mergeStoredMerchantReceipt(receipt: ClaimReceipt, privyUserId?: string 
       return record?.id !== receipt.id;
     }),
   ].slice(0, 250);
-  if (privyUserId) {
-    window.localStorage.setItem(accountUserStorageKey, privyUserId);
+  try {
+    if (privyUserId) {
+      window.localStorage.setItem(accountUserStorageKey, privyUserId);
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(merged));
+  } catch {
+    // Local cache is best-effort; the backend claim already succeeded.
   }
-  window.localStorage.setItem(storageKey, JSON.stringify(merged));
 }
 
 function ClaimContent({ token }: { token: string }) {
