@@ -78,7 +78,7 @@ export default function MerchantPage() {
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload?.error || "Unable to issue receipt.");
+        throw new Error(payload?.persistence?.error || payload?.error || "Unable to issue receipt.");
       }
       setIssued(payload);
     } catch (issueError) {

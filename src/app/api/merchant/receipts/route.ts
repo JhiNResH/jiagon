@@ -26,17 +26,7 @@ function parseAmountCents(value: unknown) {
 }
 
 function requestOrigin(request: Request) {
-  const url = new URL(request.url);
-  const originHeader = request.headers.get("origin");
-  if (originHeader) {
-    try {
-      const origin = new URL(originHeader);
-      if (origin.protocol === "http:" || origin.protocol === "https:") return origin.origin;
-    } catch {
-      // Fall through to the route URL.
-    }
-  }
-  return url.origin;
+  return new URL(request.url).origin;
 }
 
 function isLocalRequest(request: Request) {
@@ -88,7 +78,11 @@ export async function POST(request: Request) {
     if (rawBody.length > 50_000) {
       return Response.json({ error: "Merchant receipt payload is too large." }, { status: 413 });
     }
-    body = JSON.parse(rawBody);
+    const parsed: unknown = JSON.parse(rawBody);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return Response.json({ error: "JSON body must be an object." }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }

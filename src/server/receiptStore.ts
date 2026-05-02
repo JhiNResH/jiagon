@@ -329,7 +329,12 @@ async function ensureMerchantReceiptSchema(pool: Pool) {
 
       create index if not exists jiagon_merchant_receipts_status_idx
         on jiagon_merchant_receipts (status, issued_at desc);
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((error) => {
+        globalStore.jiagonMerchantReceiptSchemaReady = undefined;
+        throw error;
+      });
   }
 
   return globalStore.jiagonMerchantReceiptSchemaReady;
