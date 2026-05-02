@@ -23,8 +23,28 @@ function parseAmountCents(value: unknown) {
   return Math.round(Number(normalized) * 100);
 }
 
+function cleanConfiguredOrigin(value: string) {
+  const configured = value.trim();
+  if (!configured) return "";
+
+  try {
+    const url = new URL(configured);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : "";
+  } catch {
+    return "";
+  }
+}
+
 function requestOrigin(request: Request) {
-  return new URL(request.url).origin;
+  const configuredOrigin = cleanConfiguredOrigin(
+    process.env.JIAGON_APP_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "",
+  );
+  if (configuredOrigin) return configuredOrigin;
+
+  const vercelHost = (process.env.VERCEL_URL || "").trim();
+  if (vercelHost) return cleanConfiguredOrigin(`https://${vercelHost}`);
+
+  return process.env.NODE_ENV !== "production" ? new URL(request.url).origin : "";
 }
 
 function safeEqual(a: string, b: string) {
@@ -103,6 +123,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "Receipt id must be at least 3 characters." }, { status: 400 });
   }
 
+  const origin = requestOrigin(request);
+  if (!origin) {
+    return Response.json(
+      { error: "JIAGON_APP_ORIGIN or NEXT_PUBLIC_APP_URL is required to issue merchant receipt claim links." },
+      { status: 503 },
+    );
+  }
+
   const result = await createMerchantIssuedReceipt({
     merchantId,
     merchantName,
@@ -114,7 +142,7 @@ export async function POST(request: Request) {
     purpose,
     issuedBy,
     memo,
-    origin: requestOrigin(request),
+    origin,
   });
 
   const status = result.persisted || !result.configured ? 201 : 503;
