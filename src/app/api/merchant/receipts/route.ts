@@ -13,12 +13,12 @@ function cleanLongText(value: unknown) {
 }
 
 function parseAmountCents(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.round(value * 100);
-  }
-
-  if (typeof value !== "string") return 0;
-  const normalized = value.trim().replace(/[$,\s]/g, "");
+  const normalized =
+    typeof value === "number" && Number.isFinite(value)
+      ? String(value)
+      : typeof value === "string"
+        ? value.trim().replace(/[$,\s]/g, "")
+        : "";
   if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return 0;
   return Math.round(Number(normalized) * 100);
 }
@@ -146,6 +146,19 @@ export async function POST(request: Request) {
   });
 
   const status = result.persisted || !result.configured ? 201 : 503;
+  if (status !== 201) {
+    return Response.json(
+      {
+        error: result.error || "Failed to persist merchant receipt.",
+        persistence: {
+          configured: result.configured,
+          persisted: result.persisted,
+        },
+      },
+      { status: 503 },
+    );
+  }
+
   return Response.json(
     {
       product: "Jiagon merchant-issued receipt",
