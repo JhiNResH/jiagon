@@ -116,6 +116,7 @@ export type PrivateAccountState = {
   publishedReviews?: unknown[];
   reviewedReceiptIds?: string[];
   receiptCredentials?: Record<string, unknown>;
+  merchantReceipts?: unknown[];
 };
 
 export type MerchantIssuedReceipt = {
@@ -163,6 +164,19 @@ export type MerchantReceiptIssueResult = {
   claimToken: string;
   error?: string;
 };
+
+export type MerchantReceiptClaimResult =
+  | {
+      configured: boolean;
+      claimed: true;
+      receipt: MerchantIssuedReceipt;
+    }
+  | {
+      configured: boolean;
+      claimed: false;
+      receipt?: MerchantIssuedReceipt | null;
+      error: string;
+    };
 
 export type AccountStateRecord = {
   configured: boolean;
@@ -533,6 +547,208 @@ export async function createMerchantIssuedReceipt(input: MerchantReceiptIssueInp
   }
 }
 
+function mapMerchantReceiptRow(row: Record<string, unknown>): MerchantIssuedReceipt {
+  const issuedAt = row.issued_at instanceof Date ? row.issued_at.toISOString() : String(row.issued_at);
+  const claimedAt = row.claimed_at instanceof Date ? row.claimed_at.toISOString() : row.claimed_at ? String(row.claimed_at) : null;
+
+  return {
+    id: String(row.id),
+    merchantId: String(row.merchant_id),
+    merchantName: String(row.merchant_name),
+    location: typeof row.location === "string" ? row.location : null,
+    receiptNumber: String(row.receipt_number),
+    amountCents: Number(row.amount_cents),
+    amountUsd: String(row.amount_usd),
+    currency: String(row.currency),
+    category: String(row.category),
+    purpose: String(row.purpose),
+    issuedBy: typeof row.issued_by === "string" ? row.issued_by : null,
+    memo: typeof row.memo === "string" ? row.memo : null,
+    status: row.status === "claimed" || row.status === "void" ? row.status : "issued",
+    receiptHash: String(row.receipt_hash),
+    signature: typeof row.signature === "string" ? row.signature : null,
+    signatureAlgorithm: row.signature_algorithm === "hmac-sha256" ? "hmac-sha256" : "local-demo",
+    claimTokenHash: String(row.claim_token_hash),
+    claimUrl: String(row.claim_url),
+    issuedAt,
+    claimedAt,
+    claimedBy: typeof row.claimed_by === "string" ? row.claimed_by : null,
+  };
+}
+
+export function publicMerchantReceipt(receipt: MerchantIssuedReceipt) {
+  return {
+    id: receipt.id,
+    merchantId: receipt.merchantId,
+    merchantName: receipt.merchantName,
+    location: receipt.location,
+    receiptNumber: receipt.receiptNumber,
+    amountCents: receipt.amountCents,
+    amountUsd: receipt.amountUsd,
+    currency: receipt.currency,
+    category: receipt.category,
+    purpose: receipt.purpose,
+    issuedBy: receipt.issuedBy,
+    memo: receipt.memo,
+    status: receipt.status,
+    receiptHash: receipt.receiptHash,
+    signature: receipt.signature,
+    signatureAlgorithm: receipt.signatureAlgorithm,
+    claimUrl: receipt.claimUrl,
+    issuedAt: receipt.issuedAt,
+    claimedAt: receipt.claimedAt,
+    claimedBy: receipt.claimedBy,
+  };
+}
+
+export async function getMerchantIssuedReceiptByToken(claimToken: string): Promise<{
+  configured: boolean;
+  receipt: MerchantIssuedReceipt | null;
+  error?: string;
+}> {
+  const tokenHash = sha256(claimToken);
+  const pool = getPool();
+
+  if (!pool) {
+    return {
+      configured: false,
+      receipt: merchantReceiptMemory().get(tokenHash) || null,
+    };
+  }
+
+  try {
+    await ensureMerchantReceiptSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          receipt_number,
+          amount_cents,
+          amount_usd,
+          currency,
+          category,
+          purpose,
+          issued_by,
+          memo,
+          status,
+          receipt_hash,
+          signature,
+          signature_algorithm,
+          claim_token_hash,
+          claim_url,
+          issued_at,
+          claimed_at,
+          claimed_by
+        from jiagon_merchant_receipts
+        where claim_token_hash = $1
+        limit 1
+      `,
+      [tokenHash],
+    );
+
+    const row = result.rows[0];
+    return {
+      configured: true,
+      receipt: row ? mapMerchantReceiptRow(row) : null,
+    };
+  } catch {
+    return {
+      configured: true,
+      receipt: null,
+      error: "Merchant receipt query failed.",
+    };
+  }
+}
+
+export async function claimMerchantIssuedReceipt(input: {
+  claimToken: string;
+  privyUserId: string;
+}): Promise<MerchantReceiptClaimResult> {
+  const tokenHash = sha256(input.claimToken);
+  const pool = getPool();
+
+  if (!pool) {
+    const memory = merchantReceiptMemory();
+    const receipt = memory.get(tokenHash);
+    if (!receipt) {
+      return { configured: false, claimed: false, receipt: null, error: "Receipt claim token was not found." };
+    }
+    if (receipt.status !== "issued") {
+      return { configured: false, claimed: false, receipt, error: "Receipt has already been claimed." };
+    }
+    const claimed: MerchantIssuedReceipt = {
+      ...receipt,
+      status: "claimed",
+      claimedAt: new Date().toISOString(),
+      claimedBy: input.privyUserId,
+    };
+    memory.set(tokenHash, claimed);
+    return { configured: false, claimed: true, receipt: claimed };
+  }
+
+  try {
+    await ensureMerchantReceiptSchema(pool);
+    const result = await pool.query(
+      `
+        update jiagon_merchant_receipts
+        set
+          updated_at = now(),
+          status = 'claimed',
+          claimed_at = now(),
+          claimed_by = $2
+        where claim_token_hash = $1
+          and status = 'issued'
+        returning
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          receipt_number,
+          amount_cents,
+          amount_usd,
+          currency,
+          category,
+          purpose,
+          issued_by,
+          memo,
+          status,
+          receipt_hash,
+          signature,
+          signature_algorithm,
+          claim_token_hash,
+          claim_url,
+          issued_at,
+          claimed_at,
+          claimed_by
+      `,
+      [tokenHash, input.privyUserId],
+    );
+
+    const claimedRow = result.rows[0];
+    if (claimedRow) {
+      return { configured: true, claimed: true, receipt: mapMerchantReceiptRow(claimedRow) };
+    }
+
+    const existing = await getMerchantIssuedReceiptByToken(input.claimToken);
+    return {
+      configured: true,
+      claimed: false,
+      receipt: existing.receipt,
+      error: existing.receipt ? "Receipt has already been claimed." : "Receipt claim token was not found.",
+    };
+  } catch {
+    return {
+      configured: true,
+      claimed: false,
+      receipt: null,
+      error: "Merchant receipt claim failed.",
+    };
+  }
+}
+
 function cleanStringList(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && item.length > 0).slice(0, 250);
@@ -551,6 +767,7 @@ function cleanPrivateAccountState(value: unknown): PrivateAccountState {
     publishedReviews: Array.isArray(input.publishedReviews) ? input.publishedReviews.slice(0, 250) : [],
     reviewedReceiptIds: cleanStringList(input.reviewedReceiptIds),
     receiptCredentials,
+    merchantReceipts: Array.isArray(input.merchantReceipts) ? input.merchantReceipts.slice(0, 250) : [],
   };
 }
 
@@ -578,6 +795,18 @@ function mergePrivateAccountState(current: unknown, next: unknown): PrivateAccou
     }
   }
 
+  const merchantReceiptsById = new Map<string, unknown>();
+  for (const receipt of currentState.merchantReceipts || []) {
+    if (receipt && typeof receipt === "object" && "id" in receipt && typeof receipt.id === "string") {
+      merchantReceiptsById.set(receipt.id, receipt);
+    }
+  }
+  for (const receipt of nextState.merchantReceipts || []) {
+    if (receipt && typeof receipt === "object" && "id" in receipt && typeof receipt.id === "string") {
+      merchantReceiptsById.set(receipt.id, receipt);
+    }
+  }
+
   return {
     etherfiSync: nextState.etherfiSync || currentState.etherfiSync,
     solayerProofs: Array.from(
@@ -595,6 +824,7 @@ function mergePrivateAccountState(current: unknown, next: unknown): PrivateAccou
       ...currentCredentials,
       ...nextCredentials,
     },
+    merchantReceipts: Array.from(merchantReceiptsById.values()).slice(0, 250),
   };
 }
 
