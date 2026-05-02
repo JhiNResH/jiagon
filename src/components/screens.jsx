@@ -2751,10 +2751,12 @@ const CreditScreen = ({
   etherfi,
   userReviews = /** @type {Array<any>} */ ([]),
   receiptCredentials = /** @type {Record<string, any>} */ ({}),
+  merchantReceipts = /** @type {Array<any>} */ ([]),
   solayerProofs = /** @type {Array<any>} */ ([]),
   reviewedReceiptIds = /** @type {Array<string>} */ ([]),
   onUploadSolayer,
   onRefreshSolana,
+  onOpenPassport,
   onScan,
 }) => {
   const [drawState, setDrawState] = _useState('idle');
@@ -2766,6 +2768,12 @@ const CreditScreen = ({
   const [solayerStatus, setSolayerStatus] = _useState('');
   const [solayerBusy, setSolayerBusy] = _useState(false);
   const credentials = Object.values(receiptCredentials || {});
+  const claimedMerchantReceipts = Array.isArray(merchantReceipts)
+    ? merchantReceipts.filter(receipt => receipt?.status === 'claimed')
+    : [];
+  const credentialMerchantReceipts = claimedMerchantReceipts.filter(
+    receipt => receipt?.mintStatus === 'prepared' || receipt?.mintStatus === 'minted',
+  );
   const mintedCredentials = credentials.filter(credential => credential?.status === 'minted');
   const preparedCredentials = credentials.filter(credential => credential && credential?.status !== 'minted');
   const solanaMirrors = credentials.map(credential => credential?.solana).filter(Boolean);
@@ -2798,21 +2806,24 @@ const CreditScreen = ({
   const canRefreshSolanaMirror = credentials.some(
     (credential) => credential?.status === 'minted' && credential?.solanaOwner,
   );
-  const verifiedSignals = mirroredState?.receiptCount ?? Math.max(mintedCredentials.length, reviewedReceipts);
-  const hasReceiptInput = scannedReceipts > 0 || verifiedSignals > 0 || preparedCredentials.length > 0;
-  const creditUnlocked = mirroredState?.unlocked ?? (verifiedSignals > 0 || mintedCredentials.length > 0);
+  const verifiedSignals =
+    mirroredState?.receiptCount ??
+    Math.max(mintedCredentials.length, reviewedReceipts) + credentialMerchantReceipts.length;
+  const hasReceiptInput = scannedReceipts > 0 || claimedMerchantReceipts.length > 0 || verifiedSignals > 0 || preparedCredentials.length > 0;
+  const creditUnlocked = mirroredState?.unlocked ?? (verifiedSignals > 0 || mintedCredentials.length > 0 || credentialMerchantReceipts.length > 0);
   const drawn = drawState === 'drawn' || drawState === 'repaid';
   const repaid = drawState === 'repaid';
   const depositCredit = mirroredState?.lending?.amountUsd ?? drawPolicy?.defaultDepositUsd ?? 10;
   const baseCredit = mirroredState?.availableCreditUsd ?? 25;
   const availableCredit = creditUnlocked ? (drawn && !repaid ? Math.max(0, baseCredit - depositCredit) : baseCredit) : 0;
-  const score = mirroredState?.score ?? Math.min(100, verifiedSignals * 28 + scannedReceipts * 8 + (repaid ? 24 : 0));
+  const score = mirroredState?.score ?? Math.min(100, verifiedSignals * 28 + scannedReceipts * 8 + claimedMerchantReceipts.length * 8 + (repaid ? 24 : 0));
   const shortValue = (value) => value ? `${String(value).slice(0, 6)}…${String(value).slice(-4)}` : 'not prepared';
   const passportRows = [
     ['Wallet', auth?.walletLabel || auth?.userLabel || 'Not connected'],
     ['Receipt proofs', scannedReceipts],
+    ['Merchant receipts', claimedMerchantReceipts.length],
     ['Solayer proofs', solayerProofCount],
-    ['Credential receipts', mintedCredentials.length || preparedCredentials.length],
+    ['Credential receipts', mintedCredentials.length || preparedCredentials.length || credentialMerchantReceipts.length],
     ['Credit PDA', activeMirror?.pda?.creditState ? shortValue(activeMirror.pda.creditState) : creditUnlocked ? 'ready to update' : 'waiting for credential'],
     ['CreditLine PDA', activeMirror?.pda?.creditLine ? shortValue(activeMirror.pda.creditLine) : 'ready after refresh'],
     ['Bubblegum cNFT', activeSolana?.bubblegum?.assetId ? shortValue(activeSolana.bubblegum.assetId) : activeMirror?.metaplexReceipt?.assetAddress ? shortValue(activeMirror.metaplexReceipt.assetAddress) : 'not prepared'],
@@ -2829,6 +2840,11 @@ const CreditScreen = ({
       } catch (error) {
         setAuthError(error instanceof Error ? error.message : 'Privy login was cancelled.');
       }
+      return;
+    }
+
+    if (claimedMerchantReceipts.length > 0 && credentialMerchantReceipts.length === 0) {
+      onOpenPassport?.();
       return;
     }
 
@@ -3069,11 +3085,13 @@ const CreditScreen = ({
               Next action
             </div>
             <div style={{ fontFamily: 'var(--display)', fontStyle: 'italic', fontSize: 26, lineHeight: 1.05, color: 'var(--ink)', marginTop: 8 }}>
-              {!authenticated ? 'Log in or sign up.' : hasReceiptInput ? 'Claim a receipt.' : 'Scan a spend tx.'}
+              {!authenticated ? 'Log in or sign up.' : claimedMerchantReceipts.length > 0 ? 'Mint receipt credential.' : hasReceiptInput ? 'Claim a receipt.' : 'Scan a spend tx.'}
             </div>
             <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-muted)', margin: '8px 0 14px' }}>
               {!authenticated
                 ? 'Use Privy to start a session for the wallet that owns the card spend. Jiagon needs this session to sign receipt and Solana mirror proofs.'
+                : claimedMerchantReceipts.length > 0
+                ? 'A merchant receipt is claimed. Mint or prepare the Bubblegum receipt credential from Passport to unlock the credit line.'
                 : hasReceiptInput
                 ? 'A payment proof exists. Add merchant context and mint the receipt credential to make it usable for underwriting.'
                 : 'Paste an ether.fi Cash spend transaction in Receipts. Jiagon turns the verified payment into private credit input.'}
@@ -3103,7 +3121,7 @@ const CreditScreen = ({
               fontWeight: 800,
               cursor: ready ? 'pointer' : 'default',
               opacity: ready ? 1 : 0.6,
-            }}>{!authenticated ? 'Log in to unlock credit' : hasReceiptInput ? 'Open receipts' : 'Scan tx'}</button>
+            }}>{!authenticated ? 'Log in to unlock credit' : claimedMerchantReceipts.length > 0 ? 'Open Passport' : hasReceiptInput ? 'Open receipts' : 'Scan tx'}</button>
           </div>
         </div>
       )}
