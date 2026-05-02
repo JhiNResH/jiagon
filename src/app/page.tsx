@@ -418,6 +418,12 @@ function writeStoredMerchantReceipts(receipts: MerchantPassportReceipt[]) {
   window.localStorage.setItem(merchantReceiptsStorageKey, JSON.stringify(normalizeRestoredMerchantReceipts(receipts)));
 }
 
+function mergeRestoredMerchantReceipts(restored: unknown) {
+  const cached = normalizeRestoredMerchantReceipts(readStoredJson(merchantReceiptsStorageKey));
+  const incoming = normalizeRestoredMerchantReceipts(restored);
+  return normalizeRestoredMerchantReceipts([...cached, ...incoming]);
+}
+
 function hydrateLocalPrivateState(
   setEtherfiSyncState: (state: EtherfiSyncState) => void,
   setSolayerProofsState: (proofs: SolayerCreditProof[]) => void,
@@ -859,7 +865,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         window.localStorage.setItem(receiptCredentialsStorageKey, JSON.stringify(state.receiptCredentials));
       }
 
-      const restoredMerchantReceipts = normalizeRestoredMerchantReceipts(state.merchantReceipts);
+      const restoredMerchantReceipts = mergeRestoredMerchantReceipts(state.merchantReceipts);
       setMerchantReceipts(restoredMerchantReceipts);
       writeStoredMerchantReceipts(restoredMerchantReceipts);
 
@@ -956,7 +962,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
               setReceiptCredentials(state.receiptCredentials);
               window.localStorage.setItem(receiptCredentialsStorageKey, JSON.stringify(state.receiptCredentials));
             }
-            const restoredMerchantReceipts = normalizeRestoredMerchantReceipts(state.merchantReceipts);
+            const restoredMerchantReceipts = mergeRestoredMerchantReceipts(state.merchantReceipts);
             setMerchantReceipts(restoredMerchantReceipts);
             writeStoredMerchantReceipts(restoredMerchantReceipts);
           }

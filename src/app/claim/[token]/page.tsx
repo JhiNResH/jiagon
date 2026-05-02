@@ -68,8 +68,9 @@ function getUserLabel(user: unknown, walletAddress?: string | null) {
   );
 }
 
-function mergeStoredMerchantReceipt(receipt: ClaimReceipt) {
+function mergeStoredMerchantReceipt(receipt: ClaimReceipt, privyUserId?: string | null) {
   const storageKey = "jiagon:merchant-receipts";
+  const accountUserStorageKey = "jiagon:account-user-id";
   let current: unknown = [];
   try {
     const stored = window.localStorage.getItem(storageKey);
@@ -95,6 +96,9 @@ function mergeStoredMerchantReceipt(receipt: ClaimReceipt) {
       return record?.id !== receipt.id;
     }),
   ].slice(0, 250);
+  if (privyUserId) {
+    window.localStorage.setItem(accountUserStorageKey, privyUserId);
+  }
   window.localStorage.setItem(storageKey, JSON.stringify(merged));
 }
 
@@ -153,7 +157,7 @@ function ClaimContent({ token }: { token: string }) {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || "Unable to claim receipt.");
       setReceipt(payload.receipt);
-      mergeStoredMerchantReceipt(payload.receipt);
+      mergeStoredMerchantReceipt(payload.receipt, (user as { id?: string } | null)?.id);
       setClaimed(true);
     } catch (claimError) {
       setError(claimError instanceof Error ? claimError.message : "Unable to claim receipt.");
