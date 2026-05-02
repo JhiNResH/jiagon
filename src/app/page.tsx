@@ -1710,9 +1710,14 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
         userReviews={publishedReviews}
         reviewedReceiptIds={reviewedReceiptIds}
         receiptCredentials={receiptCredentials}
+        merchantReceipts={merchantReceipts}
         solayerProofs={solayerProofs}
         onUploadSolayer={uploadSolayerProof}
         onRefreshSolana={refreshSolanaCreditMirror}
+        onOpenPassport={() => {
+          setShowOnboard(false);
+          setTab("passport");
+        }}
         onScan={() => {
           setShowOnboard(false);
           setTab("inbox");
