@@ -55,7 +55,10 @@ export async function POST(request: Request, context: RouteContext) {
     privyUserId: claims.userId,
   });
 
-  if (!result.claimed) {
+  const recoverableAlreadyClaimed =
+    !result.claimed && result.error.includes("already") && result.receipt?.claimedBy === claims.userId;
+
+  if (!result.claimed && !recoverableAlreadyClaimed) {
     const status = result.error.includes("not found") ? 404 : result.error.includes("already") ? 409 : 503;
     return Response.json(
       {
@@ -67,7 +70,12 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const publicReceipt = publicMerchantReceipt(result.receipt);
+  const claimedReceipt = result.receipt;
+  if (!claimedReceipt) {
+    return Response.json({ error: "Merchant receipt claim failed.", configured: result.configured }, { status: 503 });
+  }
+
+  const publicReceipt = publicMerchantReceipt(claimedReceipt);
   const accountState = await savePrivateAccountState({
     privyUserId: claims.userId,
     sessionId: claims.sessionId,
@@ -79,7 +87,7 @@ export async function POST(request: Request, context: RouteContext) {
           ...publicReceipt,
           source: "merchant-issued",
           claimedBy: claims.userId,
-          claimedAt: result.receipt.claimedAt,
+          claimedAt: claimedReceipt.claimedAt,
           mintStatus: "ready",
           creditImpact: {
             eligible: true,

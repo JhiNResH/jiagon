@@ -597,7 +597,6 @@ export function publicMerchantReceipt(receipt: MerchantIssuedReceipt) {
     claimUrl: receipt.claimUrl,
     issuedAt: receipt.issuedAt,
     claimedAt: receipt.claimedAt,
-    claimedBy: receipt.claimedBy,
   };
 }
 
@@ -733,6 +732,14 @@ export async function claimMerchantIssuedReceipt(input: {
     }
 
     const existing = await getMerchantIssuedReceiptByToken(input.claimToken);
+    if (existing.error) {
+      return {
+        configured: true,
+        claimed: false,
+        receipt: null,
+        error: "Merchant receipt claim failed.",
+      };
+    }
     return {
       configured: true,
       claimed: false,
