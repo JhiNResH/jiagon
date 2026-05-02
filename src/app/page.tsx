@@ -26,10 +26,12 @@ type AuthState = {
   ready: boolean;
   authenticated: boolean;
   appConfigured: boolean;
+  accountKey?: string;
   userLabel?: string;
   walletLabel?: string;
   login: () => Promise<void>;
   logout: () => Promise<void>;
+  getAccessToken?: () => Promise<string | null>;
 };
 
 type StoredSession = {
@@ -1116,6 +1118,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     ready: !authBusy,
     authenticated: Boolean(authSession),
     appConfigured: hasPrivyAppId,
+    accountKey: authSession?.walletAddress || authSession?.walletLabel || authSession?.userLabel,
     userLabel: authSession?.userLabel,
     walletLabel: authSession?.walletLabel,
     login: async () => {
@@ -1137,6 +1140,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       setAccountStateUpdatedAt(null);
       privyUserIdRef.current = null;
     },
+    getAccessToken: () => privy?.getAccessToken?.() ?? Promise.resolve(null),
   };
   const navAuthReady = hasPrivyAppId ? Boolean(privy?.ready) : true;
 
