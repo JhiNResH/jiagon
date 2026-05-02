@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { Pool } from "pg";
 
 export type ReceiptPersistenceResult =
@@ -118,6 +118,52 @@ export type PrivateAccountState = {
   receiptCredentials?: Record<string, unknown>;
 };
 
+export type MerchantIssuedReceipt = {
+  id: string;
+  merchantId: string;
+  merchantName: string;
+  location: string | null;
+  receiptNumber: string;
+  amountCents: number;
+  amountUsd: string;
+  currency: string;
+  category: string;
+  purpose: string;
+  issuedBy: string | null;
+  memo: string | null;
+  status: "issued" | "claimed" | "void";
+  receiptHash: string;
+  signature: string | null;
+  signatureAlgorithm: "hmac-sha256" | "local-demo";
+  claimTokenHash: string;
+  claimUrl: string;
+  issuedAt: string;
+  claimedAt: string | null;
+  claimedBy: string | null;
+};
+
+export type MerchantReceiptIssueInput = {
+  merchantId?: string | null;
+  merchantName: string;
+  location?: string | null;
+  receiptNumber?: string | null;
+  amountCents: number;
+  currency?: string | null;
+  category?: string | null;
+  purpose?: string | null;
+  issuedBy?: string | null;
+  memo?: string | null;
+  origin: string;
+};
+
+export type MerchantReceiptIssueResult = {
+  configured: boolean;
+  persisted: boolean;
+  receipt: MerchantIssuedReceipt;
+  claimToken: string;
+  error?: string;
+};
+
 export type AccountStateRecord = {
   configured: boolean;
   state: PrivateAccountState | null;
@@ -129,6 +175,8 @@ type ReceiptStoreGlobal = typeof globalThis & {
   jiagonReceiptPool?: Pool;
   jiagonReceiptSchemaReady?: Promise<void>;
   jiagonAccountStateSchemaReady?: Promise<void>;
+  jiagonMerchantReceiptSchemaReady?: Promise<void>;
+  jiagonMerchantReceiptMemory?: Map<string, MerchantIssuedReceipt>;
 };
 
 function databaseUrl() {
@@ -243,6 +291,246 @@ async function ensureAccountStateSchema(pool: Pool) {
   }
 
   return globalStore.jiagonAccountStateSchemaReady;
+}
+
+async function ensureMerchantReceiptSchema(pool: Pool) {
+  const globalStore = globalThis as ReceiptStoreGlobal;
+  if (!globalStore.jiagonMerchantReceiptSchemaReady) {
+    globalStore.jiagonMerchantReceiptSchemaReady = pool.query(`
+      create table if not exists jiagon_merchant_receipts (
+        id text primary key,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        merchant_id text not null,
+        merchant_name text not null,
+        location text,
+        receipt_number text not null,
+        amount_cents integer not null check (amount_cents > 0),
+        amount_usd text not null,
+        currency text not null,
+        category text not null,
+        purpose text not null,
+        issued_by text,
+        memo text,
+        status text not null,
+        receipt_hash text not null unique,
+        signature text,
+        signature_algorithm text not null,
+        claim_token_hash text not null unique,
+        claim_url text not null,
+        issued_at timestamptz not null,
+        claimed_at timestamptz,
+        claimed_by text,
+        payload jsonb not null
+      );
+
+      create index if not exists jiagon_merchant_receipts_merchant_idx
+        on jiagon_merchant_receipts (merchant_id, issued_at desc);
+
+      create index if not exists jiagon_merchant_receipts_status_idx
+        on jiagon_merchant_receipts (status, issued_at desc);
+    `)
+      .then(() => undefined)
+      .catch((error) => {
+        globalStore.jiagonMerchantReceiptSchemaReady = undefined;
+        throw error;
+      });
+  }
+
+  return globalStore.jiagonMerchantReceiptSchemaReady;
+}
+
+function merchantReceiptMemory() {
+  const globalStore = globalThis as ReceiptStoreGlobal;
+  if (!globalStore.jiagonMerchantReceiptMemory) {
+    globalStore.jiagonMerchantReceiptMemory = new Map();
+  }
+  return globalStore.jiagonMerchantReceiptMemory;
+}
+
+function slugify(value: string) {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+  return slug || "merchant";
+}
+
+function receiptId(prefix: string) {
+  return `${prefix}-${randomBytes(6).toString("hex")}`;
+}
+
+function receiptToken() {
+  return `jgr_${randomBytes(24).toString("base64url")}`;
+}
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function formatUsd(cents: number) {
+  return (cents / 100).toFixed(2);
+}
+
+function merchantReceiptSigningSecret() {
+  return (process.env.JIAGON_MERCHANT_RECEIPT_SIGNING_SECRET || "").trim();
+}
+
+function merchantReceiptPayload(receipt: Omit<MerchantIssuedReceipt, "signature" | "signatureAlgorithm" | "claimTokenHash" | "claimUrl">) {
+  return {
+    id: receipt.id,
+    merchantId: receipt.merchantId,
+    merchantName: receipt.merchantName,
+    location: receipt.location,
+    receiptNumber: receipt.receiptNumber,
+    amountCents: receipt.amountCents,
+    amountUsd: receipt.amountUsd,
+    currency: receipt.currency,
+    category: receipt.category,
+    purpose: receipt.purpose,
+    issuedBy: receipt.issuedBy,
+    memo: receipt.memo,
+    status: receipt.status,
+    receiptHash: receipt.receiptHash,
+    issuedAt: receipt.issuedAt,
+  };
+}
+
+function signMerchantReceipt(payload: Record<string, unknown>) {
+  const secret = merchantReceiptSigningSecret();
+  if (!secret) return null;
+  return createHmac("sha256", secret).update(JSON.stringify(payload)).digest("hex");
+}
+
+export async function createMerchantIssuedReceipt(input: MerchantReceiptIssueInput): Promise<MerchantReceiptIssueResult> {
+  const merchantId = slugify(input.merchantId || input.merchantName);
+  const now = new Date().toISOString();
+  const token = receiptToken();
+  const tokenHash = sha256(token);
+  const id = receiptId(`mrc-${merchantId}`);
+  const receiptNumber = input.receiptNumber?.trim() || id;
+  const amountUsd = formatUsd(input.amountCents);
+  const basePayload = {
+    id,
+    merchantId,
+    merchantName: input.merchantName.trim(),
+    location: input.location?.trim() || null,
+    receiptNumber,
+    amountCents: input.amountCents,
+    amountUsd,
+    currency: (input.currency?.trim() || "USD").toUpperCase(),
+    category: input.category?.trim() || "Dining",
+    purpose: input.purpose?.trim() || "merchant_receipt",
+    issuedBy: input.issuedBy?.trim() || null,
+    memo: input.memo?.trim() || null,
+    status: "issued" as const,
+    issuedAt: now,
+    claimedAt: null,
+    claimedBy: null,
+  };
+  const receiptHash = sha256(JSON.stringify(basePayload));
+  const claimUrl = new URL(`/claim/${token}`, input.origin).toString();
+  const unsignedReceipt = {
+    ...basePayload,
+    receiptHash,
+  };
+  const payload = merchantReceiptPayload(unsignedReceipt);
+  const signature = signMerchantReceipt(payload);
+  const receipt: MerchantIssuedReceipt = {
+    ...unsignedReceipt,
+    signature,
+    signatureAlgorithm: signature ? "hmac-sha256" : "local-demo",
+    claimTokenHash: tokenHash,
+    claimUrl,
+  };
+
+  const pool = getPool();
+  if (!pool) {
+    merchantReceiptMemory().set(tokenHash, receipt);
+    return {
+      configured: false,
+      persisted: false,
+      receipt,
+      claimToken: token,
+    };
+  }
+
+  try {
+    await ensureMerchantReceiptSchema(pool);
+    await pool.query(
+      `
+        insert into jiagon_merchant_receipts (
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          receipt_number,
+          amount_cents,
+          amount_usd,
+          currency,
+          category,
+          purpose,
+          issued_by,
+          memo,
+          status,
+          receipt_hash,
+          signature,
+          signature_algorithm,
+          claim_token_hash,
+          claim_url,
+          issued_at,
+          claimed_at,
+          claimed_by,
+          payload
+        )
+        values (
+          $1, $2, $3, $4, $5, $6, $7, $8,
+          $9, $10, $11, $12, $13, $14, $15,
+          $16, $17, $18, $19, $20, $21, $22::jsonb
+        )
+      `,
+      [
+        receipt.id,
+        receipt.merchantId,
+        receipt.merchantName,
+        receipt.location,
+        receipt.receiptNumber,
+        receipt.amountCents,
+        receipt.amountUsd,
+        receipt.currency,
+        receipt.category,
+        receipt.purpose,
+        receipt.issuedBy,
+        receipt.memo,
+        receipt.status,
+        receipt.receiptHash,
+        receipt.signature,
+        receipt.signatureAlgorithm,
+        receipt.claimTokenHash,
+        receipt.claimUrl,
+        receipt.issuedAt,
+        receipt.claimedAt,
+        receipt.claimedBy,
+        JSON.stringify(payload),
+      ],
+    );
+
+    return {
+      configured: true,
+      persisted: true,
+      receipt,
+      claimToken: token,
+    };
+  } catch {
+    return {
+      configured: true,
+      persisted: false,
+      receipt,
+      claimToken: token,
+      error: "Merchant receipt persistence failed.",
+    };
+  }
 }
 
 function cleanStringList(value: unknown) {
