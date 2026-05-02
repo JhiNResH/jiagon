@@ -217,6 +217,15 @@ type MerchantPassportReceipt = {
   issuedAt?: string;
   claimedAt?: string | null;
   mintStatus?: string;
+  credentialId?: string;
+  credentialChain?: string;
+  standard?: string;
+  dataHash?: string;
+  storageUri?: string;
+  solanaOwner?: string;
+  credentialTx?: string | null;
+  explorerUrl?: string | null;
+  assetExplorerUrl?: string | null;
   creditImpact?: {
     eligible?: boolean;
     unlockedCreditUsd?: number;
@@ -407,6 +416,15 @@ function normalizeRestoredMerchantReceipts(value: unknown): MerchantPassportRece
       issuedAt: typeof record.issuedAt === "string" ? record.issuedAt : undefined,
       claimedAt: typeof record.claimedAt === "string" ? record.claimedAt : null,
       mintStatus: typeof record.mintStatus === "string" ? record.mintStatus : "ready",
+      credentialId: typeof record.credentialId === "string" ? record.credentialId : undefined,
+      credentialChain: typeof record.credentialChain === "string" ? record.credentialChain : undefined,
+      standard: typeof record.standard === "string" ? record.standard : undefined,
+      dataHash: typeof record.dataHash === "string" ? record.dataHash : undefined,
+      storageUri: typeof record.storageUri === "string" ? record.storageUri : undefined,
+      solanaOwner: typeof record.solanaOwner === "string" ? record.solanaOwner : undefined,
+      credentialTx: typeof record.credentialTx === "string" ? record.credentialTx : null,
+      explorerUrl: typeof record.explorerUrl === "string" ? record.explorerUrl : null,
+      assetExplorerUrl: typeof record.assetExplorerUrl === "string" ? record.assetExplorerUrl : null,
       creditImpact: record.creditImpact && typeof record.creditImpact === "object" ? record.creditImpact : undefined,
     });
   }
@@ -505,7 +523,7 @@ const webDialogStyles = `
 `;
 
 const passportStyles = `
-.jiagon-passport-screen{display:grid;gap:16px}.jiagon-passport-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);gap:18px;align-items:end}.jiagon-passport-hero h1{max-width:720px;margin:8px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(52px,6vw,78px);line-height:.9;color:var(--ink)}.jiagon-passport-hero p{max-width:650px;margin:14px 0 0;color:var(--ink-muted);font-size:15px;line-height:1.55}.jiagon-passport-summary{display:grid;grid-template-columns:1fr 1fr;border:.5px solid var(--rule);border-radius:12px;overflow:hidden;background:oklch(0.992 0.004 100 / .86);box-shadow:0 18px 54px rgba(24,58,38,.08)}.jiagon-passport-summary div{display:grid;gap:5px;padding:14px;border-right:.5px solid var(--rule);border-bottom:.5px solid var(--rule)}.jiagon-passport-summary div:nth-child(2n){border-right:none}.jiagon-passport-summary div:nth-last-child(-n+2){border-bottom:none}.jiagon-passport-summary span,.jiagon-passport-row span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.jiagon-passport-summary strong{font-family:var(--display);font-style:italic;font-size:28px;font-weight:400;line-height:1;color:var(--ink)}.jiagon-passport-actions{display:flex;flex-wrap:wrap;gap:10px}.jiagon-passport-actions button{min-height:42px;border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);color:var(--ink);padding:0 14px;font-weight:850;cursor:pointer}.jiagon-passport-actions button:first-child{border-color:transparent;background:var(--verified);color:var(--panel-text);box-shadow:0 8px 22px rgba(0,96,48,.14)}.jiagon-passport-list{display:grid;gap:10px}.jiagon-passport-empty,.jiagon-passport-row{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .84);box-shadow:0 14px 42px rgba(24,58,38,.06)}.jiagon-passport-empty{padding:26px}.jiagon-passport-empty h2{margin:8px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:42px;line-height:.95}.jiagon-passport-empty p{max-width:560px;margin:10px 0 0;color:var(--ink-muted);font-size:14px;line-height:1.5}.jiagon-passport-row{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(120px,.55fr));gap:12px;align-items:center;padding:14px}.jiagon-passport-row>div:not(:first-child){display:grid;gap:5px}.jiagon-passport-row strong{font-size:14px;color:var(--ink)}.jiagon-passport-row-title{font-family:var(--display);font-style:italic;font-size:28px;line-height:.95;color:var(--ink)}.jiagon-passport-row-sub{margin-top:6px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.65px;color:var(--ink-muted)}@media(max-width:980px){.jiagon-passport-hero,.jiagon-passport-row{grid-template-columns:1fr}.jiagon-passport-summary{grid-template-columns:1fr 1fr}}@media(max-width:560px){.jiagon-passport-summary{grid-template-columns:1fr}.jiagon-passport-summary div{border-right:none}.jiagon-passport-summary div:nth-last-child(-n+2){border-bottom:.5px solid var(--rule)}.jiagon-passport-summary div:last-child{border-bottom:none}}
+.jiagon-passport-screen{display:grid;gap:16px}.jiagon-passport-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);gap:18px;align-items:end}.jiagon-passport-hero h1{max-width:720px;margin:8px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(52px,6vw,78px);line-height:.9;color:var(--ink)}.jiagon-passport-hero p{max-width:650px;margin:14px 0 0;color:var(--ink-muted);font-size:15px;line-height:1.55}.jiagon-passport-summary{display:grid;grid-template-columns:1fr 1fr;border:.5px solid var(--rule);border-radius:12px;overflow:hidden;background:oklch(0.992 0.004 100 / .86);box-shadow:0 18px 54px rgba(24,58,38,.08)}.jiagon-passport-summary div{display:grid;gap:5px;padding:14px;border-right:.5px solid var(--rule);border-bottom:.5px solid var(--rule)}.jiagon-passport-summary div:nth-child(2n){border-right:none}.jiagon-passport-summary div:nth-last-child(-n+2){border-bottom:none}.jiagon-passport-summary span,.jiagon-passport-row span,.jiagon-passport-owner span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.jiagon-passport-summary strong{font-family:var(--display);font-style:italic;font-size:28px;font-weight:400;line-height:1;color:var(--ink)}.jiagon-passport-actions{display:flex;flex-wrap:wrap;gap:10px}.jiagon-passport-actions button{min-height:42px;border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);color:var(--ink);padding:0 14px;font-weight:850;cursor:pointer}.jiagon-passport-actions button:first-child{border-color:transparent;background:var(--verified);color:var(--panel-text);box-shadow:0 8px 22px rgba(0,96,48,.14)}.jiagon-passport-owner{display:grid;gap:6px;max-width:640px}.jiagon-passport-owner input{width:100%;min-height:42px;border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);color:var(--ink);padding:0 12px;font-family:var(--mono);font-size:12px;outline:none}.jiagon-passport-error{border:.5px solid oklch(0.76 .08 32);border-radius:8px;background:oklch(0.96 .03 42);color:oklch(0.38 .08 36);padding:10px 12px;font-size:13px;font-weight:750}.jiagon-passport-list{display:grid;gap:10px}.jiagon-passport-empty,.jiagon-passport-row{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .84);box-shadow:0 14px 42px rgba(24,58,38,.06)}.jiagon-passport-empty{padding:26px}.jiagon-passport-empty h2{margin:8px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:42px;line-height:.95}.jiagon-passport-empty p{max-width:560px;margin:10px 0 0;color:var(--ink-muted);font-size:14px;line-height:1.5}.jiagon-passport-row{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(112px,.5fr)) minmax(110px,.45fr);gap:12px;align-items:center;padding:14px}.jiagon-passport-row>div:not(:first-child){display:grid;gap:5px}.jiagon-passport-row strong{font-size:14px;color:var(--ink)}.jiagon-passport-row-title{font-family:var(--display);font-style:italic;font-size:28px;line-height:.95;color:var(--ink)}.jiagon-passport-row-sub{margin-top:6px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.65px;color:var(--ink-muted)}.jiagon-passport-row-action button{min-height:38px;border:none;border-radius:9px;background:var(--verified);color:var(--panel-text);font-size:13px;font-weight:850;cursor:pointer}.jiagon-passport-row-action button:disabled{opacity:.55;cursor:not-allowed}@media(max-width:1100px){.jiagon-passport-hero,.jiagon-passport-row{grid-template-columns:1fr}.jiagon-passport-summary{grid-template-columns:1fr 1fr}}@media(max-width:560px){.jiagon-passport-summary{grid-template-columns:1fr}.jiagon-passport-summary div{border-right:none}.jiagon-passport-summary div:nth-last-child(-n+2){border-bottom:.5px solid var(--rule)}.jiagon-passport-summary div:last-child{border-bottom:none}}
 `;
 
 function WebNav({
@@ -604,16 +622,37 @@ function PassportScreen({
   receiptCredentials,
   onClaim,
   onScan,
+  onMint,
 }: {
   auth: AuthState;
   merchantReceipts: MerchantPassportReceipt[];
   receiptCredentials: Record<string, ReceiptCredential>;
   onClaim: () => void;
   onScan: () => void;
+  onMint: (receipt: MerchantPassportReceipt, solanaOwner: string) => Promise<void>;
 }) {
+  const [solanaOwner, setSolanaOwner] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem("jiagon:solana-owner") || "";
+  });
+  const [mintingReceiptId, setMintingReceiptId] = useState<string | null>(null);
+  const [mintError, setMintError] = useState("");
   const credentialCount = Object.keys(receiptCredentials).length;
   const verifiedSpend = merchantReceipts.reduce((sum, receipt) => sum + Number(receipt.amountUsd || 0), 0);
   const creditUnlocked = merchantReceipts.some((receipt) => receipt.creditImpact?.eligible);
+
+  const mintReceipt = async (receipt: MerchantPassportReceipt) => {
+    setMintError("");
+    setMintingReceiptId(receipt.id);
+    try {
+      window.localStorage.setItem("jiagon:solana-owner", solanaOwner.trim());
+      await onMint(receipt, solanaOwner.trim());
+    } catch (error) {
+      setMintError(error instanceof Error ? error.message : "Unable to mint receipt credential.");
+    } finally {
+      setMintingReceiptId(null);
+    }
+  };
 
   return (
     <section className="jiagon-passport-screen">
@@ -651,6 +690,16 @@ function PassportScreen({
         <button type="button" onClick={onScan}>Scan tx proof</button>
       </div>
 
+      <label className="jiagon-passport-owner">
+        <span>Solana receipt owner</span>
+        <input
+          value={solanaOwner}
+          onChange={(event) => setSolanaOwner(event.target.value)}
+          placeholder="Paste Solana wallet public key"
+        />
+      </label>
+      {mintError && <div className="jiagon-passport-error">{mintError}</div>}
+
       <div className="jiagon-passport-list">
         {merchantReceipts.length === 0 ? (
           <div className="jiagon-passport-empty">
@@ -673,11 +722,26 @@ function PassportScreen({
               </div>
               <div>
                 <span>Status</span>
-                <strong>{receipt.mintStatus === "minted" ? "Minted" : "Ready to mint"}</strong>
+                <strong>{receipt.mintStatus === "minted" ? "Minted" : receipt.mintStatus === "prepared" ? "Prepared" : "Ready to mint"}</strong>
               </div>
               <div>
                 <span>Credit impact</span>
                 <strong>{receipt.creditImpact?.eligible ? `+$${receipt.creditImpact.unlockedCreditUsd || 25}` : "Pending"}</strong>
+              </div>
+              <div className="jiagon-passport-row-action">
+                <button
+                  type="button"
+                  disabled={!auth.authenticated || !solanaOwner.trim() || mintingReceiptId === receipt.id || receipt.mintStatus === "minted"}
+                  onClick={() => mintReceipt(receipt)}
+                >
+                  {mintingReceiptId === receipt.id
+                    ? "Minting..."
+                    : receipt.mintStatus === "minted"
+                      ? "Minted"
+                      : receipt.mintStatus === "prepared"
+                        ? "Prepared"
+                        : "Mint cNFT"}
+                </button>
               </div>
             </article>
           ))
@@ -1003,6 +1067,50 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
   }, [etherfiSync]);
 
   const visibleReviews = mergeReviews(publishedReviews, publicReviews);
+
+  const mintMerchantReceipt = async (receipt: MerchantPassportReceipt, solanaOwner: string) => {
+    if (!privy?.authenticated) {
+      await auth.login();
+      return;
+    }
+    const token = await privy.getAccessToken();
+    if (!token) throw new Error("Privy access token is required.");
+
+    const response = await fetch("/api/solana/merchant-receipts/mint", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        receiptId: receipt.id,
+        receipt,
+        solanaOwner,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload?.error || "Unable to mint merchant receipt cNFT.");
+
+    const nextReceipts = merchantReceipts.map((item) =>
+      item.id === receipt.id
+        ? {
+            ...item,
+            mintStatus: payload.status === "minted" ? "minted" : "prepared",
+            credentialId: payload.credentialId,
+            credentialChain: payload.credentialChain,
+            standard: payload.standard,
+            dataHash: payload.dataHash,
+            storageUri: payload.storageUri,
+            solanaOwner: payload.solanaOwner,
+            credentialTx: payload.credentialTx || null,
+            explorerUrl: payload.explorerUrl || null,
+            assetExplorerUrl: payload.assetExplorerUrl || null,
+          }
+        : item,
+    );
+    setMerchantReceipts(nextReceipts);
+    writeStoredMerchantReceipts(nextReceipts);
+  };
 
   const auth: AuthState = {
     ready: !authBusy,
@@ -1575,6 +1683,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
           setShowOnboard(false);
           setTab("inbox");
         }}
+        onMint={mintMerchantReceipt}
       />
     ),
     feed: (
