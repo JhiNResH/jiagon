@@ -26,6 +26,7 @@ type AuthState = {
   ready: boolean;
   authenticated: boolean;
   appConfigured: boolean;
+  accountKey?: string;
   userLabel?: string;
   walletLabel?: string;
   login: () => Promise<void>;
@@ -1117,6 +1118,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
     ready: !authBusy,
     authenticated: Boolean(authSession),
     appConfigured: hasPrivyAppId,
+    accountKey: authSession?.walletAddress || authSession?.walletLabel || authSession?.userLabel,
     userLabel: authSession?.userLabel,
     walletLabel: authSession?.walletLabel,
     login: async () => {
