@@ -2760,6 +2760,10 @@ const CreditScreen = ({
   onScan,
 }) => {
   const [drawState, setDrawState] = _useState('idle');
+  const [drawTx, setDrawTx] = _useState(null);
+  const [drawId, setDrawId] = _useState('');
+  const [drawBusy, setDrawBusy] = _useState(false);
+  const [drawStatus, setDrawStatus] = _useState('');
   const [authError, setAuthError] = _useState('');
   const [solayerAccount, setSolayerAccount] = _useState('');
   const [solayerAmount, setSolayerAmount] = _useState('');
@@ -2785,6 +2789,7 @@ const CreditScreen = ({
   const ready = auth?.ready ?? true;
   const authenticated = auth?.authenticated ?? false;
   const login = auth?.login;
+  const getAccessToken = auth?.getAccessToken;
   const accountLabel = auth?.walletLabel || auth?.userLabel;
   const scannedReceipts = etherfi?.receipts?.length || 0;
   const reviewedReceiptSet = new Set(reviewedReceiptIds);
@@ -2898,6 +2903,70 @@ const CreditScreen = ({
       setSolayerStatus(error instanceof Error ? error.message : 'Unable to refresh Solana mirror.');
     } finally {
       setSolayerBusy(false);
+    }
+  };
+
+  const postDepositAction = async (payload) => {
+    if (!authenticated) {
+      await login?.();
+      return null;
+    }
+
+    const token = await getAccessToken?.();
+    if (!token) throw new Error('Privy access token is required.');
+
+    const response = await fetch('/api/solana/credit/deposit', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result?.error || 'Unable to send devnet credit transaction.');
+    return result;
+  };
+
+  const handleDrawDeposit = async () => {
+    if (!creditUnlocked || drawBusy) return;
+    setDrawBusy(true);
+    setDrawStatus('');
+    try {
+      const result = await postDepositAction({
+        action: 'draw',
+        amountUsd: depositCredit,
+        merchantName: 'premium restaurant deposit',
+      });
+      if (!result) return;
+      setDrawTx(result);
+      setDrawId(result.drawId || '');
+      setDrawState('drawn');
+      setDrawStatus(result.signature ? `Devnet draw sent: ${result.signature.slice(0, 8)}…${result.signature.slice(-6)}` : 'Devnet draw prepared.');
+    } catch (error) {
+      setDrawStatus(error instanceof Error ? error.message : 'Unable to draw devnet credit.');
+    } finally {
+      setDrawBusy(false);
+    }
+  };
+
+  const handleRepayDeposit = async () => {
+    if (!creditUnlocked || !drawn || !drawId || drawBusy) return;
+    setDrawBusy(true);
+    setDrawStatus('');
+    try {
+      const result = await postDepositAction({
+        action: 'repay',
+        drawId,
+      });
+      if (!result) return;
+      setDrawTx(result);
+      setDrawState('repaid');
+      setDrawStatus(result.signature ? `Devnet repay sent: ${result.signature.slice(0, 8)}…${result.signature.slice(-6)}` : 'Devnet repay prepared.');
+    } catch (error) {
+      setDrawStatus(error instanceof Error ? error.message : 'Unable to repay devnet credit.');
+    } finally {
+      setDrawBusy(false);
     }
   };
 
@@ -3350,8 +3419,8 @@ const CreditScreen = ({
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 9, marginTop: 15 }}>
             <button
-              onClick={() => creditUnlocked && setDrawState('drawn')}
-              disabled={!creditUnlocked}
+              onClick={handleDrawDeposit}
+              disabled={!creditUnlocked || drawBusy || (drawn && !repaid)}
               style={{
                 border: 'none',
                 borderRadius: 12,
@@ -3361,13 +3430,13 @@ const CreditScreen = ({
                 fontFamily: 'var(--ui)',
                 fontSize: 14,
                 fontWeight: 800,
-                cursor: creditUnlocked ? 'pointer' : 'default',
-                opacity: creditUnlocked ? 1 : 0.45,
+                cursor: creditUnlocked && !drawBusy && (!drawn || repaid) ? 'pointer' : 'default',
+                opacity: creditUnlocked && !drawBusy && (!drawn || repaid) ? 1 : 0.45,
               }}
-            >Simulate reserve with Jiagon credit</button>
+            >{drawBusy && !drawn ? 'Sending devnet draw...' : 'Draw devnet deposit credit'}</button>
             <button
-              onClick={() => creditUnlocked && setDrawState('repaid')}
-              disabled={!creditUnlocked || !drawn}
+              onClick={handleRepayDeposit}
+              disabled={!creditUnlocked || !drawn || repaid || drawBusy || !drawId}
               style={{
                 border: '0.5px solid var(--rule)',
                 borderRadius: 12,
@@ -3377,27 +3446,32 @@ const CreditScreen = ({
                 fontFamily: 'var(--ui)',
                 fontSize: 14,
                 fontWeight: 800,
-                cursor: creditUnlocked && drawn ? 'pointer' : 'default',
-                opacity: creditUnlocked && drawn ? 1 : 0.55,
+                cursor: creditUnlocked && drawn && !repaid && !drawBusy && drawId ? 'pointer' : 'default',
+                opacity: creditUnlocked && drawn && !repaid && !drawBusy && drawId ? 1 : 0.55,
               }}
-            >{`Simulate repay $${depositCredit}`}</button>
+            >{drawBusy && drawn ? `Sending devnet repay...` : `Repay $${depositCredit}`}</button>
           </div>
 
-          {drawn && (
+          {(drawn || drawStatus) && (
             <div style={{
               marginTop: 13,
-              background: repaid ? 'var(--verified-soft)' : 'var(--info-soft)',
+              background: repaid ? 'var(--verified-soft)' : drawStatus && !drawn ? 'var(--accent-soft)' : 'var(--info-soft)',
               border: '0.5px solid var(--rule)',
               borderRadius: 12,
               padding: 12,
               fontFamily: 'var(--mono)',
               fontSize: 10.5,
-              color: repaid ? 'var(--verified)' : 'var(--info)',
+              color: repaid ? 'var(--verified)' : drawStatus && !drawn ? 'var(--accent)' : 'var(--info)',
               lineHeight: 1.45,
             }}>
-              {repaid
-                ? `Simulated repayment confirmed. $${depositCredit} restored to the credit line and reputation moves to Starter+.`
-                : `Simulated PurposeDraw. The Anchor instruction is ready to send $${depositCredit} devnet USDC from vault to restaurant escrow.`}
+              {drawStatus || (repaid
+                ? `Repayment confirmed. $${depositCredit} restored to the credit line and reputation moves to Starter+.`
+                : `PurposeDraw active. ${drawTx?.explorerUrl ? 'Open the devnet transaction from the returned Solscan URL.' : `Devnet route sent $${depositCredit} USDC from vault to restaurant escrow.`}`)}
+              {drawTx?.explorerUrl && (
+                <a className="inline-link" href={drawTx.explorerUrl} target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: 7 }}>
+                  View devnet tx
+                </a>
+              )}
             </div>
           )}
         </div>

@@ -30,6 +30,7 @@ type AuthState = {
   walletLabel?: string;
   login: () => Promise<void>;
   logout: () => Promise<void>;
+  getAccessToken?: () => Promise<string | null>;
 };
 
 type StoredSession = {
@@ -1137,6 +1138,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
       setAccountStateUpdatedAt(null);
       privyUserIdRef.current = null;
     },
+    getAccessToken: () => privy?.getAccessToken?.() ?? Promise.resolve(null),
   };
   const navAuthReady = hasPrivyAppId ? Boolean(privy?.ready) : true;
 
