@@ -86,6 +86,8 @@ export function solanaCreditDepositConfig() {
       enabled &&
       configured(process.env.SOLANA_CREDIT_VERIFIER_SECRET_KEY) &&
       configured(process.env.SOLANA_CREDIT_DEMO_OWNER_PUBLIC_KEY) &&
+      configured(process.env.SOLANA_CREDIT_DEMO_OWNER_SECRET_KEY) &&
+      configured(process.env.SOLANA_CREDIT_DEMO_BORROWER_TOKEN_ACCOUNT) &&
       configured(process.env.SOLANA_CREDIT_PAYMENT_MINT) &&
       configured(process.env.SOLANA_CREDIT_VAULT_TOKEN_ACCOUNT) &&
       configured(process.env.SOLANA_CREDIT_MERCHANT_ESCROW_TOKEN_ACCOUNT)
@@ -174,6 +176,10 @@ export async function repayDevnetRestaurantDeposit({ drawId }: { drawId: string 
   const connection = new Connection(config.rpcUrl, "confirmed");
   const programId = new PublicKey(config.programId);
   const owner = ownerKeypair.publicKey;
+  const configuredOwner = requiredPubkey("SOLANA_CREDIT_DEMO_OWNER_PUBLIC_KEY");
+  if (!owner.equals(configuredOwner)) {
+    throw new Error("SOLANA_CREDIT_DEMO_OWNER_SECRET_KEY must match SOLANA_CREDIT_DEMO_OWNER_PUBLIC_KEY.");
+  }
   const paymentMint = requiredPubkey("SOLANA_CREDIT_PAYMENT_MINT");
   const vaultTokenAccount = requiredPubkey("SOLANA_CREDIT_VAULT_TOKEN_ACCOUNT");
   const borrowerTokenAccount = requiredPubkey("SOLANA_CREDIT_DEMO_BORROWER_TOKEN_ACCOUNT");

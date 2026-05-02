@@ -39,10 +39,13 @@ async function verifiedClaims(request: Request) {
 }
 
 function amountCents(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return Math.round(value * 100);
-  if (typeof value !== "string") return 1000;
-  const normalized = value.trim().replace(/[$,\s]/g, "");
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return 1000;
+  const normalized =
+    typeof value === "number" && Number.isFinite(value)
+      ? String(value)
+      : typeof value === "string"
+        ? value.trim().replace(/[$,\s]/g, "")
+        : "";
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
   return Math.round(Number(normalized) * 100);
 }
 
@@ -109,7 +112,7 @@ export async function POST(request: Request) {
   try {
     if (body.action === "draw") {
       const cents = amountCents(body.amountUsd ?? body.amount);
-      if (cents <= 0 || cents > 2_500) {
+      if (cents == null || cents <= 0 || cents > 2_500) {
         return Response.json({ error: "Draw amount must be greater than $0 and at most $25 for the demo." }, { status: 400 });
       }
       const result = await drawDevnetRestaurantDeposit({
