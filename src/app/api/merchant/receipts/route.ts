@@ -4,8 +4,6 @@ import { createMerchantIssuedReceipt } from "@/server/receiptStore";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
-
 function cleanText(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 160) : fallback;
 }
@@ -29,10 +27,6 @@ function requestOrigin(request: Request) {
   return new URL(request.url).origin;
 }
 
-function isLocalRequest(request: Request) {
-  return localHosts.has(new URL(request.url).hostname);
-}
-
 function safeEqual(a: string, b: string) {
   const left = Buffer.from(a);
   const right = Buffer.from(b);
@@ -42,7 +36,7 @@ function safeEqual(a: string, b: string) {
 function authorizeMerchantIssue(request: Request) {
   const configuredKey = (process.env.JIAGON_MERCHANT_ISSUER_KEY || "").trim();
   const signingSecret = (process.env.JIAGON_MERCHANT_RECEIPT_SIGNING_SECRET || "").trim();
-  const localOrDemo = isLocalRequest(request) || process.env.JIAGON_ALLOW_DEMO_MERCHANT_ISSUE === "true";
+  const localOrDemo = process.env.JIAGON_ALLOW_DEMO_MERCHANT_ISSUE === "true";
 
   if (!signingSecret && !localOrDemo) {
     return "JIAGON_MERCHANT_RECEIPT_SIGNING_SECRET is required to issue merchant receipts outside local demo mode.";
