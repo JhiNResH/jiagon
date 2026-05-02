@@ -196,14 +196,17 @@ export async function POST(request: Request) {
     note: "Merchant receipt is claimed. Solana Bubblegum cNFT mint is prepare-only until SOLANA_BUBBLEGUM_TREE and SOLANA_BUBBLEGUM_MINTER_SECRET_KEY are configured.",
   };
 
-  const result = config.mintConfigured
-    ? await mintJiagonBubblegumReceipt({
+  let result;
+  if (config.mintConfigured) {
+    try {
+      const mint = await mintJiagonBubblegumReceipt({
         leafOwner: solanaOwner,
         sourceReceiptHash,
         dataHash: receiptDataHash,
         metadataUri,
         name: metadataObject.name,
-      }).then((mint) => ({
+      });
+      result = {
         ...mint,
         mode: "bubblegum-minted",
         credentialId: mint.assetId,
@@ -211,8 +214,24 @@ export async function POST(request: Request) {
         metaplexCoreAsset: mint.assetId,
         metadata: metadataObject,
         note: "Merchant receipt claimed and Solana Bubblegum receipt cNFT minted.",
-      }))
-    : prepared;
+      };
+    } catch (error) {
+      console.error("Merchant receipt Bubblegum mint failed", error);
+      const message = error instanceof Error ? error.message : "Unable to mint Solana Bubblegum receipt cNFT.";
+      return Response.json(
+        {
+          error: message,
+          mode: "bubblegum-mint-failed",
+          credentialId: null,
+          solanaOwner,
+          metadata: metadataObject,
+        },
+        { status: 502 },
+      );
+    }
+  } else {
+    result = prepared;
+  }
 
   const mintStatus = result.status === "minted" ? "minted" : "prepared";
   await savePrivateAccountState({
