@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import QRCode from "qrcode";
+import { useEffect, useMemo, useState } from "react";
 
 type IssuedReceiptResponse = {
   mode: string;
@@ -65,6 +66,7 @@ export default function MerchantPage() {
   const [error, setError] = useState("");
   const [issued, setIssued] = useState<IssuedReceiptResponse | null>(null);
   const [copied, setCopied] = useState(false);
+  const [qrUrl, setQrUrl] = useState("");
 
   const canSubmit = useMemo(() => {
     return form.merchantName.trim().length >= 2 && Number(form.amountUsd) > 0 && !busy;
@@ -107,10 +109,37 @@ export default function MerchantPage() {
     setCopied(true);
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!issued?.claimUrl) {
+      setQrUrl("");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    QRCode.toDataURL(issued.claimUrl, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: "M",
+      color: {
+        dark: "#183a26",
+        light: "#ffffff",
+      },
+    })
+      .then((dataUrl) => {
+        if (!cancelled) setQrUrl(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setQrUrl("");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [issued?.claimUrl]);
+
   const tileUrl = issued ? `${window.location.origin}/tile/${encodeURIComponent(issued.receipt.merchantId)}` : "";
-  const qrUrl = issued
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=12&data=${encodeURIComponent(issued.claimUrl)}`
-    : "";
 
   return (
     <main className="merchant-page">
@@ -216,7 +245,11 @@ export default function MerchantPage() {
               </button>
             </div>
             <div className="merchant-qr-wrap">
-              <img src={qrUrl} alt="QR code for the one-time receipt claim link" />
+              {qrUrl ? (
+                <img src={qrUrl} alt="QR code for the one-time receipt claim link" />
+              ) : (
+                <div className="merchant-qr-placeholder">QR</div>
+              )}
               <div>
                 <div className="merchant-kicker">NFC tile URL</div>
                 <code>{tileUrl}</code>
@@ -250,5 +283,5 @@ export default function MerchantPage() {
 }
 
 const merchantStyles = `
-.merchant-page{min-height:100vh;background:radial-gradient(circle at 12% 0%,oklch(0.98 0.008 105) 0 260px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink);padding:24px clamp(18px,4vw,56px) 48px}.merchant-shell{max-width:1160px;margin:0 auto}.merchant-header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:44px}.merchant-brand{display:flex;align-items:center;gap:10px;color:var(--verified);text-decoration:none}.merchant-brand img{width:54px;height:60px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(24,58,38,.10))}.merchant-brand span{font-family:var(--display);font-size:34px;line-height:.9}.merchant-header nav{display:flex;gap:8px}.merchant-header nav a{min-height:36px;display:inline-flex;align-items:center;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.992 0.004 100 / .75);padding:0 12px;color:var(--ink-muted);font-size:13px;font-weight:800;text-decoration:none}.merchant-grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(420px,1fr);gap:28px;align-items:start}.merchant-copy{padding-top:26px}.merchant-kicker{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-muted)}.merchant-copy h1{max-width:520px;margin:10px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(52px,7vw,86px);line-height:.9;color:var(--ink)}.merchant-copy p{max-width:520px;margin:18px 0 0;color:var(--ink-muted);font-size:16px;line-height:1.55}.merchant-flow{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.merchant-flow span{border:.5px solid var(--rule);border-radius:999px;background:oklch(0.992 0.004 100 / .72);padding:8px 10px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--verified)}.merchant-card,.merchant-result{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .86);box-shadow:0 22px 80px rgba(24,58,38,.10);padding:18px}.merchant-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.merchant-form-grid label{display:grid;gap:6px}.merchant-form-grid span{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.75px;color:var(--ink-muted)}.merchant-form-grid input,.merchant-form-grid textarea{width:100%;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);color:var(--ink);padding:11px 12px;font-family:var(--ui);font-size:14px;outline:none}.merchant-form-grid textarea{min-height:78px;resize:vertical}.merchant-form-grid input:focus,.merchant-form-grid textarea:focus{border-color:color-mix(in oklch,var(--verified) 48%,var(--rule));box-shadow:0 0 0 3px color-mix(in oklch,var(--verified-soft) 64%,transparent)}.merchant-wide{grid-column:1/-1}.merchant-primary{width:100%;min-height:48px;margin-top:14px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-family:var(--ui);font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 10px 28px rgba(0,96,48,.16)}.merchant-primary:disabled{opacity:.52;cursor:not-allowed}.merchant-error{margin-top:12px;border:.5px solid oklch(0.76 .08 32);border-radius:8px;background:oklch(0.96 .03 42);color:oklch(0.38 .08 36);padding:10px 12px;font-size:13px;font-weight:750}.merchant-result{margin-top:26px;display:grid;gap:16px}.merchant-result h2{margin:6px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:38px;line-height:.95;color:var(--ink)}.merchant-result p{margin:8px 0 0;color:var(--ink-muted);font-size:14px}.merchant-claim{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.merchant-claim code{min-height:44px;display:flex;align-items:center;overflow:auto;border:.5px solid var(--rule);border-radius:8px;background:var(--surface-raised);padding:0 12px;color:var(--ink);font-family:var(--mono);font-size:11px}.merchant-claim button{border:none;border-radius:8px;background:var(--verified);color:var(--panel-text);padding:0 14px;font-weight:850;cursor:pointer}.merchant-qr-wrap{display:grid;grid-template-columns:180px minmax(0,1fr);gap:14px;align-items:center;border:.5px solid var(--rule);border-radius:10px;background:var(--surface-raised);padding:12px}.merchant-qr-wrap img{width:180px;height:180px;border-radius:8px;background:white}.merchant-qr-wrap code{display:block;margin-top:8px;overflow:auto;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);padding:10px;font-family:var(--mono);font-size:11px;color:var(--ink)}.merchant-qr-wrap p{margin:9px 0 0;color:var(--ink-muted);font-size:13px;line-height:1.45}.merchant-proof-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:.5px solid var(--rule);border-radius:10px;overflow:hidden}.merchant-proof-grid div{display:grid;gap:5px;padding:12px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .76)}.merchant-proof-grid div:last-child{border-right:none}.merchant-proof-grid span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.merchant-proof-grid strong{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;color:var(--ink)}@media(max-width:900px){.merchant-header{align-items:flex-start}.merchant-grid{grid-template-columns:1fr}.merchant-copy{padding-top:0}.merchant-form-grid,.merchant-claim,.merchant-qr-wrap,.merchant-proof-grid{grid-template-columns:1fr}.merchant-proof-grid div{border-right:none;border-bottom:.5px solid var(--rule)}.merchant-proof-grid div:last-child{border-bottom:none}}
+.merchant-page{min-height:100vh;background:radial-gradient(circle at 12% 0%,oklch(0.98 0.008 105) 0 260px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink);padding:24px clamp(18px,4vw,56px) 48px}.merchant-shell{max-width:1160px;margin:0 auto}.merchant-header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:44px}.merchant-brand{display:flex;align-items:center;gap:10px;color:var(--verified);text-decoration:none}.merchant-brand img{width:54px;height:60px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(24,58,38,.10))}.merchant-brand span{font-family:var(--display);font-size:34px;line-height:.9}.merchant-header nav{display:flex;gap:8px}.merchant-header nav a{min-height:36px;display:inline-flex;align-items:center;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.992 0.004 100 / .75);padding:0 12px;color:var(--ink-muted);font-size:13px;font-weight:800;text-decoration:none}.merchant-grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(420px,1fr);gap:28px;align-items:start}.merchant-copy{padding-top:26px}.merchant-kicker{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-muted)}.merchant-copy h1{max-width:520px;margin:10px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(52px,7vw,86px);line-height:.9;color:var(--ink)}.merchant-copy p{max-width:520px;margin:18px 0 0;color:var(--ink-muted);font-size:16px;line-height:1.55}.merchant-flow{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.merchant-flow span{border:.5px solid var(--rule);border-radius:999px;background:oklch(0.992 0.004 100 / .72);padding:8px 10px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--verified)}.merchant-card,.merchant-result{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .86);box-shadow:0 22px 80px rgba(24,58,38,.10);padding:18px}.merchant-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.merchant-form-grid label{display:grid;gap:6px}.merchant-form-grid span{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.75px;color:var(--ink-muted)}.merchant-form-grid input,.merchant-form-grid textarea{width:100%;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);color:var(--ink);padding:11px 12px;font-family:var(--ui);font-size:14px;outline:none}.merchant-form-grid textarea{min-height:78px;resize:vertical}.merchant-form-grid input:focus,.merchant-form-grid textarea:focus{border-color:color-mix(in oklch,var(--verified) 48%,var(--rule));box-shadow:0 0 0 3px color-mix(in oklch,var(--verified-soft) 64%,transparent)}.merchant-wide{grid-column:1/-1}.merchant-primary{width:100%;min-height:48px;margin-top:14px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-family:var(--ui);font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 10px 28px rgba(0,96,48,.16)}.merchant-primary:disabled{opacity:.52;cursor:not-allowed}.merchant-error{margin-top:12px;border:.5px solid oklch(0.76 .08 32);border-radius:8px;background:oklch(0.96 .03 42);color:oklch(0.38 .08 36);padding:10px 12px;font-size:13px;font-weight:750}.merchant-result{margin-top:26px;display:grid;gap:16px}.merchant-result h2{margin:6px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:38px;line-height:.95;color:var(--ink)}.merchant-result p{margin:8px 0 0;color:var(--ink-muted);font-size:14px}.merchant-claim{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.merchant-claim code{min-height:44px;display:flex;align-items:center;overflow:auto;border:.5px solid var(--rule);border-radius:8px;background:var(--surface-raised);padding:0 12px;color:var(--ink);font-family:var(--mono);font-size:11px}.merchant-claim button{border:none;border-radius:8px;background:var(--verified);color:var(--panel-text);padding:0 14px;font-weight:850;cursor:pointer}.merchant-qr-wrap{display:grid;grid-template-columns:180px minmax(0,1fr);gap:14px;align-items:center;border:.5px solid var(--rule);border-radius:10px;background:var(--surface-raised);padding:12px}.merchant-qr-wrap img,.merchant-qr-placeholder{width:180px;height:180px;border-radius:8px;background:white}.merchant-qr-placeholder{display:grid;place-items:center;border:.5px dashed var(--rule);font-family:var(--mono);font-size:13px;color:var(--ink-muted)}.merchant-qr-wrap code{display:block;margin-top:8px;overflow:auto;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);padding:10px;font-family:var(--mono);font-size:11px;color:var(--ink)}.merchant-qr-wrap p{margin:9px 0 0;color:var(--ink-muted);font-size:13px;line-height:1.45}.merchant-proof-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:.5px solid var(--rule);border-radius:10px;overflow:hidden}.merchant-proof-grid div{display:grid;gap:5px;padding:12px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .76)}.merchant-proof-grid div:last-child{border-right:none}.merchant-proof-grid span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.merchant-proof-grid strong{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;color:var(--ink)}@media(max-width:900px){.merchant-header{align-items:flex-start}.merchant-grid{grid-template-columns:1fr}.merchant-copy{padding-top:0}.merchant-form-grid,.merchant-claim,.merchant-qr-wrap,.merchant-proof-grid{grid-template-columns:1fr}.merchant-proof-grid div{border-right:none;border-bottom:.5px solid var(--rule)}.merchant-proof-grid div:last-child{border-bottom:none}}
 `;
