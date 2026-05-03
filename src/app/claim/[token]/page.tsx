@@ -79,15 +79,24 @@ function mergeStoredMerchantReceipt(receipt: ClaimReceipt, privyUserId?: string 
     current = [];
   }
   const receipts = Array.isArray(current) ? current : [];
+  const existing = receipts.find((item) => {
+    const record = item && typeof item === "object" ? item as { id?: unknown } : null;
+    return record?.id === receipt.id;
+  });
+  const existingReceipt = existing && typeof existing === "object" ? existing as Record<string, unknown> : null;
   const nextReceipt = {
+    ...existingReceipt,
     ...receipt,
     source: "merchant-issued",
-    mintStatus: "ready",
-    creditImpact: {
-      eligible: false,
-      unlockedCreditUsd: 25,
-      reason: "Merchant-issued receipt must be minted or prepared as a Bubblegum cNFT before credit unlock.",
-    },
+    mintStatus: typeof existingReceipt?.mintStatus === "string" ? existingReceipt.mintStatus : "ready",
+    creditImpact:
+      existingReceipt?.creditImpact && typeof existingReceipt.creditImpact === "object"
+        ? existingReceipt.creditImpact
+        : {
+            eligible: false,
+            unlockedCreditUsd: 25,
+            reason: "Merchant-issued receipt must be minted as a Bubblegum cNFT before credit unlock.",
+          },
   };
   const merged = [
     nextReceipt,

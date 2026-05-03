@@ -92,7 +92,7 @@ export async function POST(request: Request, context: RouteContext) {
           creditImpact: {
             eligible: false,
             unlockedCreditUsd: 25,
-            reason: "Merchant-issued receipt must be minted or prepared as a Bubblegum cNFT before credit unlock.",
+            reason: "Merchant-issued receipt must be minted as a Bubblegum cNFT before credit unlock.",
           },
         },
       ],

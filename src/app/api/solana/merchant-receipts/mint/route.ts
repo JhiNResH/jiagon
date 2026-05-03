@@ -233,6 +233,18 @@ export async function POST(request: Request) {
     result = prepared;
   }
 
+  const creditEligible = result.mode === "bubblegum-minted" && result.status === "minted";
+  const creditImpact = creditEligible
+    ? {
+        eligible: true,
+        unlockedCreditUsd: 25,
+        reason: "Merchant receipt credential is ready for Jiagon credit underwriting.",
+      }
+    : {
+        eligible: false,
+        unlockedCreditUsd: 0,
+        reason: "Merchant-issued receipt must be minted as a Bubblegum cNFT before credit unlock.",
+      };
   const mintStatus = result.status === "minted" ? "minted" : "prepared";
   await savePrivateAccountState({
     privyUserId: claims.userId,
@@ -251,15 +263,11 @@ export async function POST(request: Request) {
           credentialTx: "credentialTx" in result ? result.credentialTx : null,
           explorerUrl: "explorerUrl" in result ? result.explorerUrl : null,
           assetExplorerUrl: "assetExplorerUrl" in result ? result.assetExplorerUrl : null,
-          creditImpact: {
-            eligible: true,
-            unlockedCreditUsd: 25,
-            reason: "Merchant receipt credential is ready for Jiagon credit underwriting.",
-          },
+          creditImpact,
         },
       ],
     },
   });
 
-  return Response.json(result);
+  return Response.json({ ...result, creditImpact });
 }

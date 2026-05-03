@@ -647,9 +647,10 @@ function PassportScreen({
   const verifiedSpend = merchantReceipts.reduce((sum, receipt) => sum + Number(receipt.amountUsd || 0), 0);
   const credentialReadyReceipts = merchantReceipts.filter((receipt) => receipt.mintStatus === "prepared" || receipt.mintStatus === "minted");
   const readyToMintReceipts = merchantReceipts.filter((receipt) => receipt.status === "claimed" && receipt.mintStatus !== "prepared" && receipt.mintStatus !== "minted");
-  const creditUnlocked = credentialReadyReceipts.some((receipt) => receipt.creditImpact?.eligible) || credentialReadyReceipts.length > 0;
+  const creditEligibleReceipts = credentialReadyReceipts.filter((receipt) => receipt.creditImpact?.eligible);
+  const creditUnlocked = creditEligibleReceipts.length > 0;
   const unlockedCreditUsd = creditUnlocked
-    ? Math.max(...credentialReadyReceipts.map((receipt) => receipt.creditImpact?.unlockedCreditUsd || 25), 25)
+    ? Math.max(...creditEligibleReceipts.map((receipt) => receipt.creditImpact?.unlockedCreditUsd || 25), 25)
     : 0;
   const flowState = merchantReceipts.length === 0 ? "claim" : creditUnlocked ? "credit" : "mint";
 
@@ -751,7 +752,7 @@ function PassportScreen({
               </div>
               <div>
                 <span>Credit impact</span>
-                <strong>{receipt.mintStatus === "prepared" || receipt.mintStatus === "minted" ? `+$${receipt.creditImpact?.unlockedCreditUsd || 25}` : "Mint required"}</strong>
+                <strong>{receipt.creditImpact?.eligible ? `+$${receipt.creditImpact.unlockedCreditUsd || 25}` : "Mint required"}</strong>
               </div>
               <div className="jiagon-passport-row-action">
                 <button
@@ -1130,11 +1131,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
             credentialTx: payload.credentialTx || null,
             explorerUrl: payload.explorerUrl || null,
             assetExplorerUrl: payload.assetExplorerUrl || null,
-            creditImpact: {
-              eligible: true,
-              unlockedCreditUsd: item.creditImpact?.unlockedCreditUsd || 25,
-              reason: "Merchant receipt credential is ready for Jiagon credit underwriting.",
-            },
+            creditImpact: payload.creditImpact || item.creditImpact,
           }
         : item,
     );
