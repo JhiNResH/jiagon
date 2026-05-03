@@ -52,13 +52,13 @@ Early event pilots can use L2/L3. Credit scoring should weight L4/L5 higher when
 ### PR 1: Order Intake Core
 
 - Add `POST /api/merchant/orders`.
+- Add `GET /api/merchant/orders?merchantId=...` for queue consumers.
 - Add durable merchant order store with database persistence and local memory fallback.
 - Update `/tile/{merchant}` into a customer order page.
 - Store source as `tile` now; later `telegram` can use the same API.
 
 ### PR 2: Merchant Queue
 
-- Add `GET /api/merchant/orders?merchantId=...`.
 - Show pending orders inside `/merchant`.
 - Add status actions: accept, complete, cancel.
 

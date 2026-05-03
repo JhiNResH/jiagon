@@ -10,6 +10,18 @@ import { authorizeMerchantDashboard } from "@/server/merchantAuth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type OrderIntakeRateLimitEntry = {
+  count: number;
+  resetAt: number;
+};
+
+type OrderIntakeRouteGlobal = typeof globalThis & {
+  jiagonOrderIntakeRateLimit?: Map<string, OrderIntakeRateLimitEntry>;
+};
+
+const ORDER_INTAKE_RATE_LIMIT_WINDOW_MS = 60_000;
+const ORDER_INTAKE_RATE_LIMIT_DEFAULT_MAX = 30;
+
 function cleanText(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 160) : fallback;
 }
@@ -64,6 +76,40 @@ function orderStatus(value: string | null): MerchantOrderStatus | null {
   return value === "pending" || value === "accepted" || value === "completed" || value === "cancelled" ? value : null;
 }
 
+function orderIntakeRateLimitKey(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwardedFor || request.headers.get("x-real-ip")?.trim() || "local";
+}
+
+function orderIntakeRateLimitMax() {
+  const configured = Number.parseInt(process.env.JIAGON_ORDER_INTAKE_RATE_LIMIT || "", 10);
+  return Number.isFinite(configured) && configured >= 0 ? configured : ORDER_INTAKE_RATE_LIMIT_DEFAULT_MAX;
+}
+
+function checkOrderIntakeRateLimit(request: Request) {
+  const max = orderIntakeRateLimitMax();
+  if (max === 0) return { ok: true as const };
+
+  const now = Date.now();
+  const key = orderIntakeRateLimitKey(request);
+  const globalStore = globalThis as OrderIntakeRouteGlobal;
+  const store = globalStore.jiagonOrderIntakeRateLimit || new Map<string, OrderIntakeRateLimitEntry>();
+  globalStore.jiagonOrderIntakeRateLimit = store;
+
+  const existing = store.get(key);
+  const entry = existing && existing.resetAt > now
+    ? existing
+    : { count: 0, resetAt: now + ORDER_INTAKE_RATE_LIMIT_WINDOW_MS };
+  entry.count += 1;
+  store.set(key, entry);
+
+  if (entry.count <= max) return { ok: true as const };
+  return {
+    ok: false as const,
+    retryAfter: Math.max(1, Math.ceil((entry.resetAt - now) / 1000)),
+  };
+}
+
 export async function GET(request: Request) {
   const authError = authorizeMerchantDashboard(request);
   if (authError) {
@@ -92,6 +138,22 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!request.headers.get("content-type")?.toLowerCase().includes("application/json")) {
     return Response.json({ error: "Agentic merchant order requires a JSON request." }, { status: 415 });
+  }
+
+  const rateLimit = checkOrderIntakeRateLimit(request);
+  if (!rateLimit.ok) {
+    return Response.json(
+      {
+        error: "Too many merchant order requests. Please retry shortly.",
+        retryAfterSeconds: rateLimit.retryAfter,
+      },
+      {
+        status: 429,
+        headers: {
+          "retry-after": String(rateLimit.retryAfter),
+        },
+      },
+    );
   }
 
   let body: Record<string, unknown>;
