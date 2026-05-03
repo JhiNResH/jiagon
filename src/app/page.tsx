@@ -528,6 +528,10 @@ const passportStyles = `
 .jiagon-passport-screen{display:grid;gap:16px}.jiagon-passport-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);gap:18px;align-items:end}.jiagon-passport-hero h1{max-width:720px;margin:8px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(52px,6vw,78px);line-height:.9;color:var(--ink)}.jiagon-passport-hero p{max-width:650px;margin:14px 0 0;color:var(--ink-muted);font-size:15px;line-height:1.55}.jiagon-passport-summary{display:grid;grid-template-columns:1fr 1fr;border:.5px solid var(--rule);border-radius:12px;overflow:hidden;background:oklch(0.992 0.004 100 / .86);box-shadow:0 18px 54px rgba(24,58,38,.08)}.jiagon-passport-summary div{display:grid;gap:5px;padding:14px;border-right:.5px solid var(--rule);border-bottom:.5px solid var(--rule)}.jiagon-passport-summary div:nth-child(2n){border-right:none}.jiagon-passport-summary div:nth-last-child(-n+2){border-bottom:none}.jiagon-passport-summary span,.jiagon-passport-row span,.jiagon-passport-owner span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.jiagon-passport-summary strong{font-family:var(--display);font-style:italic;font-size:28px;font-weight:400;line-height:1;color:var(--ink)}.jiagon-passport-actions{display:flex;flex-wrap:wrap;gap:10px}.jiagon-passport-actions button{min-height:42px;border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);color:var(--ink);padding:0 14px;font-weight:850;cursor:pointer}.jiagon-passport-actions button:first-child{border-color:transparent;background:var(--verified);color:var(--panel-text);box-shadow:0 8px 22px rgba(0,96,48,.14)}.jiagon-passport-owner{display:grid;gap:6px;max-width:640px}.jiagon-passport-owner input{width:100%;min-height:42px;border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);color:var(--ink);padding:0 12px;font-family:var(--mono);font-size:12px;outline:none}.jiagon-passport-error{border:.5px solid oklch(0.76 .08 32);border-radius:8px;background:oklch(0.96 .03 42);color:oklch(0.38 .08 36);padding:10px 12px;font-size:13px;font-weight:750}.jiagon-passport-list{display:grid;gap:10px}.jiagon-passport-empty,.jiagon-passport-row{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .84);box-shadow:0 14px 42px rgba(24,58,38,.06)}.jiagon-passport-empty{padding:26px}.jiagon-passport-empty h2{margin:8px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:42px;line-height:.95}.jiagon-passport-empty p{max-width:560px;margin:10px 0 0;color:var(--ink-muted);font-size:14px;line-height:1.5}.jiagon-passport-row{display:grid;grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(112px,.5fr)) minmax(110px,.45fr);gap:12px;align-items:center;padding:14px}.jiagon-passport-row>div:not(:first-child){display:grid;gap:5px}.jiagon-passport-row strong{font-size:14px;color:var(--ink)}.jiagon-passport-row-title{font-family:var(--display);font-style:italic;font-size:28px;line-height:.95;color:var(--ink)}.jiagon-passport-row-sub{margin-top:6px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.65px;color:var(--ink-muted)}.jiagon-passport-row-action button{min-height:38px;border:none;border-radius:9px;background:var(--verified);color:var(--panel-text);font-size:13px;font-weight:850;cursor:pointer}.jiagon-passport-row-action button:disabled{opacity:.55;cursor:not-allowed}@media(max-width:1100px){.jiagon-passport-hero,.jiagon-passport-row{grid-template-columns:1fr}.jiagon-passport-summary{grid-template-columns:1fr 1fr}}@media(max-width:560px){.jiagon-passport-summary{grid-template-columns:1fr}.jiagon-passport-summary div{border-right:none}.jiagon-passport-summary div:nth-last-child(-n+2){border-bottom:.5px solid var(--rule)}.jiagon-passport-summary div:last-child{border-bottom:none}}
 `;
 
+const passportFlowStyles = `
+.jiagon-passport-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.jiagon-passport-flow-step{border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);padding:12px;display:grid;gap:5px;min-width:0}.jiagon-passport-flow-step[data-state="active"]{background:var(--verified-soft);border-color:color-mix(in oklch,var(--verified) 28%,var(--rule))}.jiagon-passport-flow-step[data-state="locked"]{opacity:.64}.jiagon-passport-flow-step span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.65px;color:var(--ink-muted)}.jiagon-passport-flow-step strong{font-size:14px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}@media(max-width:560px){.jiagon-passport-flow{grid-template-columns:1fr}}
+`;
+
 function WebNav({
   active,
   onChange,
@@ -641,7 +645,13 @@ function PassportScreen({
   const [mintError, setMintError] = useState("");
   const credentialCount = Object.keys(receiptCredentials).length;
   const verifiedSpend = merchantReceipts.reduce((sum, receipt) => sum + Number(receipt.amountUsd || 0), 0);
-  const creditUnlocked = merchantReceipts.some((receipt) => receipt.creditImpact?.eligible);
+  const credentialReadyReceipts = merchantReceipts.filter((receipt) => receipt.mintStatus === "prepared" || receipt.mintStatus === "minted");
+  const readyToMintReceipts = merchantReceipts.filter((receipt) => receipt.status === "claimed" && receipt.mintStatus !== "prepared" && receipt.mintStatus !== "minted");
+  const creditUnlocked = credentialReadyReceipts.some((receipt) => receipt.creditImpact?.eligible) || credentialReadyReceipts.length > 0;
+  const unlockedCreditUsd = creditUnlocked
+    ? Math.max(...credentialReadyReceipts.map((receipt) => receipt.creditImpact?.unlockedCreditUsd || 25), 25)
+    : 0;
+  const flowState = merchantReceipts.length === 0 ? "claim" : creditUnlocked ? "credit" : "mint";
 
   const mintReceipt = async (receipt: MerchantPassportReceipt) => {
     setMintError("");
@@ -678,11 +688,11 @@ function PassportScreen({
           </div>
           <div>
             <span>Credentials</span>
-            <strong>{credentialCount}</strong>
+            <strong>{credentialCount + credentialReadyReceipts.length}</strong>
           </div>
           <div>
             <span>Credit</span>
-            <strong>{creditUnlocked ? "$25 unlocked" : "Locked"}</strong>
+            <strong>{creditUnlocked ? `$${unlockedCreditUsd} unlocked` : readyToMintReceipts.length > 0 ? "Mint required" : "Locked"}</strong>
           </div>
         </div>
       </div>
@@ -701,6 +711,19 @@ function PassportScreen({
         />
       </label>
       {mintError && <div className="jiagon-passport-error">{mintError}</div>}
+
+      <div className="jiagon-passport-flow">
+        {[
+          ["Claim receipt", merchantReceipts.length > 0 ? "done" : "active", merchantReceipts.length > 0 ? `${merchantReceipts.length} claimed` : "issue or claim one"],
+          ["Mint cNFT", flowState === "credit" ? "done" : flowState === "mint" ? "active" : "locked", credentialReadyReceipts.length > 0 ? `${credentialReadyReceipts.length} credential` : "required before credit"],
+          ["Unlock credit", flowState === "credit" ? "active" : "locked", creditUnlocked ? `$${unlockedCreditUsd} ready` : "after credential"],
+        ].map(([label, state, detail]) => (
+          <div className="jiagon-passport-flow-step" data-state={state} key={label}>
+            <span>{label}</span>
+            <strong>{detail}</strong>
+          </div>
+        ))}
+      </div>
 
       <div className="jiagon-passport-list">
         {merchantReceipts.length === 0 ? (
@@ -728,7 +751,7 @@ function PassportScreen({
               </div>
               <div>
                 <span>Credit impact</span>
-                <strong>{receipt.creditImpact?.eligible ? `+$${receipt.creditImpact.unlockedCreditUsd || 25}` : "Pending"}</strong>
+                <strong>{receipt.mintStatus === "prepared" || receipt.mintStatus === "minted" ? `+$${receipt.creditImpact?.unlockedCreditUsd || 25}` : "Mint required"}</strong>
               </div>
               <div className="jiagon-passport-row-action">
                 <button
@@ -1107,6 +1130,11 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
             credentialTx: payload.credentialTx || null,
             explorerUrl: payload.explorerUrl || null,
             assetExplorerUrl: payload.assetExplorerUrl || null,
+            creditImpact: {
+              eligible: true,
+              unlockedCreditUsd: item.creditImpact?.unlockedCreditUsd || 25,
+              reason: "Merchant receipt credential is ready for Jiagon credit underwriting.",
+            },
           }
         : item,
     );
@@ -1742,7 +1770,7 @@ function HomeShell({ privy }: { privy?: PrivyBridge | null }) {
 
   return (
     <>
-      <style>{webShellStyles + logoMarkStyles + webUiPolishStyles + webDialogStyles + passportStyles}</style>
+      <style>{webShellStyles + logoMarkStyles + webUiPolishStyles + webDialogStyles + passportStyles + passportFlowStyles}</style>
       <div className="jiagon-web-shell" ref={stageRef} suppressHydrationWarning>
         {mounted && (
           <>

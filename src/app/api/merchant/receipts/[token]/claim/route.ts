@@ -90,9 +90,9 @@ export async function POST(request: Request, context: RouteContext) {
           claimedAt: claimedReceipt.claimedAt,
           mintStatus: "ready",
           creditImpact: {
-            eligible: true,
+            eligible: false,
             unlockedCreditUsd: 25,
-            reason: "Merchant-issued receipt claimed into Jiagon passport.",
+            reason: "Merchant-issued receipt must be minted or prepared as a Bubblegum cNFT before credit unlock.",
           },
         },
       ],

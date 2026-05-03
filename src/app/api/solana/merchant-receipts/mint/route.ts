@@ -251,6 +251,11 @@ export async function POST(request: Request) {
           credentialTx: "credentialTx" in result ? result.credentialTx : null,
           explorerUrl: "explorerUrl" in result ? result.explorerUrl : null,
           assetExplorerUrl: "assetExplorerUrl" in result ? result.assetExplorerUrl : null,
+          creditImpact: {
+            eligible: true,
+            unlockedCreditUsd: 25,
+            reason: "Merchant receipt credential is ready for Jiagon credit underwriting.",
+          },
         },
       ],
     },
