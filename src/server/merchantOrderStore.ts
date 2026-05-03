@@ -406,6 +406,7 @@ export async function updateMerchantOrderStatus(input: {
           updated_at = now(),
           payload = jsonb_set(jsonb_set(payload, '{status}', to_jsonb($2::text), true), '{proofLevel}', to_jsonb($3::text), true)
         where id = $1
+          and status = $4
         returning
           id,
           merchant_id,
@@ -422,8 +423,16 @@ export async function updateMerchantOrderStatus(input: {
           created_at,
           updated_at
       `,
-      [input.id, input.nextStatus, proofLevel],
+      [input.id, input.nextStatus, proofLevel, current.status],
     );
+    if (result.rowCount === 0) {
+      return {
+        configured: true,
+        updated: false,
+        order: current,
+        error: "Merchant order changed before this status update could be applied. Refresh the queue and try again.",
+      };
+    }
     return { configured: true, updated: true, order: mapMerchantOrderRow(result.rows[0]) };
   } catch {
     return { configured: true, updated: false, order: null, error: "Merchant order status update failed." };
