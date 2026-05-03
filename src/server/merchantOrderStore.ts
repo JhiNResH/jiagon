@@ -14,6 +14,7 @@ export type MerchantOrderProofLevel = "order_intent_only" | "merchant_accepted" 
 
 export type MerchantOrder = {
   id: string;
+  idempotencyKey: string | null;
   merchantId: string;
   merchantName: string;
   location: string | null;
@@ -34,6 +35,7 @@ export type MerchantOrder = {
 };
 
 export type MerchantOrderCreateInput = {
+  idempotencyKey?: string | null;
   merchantId: string;
   merchantName: string;
   location?: string | null;
@@ -77,6 +79,7 @@ async function ensureMerchantOrderSchema(pool: Pool) {
     globalStore.jiagonMerchantOrderSchemaReady = pool.query(`
       create table if not exists jiagon_merchant_orders (
         id text primary key,
+        idempotency_key text,
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now(),
         merchant_id text not null,
@@ -98,6 +101,7 @@ async function ensureMerchantOrderSchema(pool: Pool) {
       );
 
       alter table jiagon_merchant_orders
+        add column if not exists idempotency_key text,
         add column if not exists receipt_id text,
         add column if not exists receipt_claim_url text,
         add column if not exists receipt_hash text,
@@ -109,6 +113,12 @@ async function ensureMerchantOrderSchema(pool: Pool) {
       create index if not exists jiagon_merchant_orders_receipt_idx
         on jiagon_merchant_orders (receipt_id)
         where receipt_id is not null;
+
+      create unique index if not exists jiagon_merchant_orders_merchant_idempotency_idx
+        on jiagon_merchant_orders (merchant_id, idempotency_key)
+        where idempotency_key is not null;
+
+      drop index if exists jiagon_merchant_orders_idempotency_idx;
     `)
       .then(() => undefined)
       .catch((error) => {
@@ -176,6 +186,7 @@ function mapMerchantOrderRow(row: Record<string, unknown>): MerchantOrder {
   const status = isMerchantOrderStatus(row.status) ? row.status : "pending";
   return {
     id: String(row.id),
+    idempotencyKey: typeof row.idempotency_key === "string" ? row.idempotency_key : null,
     merchantId: String(row.merchant_id),
     merchantName: String(row.merchant_name),
     location: typeof row.location === "string" ? row.location : null,
@@ -233,6 +244,7 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
   const now = new Date().toISOString();
   const order: MerchantOrder = {
     id: orderId(input.merchantId, input.items),
+    idempotencyKey: input.idempotencyKey?.trim() || null,
     merchantId: input.merchantId,
     merchantName: input.merchantName,
     location: input.location?.trim() || null,
@@ -254,16 +266,23 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
 
   const pool = getPool();
   if (!pool) {
+    if (order.idempotencyKey) {
+      const existing = Array.from(merchantOrderMemory().values()).find(
+        (memoryOrder) => memoryOrder.merchantId === order.merchantId && memoryOrder.idempotencyKey === order.idempotencyKey,
+      );
+      if (existing) return { configured: false, persisted: false, order: existing };
+    }
     merchantOrderMemory().set(order.id, order);
     return { configured: false, persisted: false, order };
   }
 
   try {
     await ensureMerchantOrderSchema(pool);
-    await pool.query(
+    const result = await pool.query(
       `
         insert into jiagon_merchant_orders (
           id,
+          idempotency_key,
           merchant_id,
           merchant_name,
           location,
@@ -281,10 +300,33 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
           receipt_issued_at,
           payload
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16::timestamptz, $17::jsonb)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15, $16, $17::timestamptz, $18::jsonb)
+        on conflict (merchant_id, idempotency_key) where idempotency_key is not null do update
+          set idempotency_key = excluded.idempotency_key
+        returning
+          id,
+          idempotency_key,
+          merchant_id,
+          merchant_name,
+          location,
+          customer_label,
+          source,
+          status,
+          items,
+          subtotal_cents,
+          subtotal_usd,
+          notes,
+          proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
+          created_at,
+          updated_at
       `,
       [
         order.id,
+        order.idempotencyKey,
         order.merchantId,
         order.merchantName,
         order.location,
@@ -303,7 +345,7 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
         JSON.stringify(order),
       ],
     );
-    return { configured: true, persisted: true, order };
+    return { configured: true, persisted: true, order: mapMerchantOrderRow(result.rows[0]) };
   } catch {
     return { configured: true, persisted: false, order, error: "Merchant order persistence failed." };
   }
@@ -348,6 +390,7 @@ export async function listMerchantOrders(input: {
       `
         select
           id,
+          idempotency_key,
           merchant_id,
           merchant_name,
           location,
@@ -395,6 +438,7 @@ async function getMerchantOrderById(id: string): Promise<{
       `
         select
           id,
+          idempotency_key,
           merchant_id,
           merchant_name,
           location,
@@ -465,6 +509,7 @@ export async function updateMerchantOrderStatus(input: {
       `
         select
           id,
+          idempotency_key,
           merchant_id,
           merchant_name,
           location,
@@ -516,6 +561,7 @@ export async function updateMerchantOrderStatus(input: {
           and status = $4
         returning
           id,
+          idempotency_key,
           merchant_id,
           merchant_name,
           location,
@@ -641,6 +687,7 @@ export async function completeMerchantOrderWithReceipt(input: {
       `
         select
           id,
+          idempotency_key,
           merchant_id,
           merchant_name,
           location,
@@ -753,6 +800,7 @@ export async function completeMerchantOrderWithReceipt(input: {
           and receipt_id is null
         returning
           id,
+          idempotency_key,
           merchant_id,
           merchant_name,
           location,

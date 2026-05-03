@@ -72,13 +72,13 @@ type MerchantOrdersResponse = {
 };
 
 const defaultMerchant = {
-  merchantName: "Consensus Cafe",
-  merchantId: "consensus-cafe",
+  merchantName: "Raposa Coffee",
+  merchantId: "raposa-coffee",
   location: "Miami Beach",
   amountUsd: "6.50",
   category: "Cafe",
   purpose: "cafe_purchase",
-  receiptNumber: "COF-001",
+  receiptNumber: "RAP-001",
   issuedBy: "Jiagon demo merchant",
   memo: "Merchant-issued receipt for Jiagon receipt passport demo.",
 };
@@ -485,7 +485,7 @@ export default function MerchantPage() {
             {orders.length === 0 ? (
               <div className="merchant-empty">
                 <strong>No orders found</strong>
-                <span>Open /tile/{form.merchantId || "consensus-cafe"} and send an order to populate this queue.</span>
+                <span>Open /tile/{form.merchantId || "raposa-coffee"} and send an order to populate this queue.</span>
               </div>
             ) : (
               orders.map((order) => {

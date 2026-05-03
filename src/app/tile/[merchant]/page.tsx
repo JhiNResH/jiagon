@@ -2,20 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-
-type MenuItem = {
-  id: string;
-  name: string;
-  amountUsd: string;
-};
-
-type MerchantProfile = {
-  name: string;
-  location: string;
-  category: string;
-  purpose: string;
-  menu: MenuItem[];
-};
+import { fallbackMenu, merchantProfileForId } from "@/lib/merchantCatalog";
 
 type MerchantOrderResponse = {
   order?: {
@@ -27,44 +14,6 @@ type MerchantOrderResponse = {
   error?: string;
 };
 
-const merchantProfiles: Record<string, MerchantProfile> = {
-  "consensus-cafe": {
-    name: "Consensus Cafe",
-    location: "Miami Beach",
-    category: "Cafe",
-    purpose: "cafe_purchase",
-    menu: [
-      { id: "espresso", name: "Espresso", amountUsd: "4.50" },
-      { id: "iced-latte", name: "Iced latte", amountUsd: "6.50" },
-      { id: "croissant", name: "Butter croissant", amountUsd: "5.25" },
-    ],
-  },
-  "mume-taipei": {
-    name: "MUME Taipei",
-    location: "Taipei",
-    category: "Dining",
-    purpose: "premium_restaurant_deposit",
-    menu: [
-      { id: "deposit", name: "Reservation deposit", amountUsd: "25.00" },
-      { id: "sparkling-water", name: "Sparkling water", amountUsd: "8.00" },
-      { id: "dessert", name: "Dessert add-on", amountUsd: "14.00" },
-    ],
-  },
-};
-
-const fallbackMenu: MenuItem[] = [
-  { id: "coffee", name: "Coffee", amountUsd: "5.00" },
-  { id: "deposit", name: "Reservation deposit", amountUsd: "20.00" },
-];
-
-function titleFromSlug(slug: string) {
-  return slug
-    .split("-")
-    .filter(Boolean)
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 function clampQuantity(value: string) {
   const parsed = Number.parseInt(value || "1", 10);
   if (!Number.isFinite(parsed)) return 1;
@@ -73,14 +22,8 @@ function clampQuantity(value: string) {
 
 export default function TilePage() {
   const params = useParams<{ merchant?: string | string[] }>();
-  const merchantId = Array.isArray(params.merchant) ? params.merchant[0] : params.merchant || "consensus-cafe";
-  const merchant = merchantProfiles[merchantId] || {
-    name: titleFromSlug(merchantId),
-    location: "Local",
-    category: "Merchant",
-    purpose: "merchant_receipt",
-    menu: fallbackMenu,
-  };
+  const merchantId = Array.isArray(params.merchant) ? params.merchant[0] : params.merchant || "raposa-coffee";
+  const merchant = merchantProfileForId(merchantId);
   const [selectedItemId, setSelectedItemId] = useState(merchant.menu[0]?.id || fallbackMenu[0].id);
   const [quantity, setQuantity] = useState(1);
   const [customerLabel, setCustomerLabel] = useState("");
