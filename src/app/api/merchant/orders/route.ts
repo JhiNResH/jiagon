@@ -5,7 +5,7 @@ import {
   type MerchantOrderItem,
   type MerchantOrderStatus,
 } from "@/server/merchantOrderStore";
-import { timingSafeEqual } from "node:crypto";
+import { authorizeMerchantDashboard } from "@/server/merchantAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,24 +64,10 @@ function orderStatus(value: string | null): MerchantOrderStatus | null {
   return value === "pending" || value === "accepted" || value === "completed" || value === "cancelled" ? value : null;
 }
 
-function isMerchantAuthorized(request: Request) {
-  const configuredKey = (process.env.JIAGON_MERCHANT_ISSUER_KEY || "").trim();
-  const demoMode = process.env.JIAGON_ALLOW_DEMO_MERCHANT_ISSUE === "true";
-  if (demoMode) return true;
-  if (!configuredKey) return false;
-
-  const submitted =
-    request.headers.get("x-jiagon-merchant-key") ||
-    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-    "";
-  const submittedBuffer = Buffer.from(submitted.trim());
-  const configuredBuffer = Buffer.from(configuredKey);
-  return submittedBuffer.length === configuredBuffer.length && timingSafeEqual(submittedBuffer, configuredBuffer);
-}
-
 export async function GET(request: Request) {
-  if (!isMerchantAuthorized(request)) {
-    return Response.json({ error: "Merchant issuer key is required to list orders." }, { status: 401 });
+  const authError = authorizeMerchantDashboard(request);
+  if (authError) {
+    return Response.json({ error: authError }, { status: authError.startsWith("Invalid") ? 401 : 503 });
   }
 
   const url = new URL(request.url);

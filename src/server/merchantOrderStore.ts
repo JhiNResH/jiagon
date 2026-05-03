@@ -9,6 +9,7 @@ export type MerchantOrderItem = {
 };
 
 export type MerchantOrderStatus = "pending" | "accepted" | "completed" | "cancelled";
+export type MerchantOrderProofLevel = "order_intent_only" | "merchant_accepted" | "merchant_completed" | "cancelled";
 
 export type MerchantOrder = {
   id: string;
@@ -22,7 +23,7 @@ export type MerchantOrder = {
   subtotalCents: number;
   subtotalUsd: string;
   notes: string | null;
-  proofLevel: "order_intent_only";
+  proofLevel: MerchantOrderProofLevel;
   createdAt: string;
   updatedAt: string;
 };
@@ -116,10 +117,33 @@ function formatUsd(cents: number) {
   return (cents / 100).toFixed(2);
 }
 
+function proofLevelForStatus(status: MerchantOrderStatus): MerchantOrderProofLevel {
+  if (status === "accepted") return "merchant_accepted";
+  if (status === "completed") return "merchant_completed";
+  if (status === "cancelled") return "cancelled";
+  return "order_intent_only";
+}
+
+function isMerchantOrderStatus(value: unknown): value is MerchantOrderStatus {
+  return value === "pending" || value === "accepted" || value === "completed" || value === "cancelled";
+}
+
+function isMerchantOrderProofLevel(value: unknown): value is MerchantOrderProofLevel {
+  return value === "order_intent_only" || value === "merchant_accepted" || value === "merchant_completed" || value === "cancelled";
+}
+
+function canTransitionOrderStatus(current: MerchantOrderStatus, next: MerchantOrderStatus) {
+  if (current === next) return true;
+  if (current === "pending") return next === "accepted" || next === "completed" || next === "cancelled";
+  if (current === "accepted") return next === "completed" || next === "cancelled";
+  return false;
+}
+
 function mapMerchantOrderRow(row: Record<string, unknown>): MerchantOrder {
   const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at);
   const updatedAt = row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at);
   const items = Array.isArray(row.items) ? row.items : [];
+  const status = isMerchantOrderStatus(row.status) ? row.status : "pending";
   return {
     id: String(row.id),
     merchantId: String(row.merchant_id),
@@ -127,12 +151,12 @@ function mapMerchantOrderRow(row: Record<string, unknown>): MerchantOrder {
     location: typeof row.location === "string" ? row.location : null,
     customerLabel: typeof row.customer_label === "string" ? row.customer_label : null,
     source: row.source === "telegram" || row.source === "web" ? row.source : "tile",
-    status: row.status === "accepted" || row.status === "completed" || row.status === "cancelled" ? row.status : "pending",
+    status,
     items: items as MerchantOrderItem[],
     subtotalCents: Number(row.subtotal_cents),
     subtotalUsd: String(row.subtotal_usd),
     notes: typeof row.notes === "string" ? row.notes : null,
-    proofLevel: "order_intent_only",
+    proofLevel: isMerchantOrderProofLevel(row.proof_level) ? row.proof_level : proofLevelForStatus(status),
     createdAt,
     updatedAt,
   };
@@ -177,7 +201,7 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
     subtotalCents,
     subtotalUsd: formatUsd(subtotalCents),
     notes: input.notes?.trim() || null,
-    proofLevel: "order_intent_only",
+    proofLevel: proofLevelForStatus("pending"),
     createdAt: now,
     updatedAt: now,
   };
@@ -294,5 +318,123 @@ export async function listMerchantOrders(input: {
     return { configured: true, orders: result.rows.map(mapMerchantOrderRow) };
   } catch {
     return { configured: true, orders: [], error: "Merchant order query failed." };
+  }
+}
+
+export async function updateMerchantOrderStatus(input: {
+  id: string;
+  nextStatus: MerchantOrderStatus;
+}): Promise<{
+  configured: boolean;
+  updated: boolean;
+  order: MerchantOrder | null;
+  error?: string;
+}> {
+  const pool = getPool();
+  const memory = merchantOrderMemory();
+
+  if (!pool) {
+    const current = memory.get(input.id);
+    if (!current) {
+      return { configured: false, updated: false, order: null, error: "Merchant order was not found." };
+    }
+    if (!canTransitionOrderStatus(current.status, input.nextStatus)) {
+      return {
+        configured: false,
+        updated: false,
+        order: current,
+        error: `Cannot move order from ${current.status} to ${input.nextStatus}.`,
+      };
+    }
+    const nextOrder: MerchantOrder = {
+      ...current,
+      status: input.nextStatus,
+      proofLevel: proofLevelForStatus(input.nextStatus),
+      updatedAt: new Date().toISOString(),
+    };
+    memory.set(input.id, nextOrder);
+    return { configured: false, updated: true, order: nextOrder };
+  }
+
+  try {
+    await ensureMerchantOrderSchema(pool);
+    const currentResult = await pool.query(
+      `
+        select
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          customer_label,
+          source,
+          status,
+          items,
+          subtotal_cents,
+          subtotal_usd,
+          notes,
+          proof_level,
+          created_at,
+          updated_at
+        from jiagon_merchant_orders
+        where id = $1
+        limit 1
+      `,
+      [input.id],
+    );
+    const currentRow = currentResult.rows[0];
+    if (!currentRow) {
+      return { configured: true, updated: false, order: null, error: "Merchant order was not found." };
+    }
+
+    const current = mapMerchantOrderRow(currentRow);
+    if (!canTransitionOrderStatus(current.status, input.nextStatus)) {
+      return {
+        configured: true,
+        updated: false,
+        order: current,
+        error: `Cannot move order from ${current.status} to ${input.nextStatus}.`,
+      };
+    }
+
+    const proofLevel = proofLevelForStatus(input.nextStatus);
+    const result = await pool.query(
+      `
+        update jiagon_merchant_orders
+        set
+          status = $2,
+          proof_level = $3,
+          updated_at = now(),
+          payload = jsonb_set(jsonb_set(payload, '{status}', to_jsonb($2::text), true), '{proofLevel}', to_jsonb($3::text), true)
+        where id = $1
+          and status = $4
+        returning
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          customer_label,
+          source,
+          status,
+          items,
+          subtotal_cents,
+          subtotal_usd,
+          notes,
+          proof_level,
+          created_at,
+          updated_at
+      `,
+      [input.id, input.nextStatus, proofLevel, current.status],
+    );
+    if (result.rowCount === 0) {
+      return {
+        configured: true,
+        updated: false,
+        order: current,
+        error: "Merchant order changed before this status update could be applied. Refresh the queue and try again.",
+      };
+    }
+    return { configured: true, updated: true, order: mapMerchantOrderRow(result.rows[0]) };
+  } catch {
+    return { configured: true, updated: false, order: null, error: "Merchant order status update failed." };
   }
 }
