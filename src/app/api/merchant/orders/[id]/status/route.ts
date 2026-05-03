@@ -43,6 +43,12 @@ async function updateStatus(request: Request, context: { params: Promise<{ id?: 
   if (!nextStatus) {
     return Response.json({ error: "Status must be accepted, completed, or cancelled." }, { status: 400 });
   }
+  if (nextStatus === "completed") {
+    return Response.json(
+      { error: "Use /api/merchant/orders/{id}/complete to complete an order and issue its claimable receipt." },
+      { status: 400 },
+    );
+  }
 
   const result = await updateMerchantOrderStatus({ id: orderId, nextStatus });
   if (!result.updated || !result.order) {

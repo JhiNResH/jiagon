@@ -67,6 +67,7 @@ Early event pilots can use L2/L3. Credit scoring should weight L4/L5 higher when
 - Add `POST /api/merchant/orders/{id}/complete`.
 - Completion calls existing merchant receipt issuer.
 - Merchant dashboard receives a claim URL and locally generated QR code.
+- NFC stays the fixed order-entry surface. QR/claim link is the per-receipt fallback because each completed order has a unique claim token.
 
 ### PR 4: Telegram Entry
 
