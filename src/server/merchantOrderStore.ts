@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Pool } from "pg";
+import { createMerchantIssuedReceipt, publicMerchantReceipt } from "@/server/receiptStore";
 
 export type MerchantOrderItem = {
   id: string;
@@ -24,6 +25,10 @@ export type MerchantOrder = {
   subtotalUsd: string;
   notes: string | null;
   proofLevel: MerchantOrderProofLevel;
+  receiptId: string | null;
+  receiptClaimUrl: string | null;
+  receiptHash: string | null;
+  receiptIssuedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -55,10 +60,11 @@ function getPool() {
   const globalStore = globalThis as MerchantOrderGlobal;
   if (!globalStore.jiagonMerchantOrderPool) {
     const wantsSsl = process.env.DATABASE_SSL === "true" || url.includes("sslmode=require");
+    const allowInsecureSsl = process.env.DATABASE_SSL_INSECURE === "true" && process.env.NODE_ENV !== "production";
     globalStore.jiagonMerchantOrderPool = new Pool({
       connectionString: url,
       max: 5,
-      ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
+      ssl: wantsSsl ? { rejectUnauthorized: !allowInsecureSsl } : undefined,
     });
   }
 
@@ -84,11 +90,25 @@ async function ensureMerchantOrderSchema(pool: Pool) {
         subtotal_usd text not null,
         notes text,
         proof_level text not null,
+        receipt_id text,
+        receipt_claim_url text,
+        receipt_hash text,
+        receipt_issued_at timestamptz,
         payload jsonb not null
       );
 
+      alter table jiagon_merchant_orders
+        add column if not exists receipt_id text,
+        add column if not exists receipt_claim_url text,
+        add column if not exists receipt_hash text,
+        add column if not exists receipt_issued_at timestamptz;
+
       create index if not exists jiagon_merchant_orders_merchant_status_idx
         on jiagon_merchant_orders (merchant_id, status, created_at desc);
+
+      create index if not exists jiagon_merchant_orders_receipt_idx
+        on jiagon_merchant_orders (receipt_id)
+        where receipt_id is not null;
     `)
       .then(() => undefined)
       .catch((error) => {
@@ -115,6 +135,16 @@ function orderId(merchantId: string, items: MerchantOrderItem[]) {
 
 function formatUsd(cents: number) {
   return (cents / 100).toFixed(2);
+}
+
+function orderItemSummary(items: MerchantOrderItem[]) {
+  return items.map((item) => `${item.quantity}x ${item.name}`).join(", ");
+}
+
+function orderMemo(order: MerchantOrder) {
+  const customer = order.customerLabel ? ` Customer: ${order.customerLabel}.` : "";
+  const notes = order.notes ? ` Notes: ${order.notes}.` : "";
+  return `Agentic POS order ${order.id}: ${orderItemSummary(order.items)}.${customer}${notes}`.slice(0, 500);
 }
 
 function proofLevelForStatus(status: MerchantOrderStatus): MerchantOrderProofLevel {
@@ -157,6 +187,14 @@ function mapMerchantOrderRow(row: Record<string, unknown>): MerchantOrder {
     subtotalUsd: String(row.subtotal_usd),
     notes: typeof row.notes === "string" ? row.notes : null,
     proofLevel: isMerchantOrderProofLevel(row.proof_level) ? row.proof_level : proofLevelForStatus(status),
+    receiptId: typeof row.receipt_id === "string" ? row.receipt_id : null,
+    receiptClaimUrl: typeof row.receipt_claim_url === "string" ? row.receipt_claim_url : null,
+    receiptHash: typeof row.receipt_hash === "string" ? row.receipt_hash : null,
+    receiptIssuedAt: row.receipt_issued_at instanceof Date
+      ? row.receipt_issued_at.toISOString()
+      : typeof row.receipt_issued_at === "string"
+        ? row.receipt_issued_at
+        : null,
     createdAt,
     updatedAt,
   };
@@ -176,6 +214,10 @@ export function publicMerchantOrder(order: MerchantOrder) {
     subtotalUsd: order.subtotalUsd,
     notes: order.notes,
     proofLevel: order.proofLevel,
+    receiptId: order.receiptId,
+    receiptClaimUrl: order.receiptClaimUrl,
+    receiptHash: order.receiptHash,
+    receiptIssuedAt: order.receiptIssuedAt,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
   };
@@ -202,6 +244,10 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
     subtotalUsd: formatUsd(subtotalCents),
     notes: input.notes?.trim() || null,
     proofLevel: proofLevelForStatus("pending"),
+    receiptId: null,
+    receiptClaimUrl: null,
+    receiptHash: null,
+    receiptIssuedAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -229,9 +275,13 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
           subtotal_usd,
           notes,
           proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
           payload
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13::jsonb)
+        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16::timestamptz, $17::jsonb)
       `,
       [
         order.id,
@@ -246,6 +296,10 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
         order.subtotalUsd,
         order.notes,
         order.proofLevel,
+        order.receiptId,
+        order.receiptClaimUrl,
+        order.receiptHash,
+        order.receiptIssuedAt,
         JSON.stringify(order),
       ],
     );
@@ -305,6 +359,10 @@ export async function listMerchantOrders(input: {
           subtotal_usd,
           notes,
           proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
           created_at,
           updated_at
         from jiagon_merchant_orders
@@ -318,6 +376,51 @@ export async function listMerchantOrders(input: {
     return { configured: true, orders: result.rows.map(mapMerchantOrderRow) };
   } catch {
     return { configured: true, orders: [], error: "Merchant order query failed." };
+  }
+}
+
+async function getMerchantOrderById(id: string): Promise<{
+  configured: boolean;
+  order: MerchantOrder | null;
+  error?: string;
+}> {
+  const pool = getPool();
+  if (!pool) {
+    return { configured: false, order: merchantOrderMemory().get(id) || null };
+  }
+
+  try {
+    await ensureMerchantOrderSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          customer_label,
+          source,
+          status,
+          items,
+          subtotal_cents,
+          subtotal_usd,
+          notes,
+          proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
+          created_at,
+          updated_at
+        from jiagon_merchant_orders
+        where id = $1
+        limit 1
+      `,
+      [id],
+    );
+    return { configured: true, order: result.rows[0] ? mapMerchantOrderRow(result.rows[0]) : null };
+  } catch {
+    return { configured: true, order: null, error: "Merchant order query failed." };
   }
 }
 
@@ -373,6 +476,10 @@ export async function updateMerchantOrderStatus(input: {
           subtotal_usd,
           notes,
           proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
           created_at,
           updated_at
         from jiagon_merchant_orders
@@ -420,6 +527,10 @@ export async function updateMerchantOrderStatus(input: {
           subtotal_usd,
           notes,
           proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
           created_at,
           updated_at
       `,
@@ -436,5 +547,282 @@ export async function updateMerchantOrderStatus(input: {
     return { configured: true, updated: true, order: mapMerchantOrderRow(result.rows[0]) };
   } catch {
     return { configured: true, updated: false, order: null, error: "Merchant order status update failed." };
+  }
+}
+
+export async function completeMerchantOrderWithReceipt(input: {
+  id: string;
+  origin: string;
+  issuedBy?: string | null;
+}): Promise<{
+  configured: boolean;
+  updated: boolean;
+  receiptConfigured: boolean;
+  receiptPersisted: boolean;
+  order: MerchantOrder | null;
+  receipt?: ReturnType<typeof publicMerchantReceipt>;
+  claimToken?: string;
+  error?: string;
+}> {
+  const pool = getPool();
+  if (!pool) {
+    const current = merchantOrderMemory().get(input.id) || null;
+    if (!current) {
+      return {
+        configured: false,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: null,
+        error: "Merchant order was not found.",
+      };
+    }
+    if (current.receiptClaimUrl) {
+      return {
+        configured: false,
+        updated: true,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+      };
+    }
+    if (!canTransitionOrderStatus(current.status, "completed")) {
+      return {
+        configured: false,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+        error: `Cannot complete order from ${current.status}.`,
+      };
+    }
+
+    const receiptResult = await createMerchantIssuedReceipt({
+      merchantId: current.merchantId,
+      merchantName: current.merchantName,
+      location: current.location,
+      receiptNumber: current.id,
+      amountCents: current.subtotalCents,
+      currency: "USD",
+      category: current.items[0]?.name || "Merchant order",
+      purpose: "agentic_pos_order_receipt",
+      issuedBy: input.issuedBy || "Jiagon merchant dashboard",
+      memo: orderMemo(current),
+      origin: input.origin,
+    });
+    const nextOrder: MerchantOrder = {
+      ...current,
+      status: "completed",
+      proofLevel: proofLevelForStatus("completed"),
+      receiptId: receiptResult.receipt.id,
+      receiptClaimUrl: receiptResult.receipt.claimUrl,
+      receiptHash: receiptResult.receipt.receiptHash,
+      receiptIssuedAt: receiptResult.receipt.issuedAt,
+      updatedAt: new Date().toISOString(),
+    };
+    merchantOrderMemory().set(nextOrder.id, nextOrder);
+    return {
+      configured: false,
+      updated: true,
+      receiptConfigured: receiptResult.configured,
+      receiptPersisted: receiptResult.persisted,
+      order: nextOrder,
+      receipt: publicMerchantReceipt(receiptResult.receipt),
+      claimToken: receiptResult.claimToken,
+    };
+  }
+
+  let current: MerchantOrder | null = null;
+  const client = await pool.connect();
+  try {
+    await ensureMerchantOrderSchema(pool);
+    await client.query("begin");
+    const currentResult = await client.query(
+      `
+        select
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          customer_label,
+          source,
+          status,
+          items,
+          subtotal_cents,
+          subtotal_usd,
+          notes,
+          proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
+          created_at,
+          updated_at
+        from jiagon_merchant_orders
+        where id = $1
+        limit 1
+        for update
+      `,
+      [input.id],
+    );
+    current = currentResult.rows[0] ? mapMerchantOrderRow(currentResult.rows[0]) : null;
+    if (!current) {
+      await client.query("rollback");
+      return {
+        configured: true,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: null,
+        error: "Merchant order was not found.",
+      };
+    }
+    if (current.receiptClaimUrl) {
+      await client.query("commit");
+      return {
+        configured: true,
+        updated: true,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+      };
+    }
+    if (!canTransitionOrderStatus(current.status, "completed")) {
+      await client.query("rollback");
+      return {
+        configured: true,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+        error: `Cannot complete order from ${current.status}.`,
+      };
+    }
+
+    const receiptResult = await createMerchantIssuedReceipt({
+      merchantId: current.merchantId,
+      merchantName: current.merchantName,
+      location: current.location,
+      receiptNumber: current.id,
+      amountCents: current.subtotalCents,
+      currency: "USD",
+      category: current.items[0]?.name || "Merchant order",
+      purpose: "agentic_pos_order_receipt",
+      issuedBy: input.issuedBy || "Jiagon merchant dashboard",
+      memo: orderMemo(current),
+      origin: input.origin,
+    });
+    if (receiptResult.configured && !receiptResult.persisted) {
+      await client.query("rollback");
+      return {
+        configured: true,
+        updated: false,
+        receiptConfigured: receiptResult.configured,
+        receiptPersisted: receiptResult.persisted,
+        order: current,
+        receipt: publicMerchantReceipt(receiptResult.receipt),
+        claimToken: receiptResult.claimToken,
+        error: receiptResult.error || "Merchant receipt persistence failed.",
+      };
+    }
+
+    const nextOrder: MerchantOrder = {
+      ...current,
+      status: "completed",
+      proofLevel: proofLevelForStatus("completed"),
+      receiptId: receiptResult.receipt.id,
+      receiptClaimUrl: receiptResult.receipt.claimUrl,
+      receiptHash: receiptResult.receipt.receiptHash,
+      receiptIssuedAt: receiptResult.receipt.issuedAt,
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await client.query(
+      `
+        update jiagon_merchant_orders
+        set
+          status = $2,
+          proof_level = $3,
+          receipt_id = $4,
+          receipt_claim_url = $5,
+          receipt_hash = $6,
+          receipt_issued_at = $7::timestamptz,
+          updated_at = now(),
+          payload = $8::jsonb
+        where id = $1
+          and status = $9
+          and receipt_id is null
+        returning
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          customer_label,
+          source,
+          status,
+          items,
+          subtotal_cents,
+          subtotal_usd,
+          notes,
+          proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
+          created_at,
+          updated_at
+      `,
+      [
+        nextOrder.id,
+        nextOrder.status,
+        nextOrder.proofLevel,
+        nextOrder.receiptId,
+        nextOrder.receiptClaimUrl,
+        nextOrder.receiptHash,
+        nextOrder.receiptIssuedAt,
+        JSON.stringify(nextOrder),
+        current.status,
+      ],
+    );
+
+    if (result.rowCount === 0) {
+      await client.query("rollback");
+      return {
+        configured: true,
+        updated: false,
+        receiptConfigured: receiptResult.configured,
+        receiptPersisted: receiptResult.persisted,
+        order: current,
+        receipt: publicMerchantReceipt(receiptResult.receipt),
+        claimToken: receiptResult.claimToken,
+        error: "Merchant order changed before the receipt could be attached. Refresh the queue and try again.",
+      };
+    }
+
+    await client.query("commit");
+    return {
+      configured: true,
+      updated: true,
+      receiptConfigured: receiptResult.configured,
+      receiptPersisted: receiptResult.persisted,
+      order: mapMerchantOrderRow(result.rows[0]),
+      receipt: publicMerchantReceipt(receiptResult.receipt),
+      claimToken: receiptResult.claimToken,
+    };
+  } catch {
+    try {
+      await client.query("rollback");
+    } catch {
+      // Ignore rollback failures and return the primary error below.
+    }
+    return {
+      configured: true,
+      updated: false,
+      receiptConfigured: false,
+      receiptPersisted: false,
+      order: current,
+      error: "Merchant order receipt attachment failed.",
+    };
+  } finally {
+    client.release();
   }
 }

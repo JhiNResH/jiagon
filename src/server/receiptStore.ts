@@ -208,10 +208,11 @@ function getPool() {
   const globalStore = globalThis as ReceiptStoreGlobal;
   if (!globalStore.jiagonReceiptPool) {
     const wantsSsl = process.env.DATABASE_SSL === "true" || url.includes("sslmode=require");
+    const allowInsecureSsl = process.env.DATABASE_SSL_INSECURE === "true" && process.env.NODE_ENV !== "production";
     globalStore.jiagonReceiptPool = new Pool({
       connectionString: url,
       max: 5,
-      ssl: wantsSsl ? { rejectUnauthorized: false } : undefined,
+      ssl: wantsSsl ? { rejectUnauthorized: !allowInsecureSsl } : undefined,
     });
   }
 
