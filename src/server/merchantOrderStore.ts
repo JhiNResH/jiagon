@@ -563,80 +563,62 @@ export async function completeMerchantOrderWithReceipt(input: {
   claimToken?: string;
   error?: string;
 }> {
-  const currentResult = await getMerchantOrderById(input.id);
-  const current = currentResult.order;
-  if (!current) {
-    return {
-      configured: currentResult.configured,
-      updated: false,
-      receiptConfigured: false,
-      receiptPersisted: false,
-      order: null,
-      error: currentResult.error || "Merchant order was not found.",
-    };
-  }
-
-  if (current.receiptClaimUrl) {
-    return {
-      configured: currentResult.configured,
-      updated: true,
-      receiptConfigured: false,
-      receiptPersisted: false,
-      order: current,
-    };
-  }
-
-  if (!canTransitionOrderStatus(current.status, "completed")) {
-    return {
-      configured: currentResult.configured,
-      updated: false,
-      receiptConfigured: false,
-      receiptPersisted: false,
-      order: current,
-      error: `Cannot complete order from ${current.status}.`,
-    };
-  }
-
-  const receiptResult = await createMerchantIssuedReceipt({
-    merchantId: current.merchantId,
-    merchantName: current.merchantName,
-    location: current.location,
-    receiptNumber: current.id,
-    amountCents: current.subtotalCents,
-    currency: "USD",
-    category: current.items[0]?.name || "Merchant order",
-    purpose: "agentic_pos_order_receipt",
-    issuedBy: input.issuedBy || "Jiagon merchant dashboard",
-    memo: orderMemo(current),
-    origin: input.origin,
-  });
-
-  if (receiptResult.configured && !receiptResult.persisted) {
-    return {
-      configured: currentResult.configured,
-      updated: false,
-      receiptConfigured: receiptResult.configured,
-      receiptPersisted: receiptResult.persisted,
-      order: current,
-      receipt: publicMerchantReceipt(receiptResult.receipt),
-      claimToken: receiptResult.claimToken,
-      error: receiptResult.error || "Merchant receipt persistence failed.",
-    };
-  }
-
-  const nextOrder: MerchantOrder = {
-    ...current,
-    status: "completed",
-    proofLevel: proofLevelForStatus("completed"),
-    receiptId: receiptResult.receipt.id,
-    receiptClaimUrl: receiptResult.receipt.claimUrl,
-    receiptHash: receiptResult.receipt.receiptHash,
-    receiptIssuedAt: receiptResult.receipt.issuedAt,
-    updatedAt: new Date().toISOString(),
-  };
-
   const pool = getPool();
   if (!pool) {
+    const current = merchantOrderMemory().get(input.id) || null;
+    if (!current) {
+      return {
+        configured: false,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: null,
+        error: "Merchant order was not found.",
+      };
+    }
+    if (current.receiptClaimUrl) {
+      return {
+        configured: false,
+        updated: true,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+      };
+    }
+    if (!canTransitionOrderStatus(current.status, "completed")) {
+      return {
+        configured: false,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+        error: `Cannot complete order from ${current.status}.`,
+      };
+    }
+
+    const receiptResult = await createMerchantIssuedReceipt({
+      merchantId: current.merchantId,
+      merchantName: current.merchantName,
+      location: current.location,
+      receiptNumber: current.id,
+      amountCents: current.subtotalCents,
+      currency: "USD",
+      category: current.items[0]?.name || "Merchant order",
+      purpose: "agentic_pos_order_receipt",
+      issuedBy: input.issuedBy || "Jiagon merchant dashboard",
+      memo: orderMemo(current),
+      origin: input.origin,
+    });
+    const nextOrder: MerchantOrder = {
+      ...current,
+      status: "completed",
+      proofLevel: proofLevelForStatus("completed"),
+      receiptId: receiptResult.receipt.id,
+      receiptClaimUrl: receiptResult.receipt.claimUrl,
+      receiptHash: receiptResult.receipt.receiptHash,
+      receiptIssuedAt: receiptResult.receipt.issuedAt,
+      updatedAt: new Date().toISOString(),
+    };
     merchantOrderMemory().set(nextOrder.id, nextOrder);
     return {
       configured: false,
@@ -649,9 +631,111 @@ export async function completeMerchantOrderWithReceipt(input: {
     };
   }
 
+  let current: MerchantOrder | null = null;
+  const client = await pool.connect();
   try {
     await ensureMerchantOrderSchema(pool);
-    const result = await pool.query(
+    await client.query("begin");
+    const currentResult = await client.query(
+      `
+        select
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          customer_label,
+          source,
+          status,
+          items,
+          subtotal_cents,
+          subtotal_usd,
+          notes,
+          proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
+          created_at,
+          updated_at
+        from jiagon_merchant_orders
+        where id = $1
+        limit 1
+        for update
+      `,
+      [input.id],
+    );
+    current = currentResult.rows[0] ? mapMerchantOrderRow(currentResult.rows[0]) : null;
+    if (!current) {
+      await client.query("rollback");
+      return {
+        configured: true,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: null,
+        error: "Merchant order was not found.",
+      };
+    }
+    if (current.receiptClaimUrl) {
+      await client.query("commit");
+      return {
+        configured: true,
+        updated: true,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+      };
+    }
+    if (!canTransitionOrderStatus(current.status, "completed")) {
+      await client.query("rollback");
+      return {
+        configured: true,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+        error: `Cannot complete order from ${current.status}.`,
+      };
+    }
+
+    const receiptResult = await createMerchantIssuedReceipt({
+      merchantId: current.merchantId,
+      merchantName: current.merchantName,
+      location: current.location,
+      receiptNumber: current.id,
+      amountCents: current.subtotalCents,
+      currency: "USD",
+      category: current.items[0]?.name || "Merchant order",
+      purpose: "agentic_pos_order_receipt",
+      issuedBy: input.issuedBy || "Jiagon merchant dashboard",
+      memo: orderMemo(current),
+      origin: input.origin,
+    });
+    if (receiptResult.configured && !receiptResult.persisted) {
+      await client.query("rollback");
+      return {
+        configured: true,
+        updated: false,
+        receiptConfigured: receiptResult.configured,
+        receiptPersisted: receiptResult.persisted,
+        order: current,
+        receipt: publicMerchantReceipt(receiptResult.receipt),
+        claimToken: receiptResult.claimToken,
+        error: receiptResult.error || "Merchant receipt persistence failed.",
+      };
+    }
+
+    const nextOrder: MerchantOrder = {
+      ...current,
+      status: "completed",
+      proofLevel: proofLevelForStatus("completed"),
+      receiptId: receiptResult.receipt.id,
+      receiptClaimUrl: receiptResult.receipt.claimUrl,
+      receiptHash: receiptResult.receipt.receiptHash,
+      receiptIssuedAt: receiptResult.receipt.issuedAt,
+      updatedAt: new Date().toISOString(),
+    };
+    const result = await client.query(
       `
         update jiagon_merchant_orders
         set
@@ -700,6 +784,7 @@ export async function completeMerchantOrderWithReceipt(input: {
     );
 
     if (result.rowCount === 0) {
+      await client.query("rollback");
       return {
         configured: true,
         updated: false,
@@ -712,6 +797,7 @@ export async function completeMerchantOrderWithReceipt(input: {
       };
     }
 
+    await client.query("commit");
     return {
       configured: true,
       updated: true,
@@ -722,15 +808,20 @@ export async function completeMerchantOrderWithReceipt(input: {
       claimToken: receiptResult.claimToken,
     };
   } catch {
+    try {
+      await client.query("rollback");
+    } catch {
+      // Ignore rollback failures and return the primary error below.
+    }
     return {
       configured: true,
       updated: false,
-      receiptConfigured: receiptResult.configured,
-      receiptPersisted: receiptResult.persisted,
+      receiptConfigured: false,
+      receiptPersisted: false,
       order: current,
-      receipt: publicMerchantReceipt(receiptResult.receipt),
-      claimToken: receiptResult.claimToken,
       error: "Merchant order receipt attachment failed.",
     };
+  } finally {
+    client.release();
   }
 }

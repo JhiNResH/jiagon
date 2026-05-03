@@ -328,7 +328,7 @@ export default function MerchantPage() {
       };
     }
 
-    Promise.all(
+    Promise.allSettled(
       ordersWithClaims.map(async (order) => {
         const dataUrl = await QRCode.toDataURL(order.receiptClaimUrl || "", {
           width: 144,
@@ -342,11 +342,12 @@ export default function MerchantPage() {
         return [order.id, dataUrl] as const;
       }),
     )
-      .then((entries) => {
-        if (!cancelled) setOrderQrUrls(Object.fromEntries(entries));
-      })
-      .catch(() => {
-        if (!cancelled) setOrderQrUrls({});
+      .then((results) => {
+        if (cancelled) return;
+        const entries = results
+          .filter((result): result is PromiseFulfilledResult<readonly [string, string]> => result.status === "fulfilled")
+          .map((result) => result.value);
+        setOrderQrUrls(Object.fromEntries(entries));
       });
 
     return () => {
