@@ -18,6 +18,38 @@ type ClaimReceipt = {
   signature: string | null;
   signatureAlgorithm: string;
   issuedAt: string;
+  claimedAt?: string | null;
+  mintStatus?: "ready" | "prepared" | "minted" | string;
+  credentialId?: string;
+  credentialChain?: string;
+  standard?: string;
+  dataHash?: string;
+  storageUri?: string;
+  solanaOwner?: string;
+  credentialTx?: string | null;
+  explorerUrl?: string | null;
+  assetExplorerUrl?: string | null;
+  creditImpact?: {
+    eligible?: boolean;
+    unlockedCreditUsd?: number;
+    reason?: string;
+  };
+};
+
+type MintReceiptResponse = {
+  status?: string;
+  mode?: string;
+  credentialId?: string;
+  credentialChain?: string;
+  standard?: string;
+  dataHash?: string;
+  storageUri?: string;
+  solanaOwner?: string;
+  credentialTx?: string | null;
+  explorerUrl?: string | null;
+  assetExplorerUrl?: string | null;
+  note?: string;
+  creditImpact?: ClaimReceipt["creditImpact"];
 };
 
 const privyConfig: PrivyClientConfig = {
@@ -68,7 +100,7 @@ function getUserLabel(user: unknown, walletAddress?: string | null) {
   );
 }
 
-function mergeStoredMerchantReceipt(receipt: ClaimReceipt, privyUserId?: string | null) {
+function mergeStoredMerchantReceipt(receipt: ClaimReceipt, privyUserId?: string | null, updates: Partial<ClaimReceipt> = {}) {
   const storageKey = "jiagon:merchant-receipts";
   const accountUserStorageKey = "jiagon:account-user-id";
   let current: unknown = [];
@@ -87,14 +119,26 @@ function mergeStoredMerchantReceipt(receipt: ClaimReceipt, privyUserId?: string 
   const nextReceipt = {
     ...existingReceipt,
     ...receipt,
+    ...updates,
     source: "merchant-issued",
-    mintStatus: typeof existingReceipt?.mintStatus === "string" ? existingReceipt.mintStatus : "ready",
+    mintStatus:
+      typeof updates.mintStatus === "string"
+        ? updates.mintStatus
+        : typeof receipt.mintStatus === "string"
+          ? receipt.mintStatus
+          : typeof existingReceipt?.mintStatus === "string"
+            ? existingReceipt.mintStatus
+            : "ready",
     creditImpact:
-      existingReceipt?.creditImpact && typeof existingReceipt.creditImpact === "object"
-        ? existingReceipt.creditImpact
+      updates.creditImpact && typeof updates.creditImpact === "object"
+        ? updates.creditImpact
+        : receipt.creditImpact && typeof receipt.creditImpact === "object"
+          ? receipt.creditImpact
+          : existingReceipt?.creditImpact && typeof existingReceipt.creditImpact === "object"
+            ? existingReceipt.creditImpact
         : {
             eligible: false,
-            unlockedCreditUsd: 25,
+            unlockedCreditUsd: 0,
             reason: "Merchant-issued receipt must be minted as a Bubblegum cNFT before credit unlock.",
           },
   };
@@ -120,11 +164,18 @@ function ClaimContent({ token }: { token: string }) {
   const [receipt, setReceipt] = useState<ClaimReceipt | null>(null);
   const [loading, setLoading] = useState(true);
   const [claiming, setClaiming] = useState(false);
+  const [minting, setMinting] = useState(false);
   const [claimed, setClaimed] = useState(false);
+  const [mintResult, setMintResult] = useState<MintReceiptResponse | null>(null);
+  const [solanaOwner, setSolanaOwner] = useState("");
   const [error, setError] = useState("");
 
   const wallet = useMemo(() => getPrimaryWallet(user), [user]);
   const userLabel = useMemo(() => getUserLabel(user, wallet), [user, wallet]);
+  const receiptClaimed = claimed || receipt?.status === "claimed";
+  const receiptMinted = receipt?.mintStatus === "minted" || mintResult?.status === "minted";
+  const receiptPrepared = receipt?.mintStatus === "prepared" || mintResult?.status === "prepared";
+  const creditUnlocked = Boolean(receipt?.creditImpact?.eligible || mintResult?.creditImpact?.eligible);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,6 +198,14 @@ function ClaimContent({ token }: { token: string }) {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => {
+    try {
+      setSolanaOwner(window.localStorage.getItem("jiagon:solana-owner") || "");
+    } catch {
+      setSolanaOwner("");
+    }
+  }, []);
 
   const claimReceipt = async () => {
     if (!authenticated) {
@@ -172,10 +231,71 @@ function ClaimContent({ token }: { token: string }) {
       setReceipt(payload.receipt);
       mergeStoredMerchantReceipt(payload.receipt, (user as { id?: string } | null)?.id);
       setClaimed(true);
+      setMintResult(null);
     } catch (claimError) {
       setError(claimError instanceof Error ? claimError.message : "Unable to claim receipt.");
     } finally {
       setClaiming(false);
+    }
+  };
+
+  const mintReceipt = async () => {
+    if (!authenticated) {
+      await login();
+      return;
+    }
+    if (!receipt) return;
+
+    setMinting(true);
+    setError("");
+    setMintResult(null);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) throw new Error("Privy access token is required.");
+      const owner = solanaOwner.trim();
+      const response = await fetch("/api/solana/merchant-receipts/mint", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          receiptId: receipt.id,
+          receipt,
+          solanaOwner: owner,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || "Unable to mint Bubblegum receipt credential.");
+      try {
+        if (owner) {
+          window.localStorage.setItem("jiagon:solana-owner", owner);
+        }
+      } catch {
+        // Solana owner cache is best-effort; the accepted mint response is authoritative.
+      }
+
+      const updates: Partial<ClaimReceipt> = {
+        mintStatus: payload.status === "minted" ? "minted" : "prepared",
+        credentialId: payload.credentialId,
+        credentialChain: payload.credentialChain,
+        standard: payload.standard,
+        dataHash: payload.dataHash,
+        storageUri: payload.storageUri,
+        solanaOwner: payload.solanaOwner,
+        credentialTx: payload.credentialTx || null,
+        explorerUrl: payload.explorerUrl || null,
+        assetExplorerUrl: payload.assetExplorerUrl || null,
+        creditImpact: payload.creditImpact || receipt.creditImpact,
+      };
+      const nextReceipt = { ...receipt, ...updates };
+      setReceipt(nextReceipt);
+      setMintResult(payload);
+      mergeStoredMerchantReceipt(nextReceipt, (user as { id?: string } | null)?.id, updates);
+    } catch (mintError) {
+      setError(mintError instanceof Error ? mintError.message : "Unable to mint Bubblegum receipt credential.");
+    } finally {
+      setMinting(false);
     }
   };
 
@@ -205,15 +325,15 @@ function ClaimContent({ token }: { token: string }) {
               <strong>Review receipt</strong>
               <small>merchant signed</small>
             </div>
-            <div className={claimed || receipt?.status === "claimed" ? "is-active" : ""}>
+            <div className={receiptClaimed ? "is-active" : ""}>
               <span>2</span>
               <strong>Claim passport</strong>
               <small>Privy account</small>
             </div>
-            <div>
+            <div className={receiptMinted || receiptPrepared ? "is-active" : ""}>
               <span>3</span>
               <strong>Mint cNFT</strong>
-              <small>unlock credit</small>
+              <small>{creditUnlocked ? "credit unlocked" : receiptPrepared ? "prepared only" : "unlock credit"}</small>
             </div>
           </div>
 
@@ -251,7 +371,38 @@ function ClaimContent({ token }: { token: string }) {
           {error && <div className="claim-error">{error}</div>}
           {claimed && (
             <div className="claim-success">
-              Receipt claimed into your Jiagon account. Open Passport and mint the receipt cNFT to unlock deposit credit.
+              Receipt claimed into your Jiagon account. Mint the Bubblegum receipt credential here to unlock deposit
+              credit when onchain minting is configured.
+            </div>
+          )}
+          {receiptClaimed && (
+            <div className="claim-mint-panel">
+              <div>
+                <span>Solana receipt owner</span>
+                <strong>{receiptMinted ? "Receipt credential minted" : receiptPrepared ? "Receipt credential prepared" : "Ready for Bubblegum"}</strong>
+                <p>
+                  {creditUnlocked
+                    ? `This receipt unlocked $${receipt?.creditImpact?.unlockedCreditUsd || mintResult?.creditImpact?.unlockedCreditUsd || 25} of purpose-bound credit.`
+                    : receiptPrepared
+                      ? "Prepared is not an onchain mint. Configure the Bubblegum tree and minter to unlock credit."
+                      : "Paste a Solana owner public key, or use the configured demo owner if available."}
+                </p>
+              </div>
+              {!receiptMinted && (
+                <input
+                  value={solanaOwner}
+                  onChange={(event) => setSolanaOwner(event.target.value)}
+                  placeholder="Solana owner public key"
+                  aria-label="Solana receipt owner"
+                />
+              )}
+              {mintResult?.note && <small>{mintResult.note}</small>}
+              <div className="claim-mint-actions">
+                <button type="button" disabled={!ready || loading || minting || !receipt || receiptMinted} onClick={mintReceipt}>
+                  {minting ? "Minting receipt..." : receiptMinted ? "Minted" : receiptPrepared ? "Retry real mint" : "Mint Bubblegum receipt"}
+                </button>
+                {creditUnlocked ? <a href="/credit">Open Credit</a> : <a href="/passport">Open Passport</a>}
+              </div>
             </div>
           )}
 
@@ -267,7 +418,7 @@ function ClaimContent({ token }: { token: string }) {
                       ? "Already claimed"
                       : "Claim receipt"}
             </button>
-            <a href="/passport">{claimed || receipt?.status === "claimed" ? "Open Passport to mint" : "Open Passport"}</a>
+            <a href="/passport">Open Passport</a>
           </div>
         </section>
       </section>
@@ -303,5 +454,5 @@ export default function ClaimReceiptPage() {
 }
 
 const claimStyles = `
-.claim-page{min-height:100vh;background:radial-gradient(circle at 18% 0%,oklch(0.98 0.008 105) 0 260px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink);padding:24px clamp(18px,4vw,56px) 48px}.claim-shell{max-width:980px;margin:0 auto}.claim-header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:54px}.claim-brand{display:flex;align-items:center;gap:10px;color:var(--verified);text-decoration:none}.claim-brand img{width:54px;height:60px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(24,58,38,.10))}.claim-brand span{font-family:var(--display);font-size:34px;line-height:.9}.claim-nav{min-height:36px;display:inline-flex;align-items:center;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.992 0.004 100 / .75);padding:0 12px;color:var(--ink-muted);font-size:13px;font-weight:800;text-decoration:none}.claim-card{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .88);box-shadow:0 22px 80px rgba(24,58,38,.10);padding:clamp(20px,4vw,34px)}.claim-kicker{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-muted)}.claim-card h1{max-width:720px;margin:10px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(50px,7vw,84px);line-height:.9;color:var(--ink)}.claim-card p{max-width:680px;margin:16px 0 0;color:var(--ink-muted);font-size:16px;line-height:1.55}.claim-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:22px}.claim-flow div{border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);padding:12px;display:grid;gap:5px}.claim-flow div.is-active{background:var(--verified-soft);border-color:color-mix(in oklch,var(--verified) 26%,var(--rule))}.claim-flow span{width:24px;height:24px;border-radius:999px;display:grid;place-items:center;background:var(--bg);font-family:var(--mono);font-size:10px;font-weight:900;color:var(--ink)}.claim-flow strong{font-size:13px;color:var(--ink)}.claim-flow small{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-muted)}.claim-receipt{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:.5px solid var(--rule);border-radius:10px;overflow:hidden;margin-top:24px}.claim-receipt div{display:grid;gap:6px;padding:14px;border-right:.5px solid var(--rule);border-bottom:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .74)}.claim-receipt div:nth-child(3n){border-right:none}.claim-receipt div:nth-last-child(-n+3){border-bottom:none}.claim-receipt span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.claim-receipt strong{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:14px;color:var(--ink)}.claim-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}.claim-actions button,.claim-actions a{min-height:46px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:0 16px;font-family:var(--ui);font-size:14px;font-weight:900;text-decoration:none}.claim-actions button{border:none;background:var(--verified);color:var(--panel-text);cursor:pointer;box-shadow:0 10px 28px rgba(0,96,48,.16)}.claim-actions button:disabled{opacity:.52;cursor:not-allowed}.claim-actions a{border:.5px solid var(--rule);background:var(--receipt);color:var(--ink)}.claim-error,.claim-success{margin-top:14px;border-radius:8px;padding:11px 12px;font-size:13px;font-weight:750}.claim-error{border:.5px solid oklch(0.76 .08 32);background:oklch(0.96 .03 42);color:oklch(0.38 .08 36)}.claim-success{border:.5px solid color-mix(in oklch,var(--verified) 32%,var(--rule));background:var(--verified-soft);color:var(--verified)}@media(max-width:760px){.claim-header{align-items:flex-start}.claim-flow{grid-template-columns:1fr}.claim-receipt{grid-template-columns:1fr}.claim-receipt div{border-right:none}.claim-receipt div:nth-last-child(-n+3){border-bottom:.5px solid var(--rule)}.claim-receipt div:last-child{border-bottom:none}}
+.claim-page{min-height:100vh;background:radial-gradient(circle at 18% 0%,oklch(0.98 0.008 105) 0 260px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink);padding:24px clamp(18px,4vw,56px) 48px}.claim-shell{max-width:980px;margin:0 auto}.claim-header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:54px}.claim-brand{display:flex;align-items:center;gap:10px;color:var(--verified);text-decoration:none}.claim-brand img{width:54px;height:60px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(24,58,38,.10))}.claim-brand span{font-family:var(--display);font-size:34px;line-height:.9}.claim-nav{min-height:36px;display:inline-flex;align-items:center;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.992 0.004 100 / .75);padding:0 12px;color:var(--ink-muted);font-size:13px;font-weight:800;text-decoration:none}.claim-card{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .88);box-shadow:0 22px 80px rgba(24,58,38,.10);padding:clamp(20px,4vw,34px)}.claim-kicker{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-muted)}.claim-card h1{max-width:720px;margin:10px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(50px,7vw,84px);line-height:.9;color:var(--ink)}.claim-card p{max-width:680px;margin:16px 0 0;color:var(--ink-muted);font-size:16px;line-height:1.55}.claim-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:22px}.claim-flow div{border:.5px solid var(--rule);border-radius:10px;background:var(--receipt);padding:12px;display:grid;gap:5px}.claim-flow div.is-active{background:var(--verified-soft);border-color:color-mix(in oklch,var(--verified) 26%,var(--rule))}.claim-flow span{width:24px;height:24px;border-radius:999px;display:grid;place-items:center;background:var(--bg);font-family:var(--mono);font-size:10px;font-weight:900;color:var(--ink)}.claim-flow strong{font-size:13px;color:var(--ink)}.claim-flow small{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-muted)}.claim-receipt{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:.5px solid var(--rule);border-radius:10px;overflow:hidden;margin-top:24px}.claim-receipt div{display:grid;gap:6px;padding:14px;border-right:.5px solid var(--rule);border-bottom:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .74)}.claim-receipt div:nth-child(3n){border-right:none}.claim-receipt div:nth-last-child(-n+3){border-bottom:none}.claim-receipt span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.claim-receipt strong{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:14px;color:var(--ink)}.claim-mint-panel{display:grid;gap:12px;margin-top:16px;border:.5px solid color-mix(in oklch,var(--verified) 28%,var(--rule));border-radius:10px;background:oklch(0.975 0.014 130 / .78);padding:14px}.claim-mint-panel span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.claim-mint-panel strong{display:block;margin-top:4px;font-size:16px;color:var(--ink)}.claim-mint-panel p{margin:6px 0 0;font-size:13px;line-height:1.45}.claim-mint-panel input{width:100%;min-height:44px;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);padding:0 12px;color:var(--ink);font:700 13px var(--ui)}.claim-mint-panel small{display:block;color:var(--ink-muted);font-size:12px;line-height:1.45}.claim-mint-actions{display:flex;flex-wrap:wrap;gap:10px}.claim-mint-actions button,.claim-mint-actions a{min-height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;padding:0 14px;font-family:var(--ui);font-size:13px;font-weight:900;text-decoration:none}.claim-mint-actions button{border:none;background:var(--verified);color:var(--panel-text);cursor:pointer;box-shadow:0 10px 28px rgba(0,96,48,.14)}.claim-mint-actions button:disabled{opacity:.52;cursor:not-allowed}.claim-mint-actions a{border:.5px solid var(--rule);background:var(--receipt);color:var(--ink)}.claim-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}.claim-actions button,.claim-actions a{min-height:46px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:0 16px;font-family:var(--ui);font-size:14px;font-weight:900;text-decoration:none}.claim-actions button{border:none;background:var(--verified);color:var(--panel-text);cursor:pointer;box-shadow:0 10px 28px rgba(0,96,48,.16)}.claim-actions button:disabled{opacity:.52;cursor:not-allowed}.claim-actions a{border:.5px solid var(--rule);background:var(--receipt);color:var(--ink)}.claim-error,.claim-success{margin-top:14px;border-radius:8px;padding:11px 12px;font-size:13px;font-weight:750}.claim-error{border:.5px solid oklch(0.76 .08 32);background:oklch(0.96 .03 42);color:oklch(0.38 .08 36)}.claim-success{border:.5px solid color-mix(in oklch,var(--verified) 32%,var(--rule));background:var(--verified-soft);color:var(--verified)}@media(max-width:760px){.claim-header{align-items:flex-start}.claim-flow{grid-template-columns:1fr}.claim-receipt{grid-template-columns:1fr}.claim-receipt div{border-right:none}.claim-receipt div:nth-last-child(-n+3){border-bottom:.5px solid var(--rule)}.claim-receipt div:last-child{border-bottom:none}}
 `;
