@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { merchantProfileForId } from "@/lib/merchantCatalog";
+import { merchantProfileForId, type MenuItem, type MerchantProfile } from "@/lib/merchantCatalog";
 import {
   completeMerchantOrderWithReceipt,
   createMerchantOrder,
@@ -47,6 +47,10 @@ type ParsedCommand =
   | { kind: "menu"; merchantId: string }
   | { kind: "order"; merchantId: string; itemId: string; quantity: number; notes: string };
 
+type ParsedCallbackData =
+  | { action: "paid_done" | "cancel"; orderId: string }
+  | { action: "order_item"; merchantId: string; itemId: string };
+
 const DEFAULT_MERCHANT_ID = "raposa-coffee";
 const MAX_TELEGRAM_BODY_BYTES = 20_000;
 const DEFAULT_TELEGRAM_API_TIMEOUT_MS = 5_000;
@@ -91,6 +95,12 @@ function telegramOrderIdempotencyKey(payload: TelegramWebhookPayload, message: T
   const fromId = message.from?.id ?? "unknown-from";
   const messageId = message.message_id ?? "unknown-message";
   return `telegram:${merchantId}:message:${chatId}:${fromId}:${messageId}:${messageDigest(message.text || "")}`;
+}
+
+function telegramCallbackOrderIdempotencyKey(callback: TelegramCallbackQuery, merchantId: string, itemId: string) {
+  const chatId = callback.message?.chat?.id ?? "unknown-chat";
+  const fromId = callback.from?.id ?? "unknown-from";
+  return `telegram:${merchantId}:callback:${chatId}:${fromId}:${callback.id || "unknown-callback"}:${itemId}`;
 }
 
 function safeEqual(left: string, right: string) {
@@ -154,28 +164,48 @@ function menuText(merchantId: string) {
     `${merchant.name} menu`,
     items,
     "",
-    `Order: /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
+    "Tap an item below, or use:",
+    ` /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
     "After pickup, tap the NFC receipt card or scan the QR claim link at the counter.",
   ].join("\n");
 }
 
 function helpText(merchantId = DEFAULT_MERCHANT_ID) {
+  const merchant = merchantProfileForId(merchantId);
   return [
     "Jiagon Telegram POS",
     "",
-    `Menu: /menu ${merchantId}`,
-    `Order: /order ${merchantId} espresso 1`,
+    `${merchant.name}: tap a drink below to create a pickup order.`,
+    `Manual fallback: /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
     "",
     "Telegram creates the order. NFC or QR is used at pickup to claim the receipt into Passport.",
   ].join("\n");
 }
 
-function telegramResponse(chatId: number | string | null, text: string, status = 200) {
+function menuKeyboard(merchantId: string) {
+  const merchant = merchantProfileForId(merchantId);
+  return {
+    inline_keyboard: merchant.menu.map((item) => [
+      {
+        text: `${item.name} · $${item.amountUsd}`,
+        callback_data: `order_item:${merchant.id}:${item.id}`,
+      },
+    ]),
+  };
+}
+
+function telegramResponse(
+  chatId: number | string | null,
+  text: string,
+  status = 200,
+  extra: Record<string, unknown> = {},
+) {
   return Response.json(
     {
       method: "sendMessage",
       chat_id: chatId,
       text,
+      ...extra,
     },
     { status },
   );
@@ -285,10 +315,16 @@ async function notifyMerchantGroup(order: MerchantOrder) {
   });
 }
 
-function callbackData(value: unknown) {
+function callbackData(value: unknown): ParsedCallbackData | null {
   if (typeof value !== "string") return null;
-  const match = /^(paid_done|cancel):(ord-[a-f0-9]{16})$/.exec(value.trim());
-  return match ? { action: match[1], orderId: match[2] } : null;
+  const trimmed = value.trim();
+  const staffMatch = /^(paid_done|cancel):(ord-[a-f0-9]{16})$/.exec(trimmed);
+  if (staffMatch) {
+    return { action: staffMatch[1] as "paid_done" | "cancel", orderId: staffMatch[2] };
+  }
+
+  const itemMatch = /^order_item:([a-z0-9-]{1,32}):([a-z0-9-]{1,32})$/.exec(trimmed);
+  return itemMatch ? { action: "order_item", merchantId: itemMatch[1], itemId: itemMatch[2] } : null;
 }
 
 function sameTelegramChat(left: number | string | null, right: string) {
@@ -305,6 +341,34 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
       show_alert: false,
     });
     return telegramResponse(chatId, "Unsupported Jiagon order action.", 200);
+  }
+
+  if (parsed.action === "order_item") {
+    const merchant = merchantProfileForId(parsed.merchantId);
+    const menuItem = merchant.menu.find((item) => item.id === parsed.itemId);
+    if (!menuItem) {
+      await sendTelegramMethod("answerCallbackQuery", {
+        callback_query_id: callback.id,
+        text: "Item unavailable",
+        show_alert: false,
+      });
+      return telegramResponse(chatId, menuText(merchant.id), 200, { reply_markup: menuKeyboard(merchant.id) });
+    }
+
+    await sendTelegramMethod("answerCallbackQuery", {
+      callback_query_id: callback.id,
+      text: `Ordering ${menuItem.name}`,
+      show_alert: false,
+    });
+    return createTelegramOrderReply({
+      chatId,
+      customer: callback.from,
+      idempotencyKey: telegramCallbackOrderIdempotencyKey(callback, merchant.id, menuItem.id),
+      merchant,
+      menuItem,
+      quantity: 1,
+      notes: null,
+    });
   }
 
   const expectedGroupChatId = merchantGroupChatId();
@@ -365,65 +429,27 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
   return telegramResponse(chatId, text, 200);
 }
 
-export async function POST(request: Request) {
-  const authError = validateTelegramSecret(request);
-  if (authError) {
-    return Response.json({ error: authError }, { status: authError.startsWith("Invalid") ? 401 : 503 });
-  }
-
-  if (!request.headers.get("content-type")?.toLowerCase().includes("application/json")) {
-    return Response.json({ error: "Telegram webhook requires JSON." }, { status: 415 });
-  }
-
-  let payload: TelegramWebhookPayload;
-  try {
-    const rawBody = await request.text();
-    const rawBodyBytes = new TextEncoder().encode(rawBody).length;
-    if (rawBodyBytes > MAX_TELEGRAM_BODY_BYTES) {
-      return Response.json({ error: "Telegram webhook payload is too large." }, { status: 413 });
-    }
-    const parsed: unknown = JSON.parse(rawBody);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return Response.json({ error: "Telegram webhook payload must be an object." }, { status: 400 });
-    }
-    payload = parsed as TelegramWebhookPayload;
-  } catch {
-    return Response.json({ error: "Invalid Telegram webhook JSON." }, { status: 400 });
-  }
-
-  if (payload.callback_query) {
-    return handleCallback(request, payload.callback_query);
-  }
-
-  const message = payload.message;
-  const chatId = message?.chat?.id ?? null;
-  const text = typeof message?.text === "string" ? message.text : "";
-  if (!message || !text) {
-    return telegramResponse(chatId, helpText(), 200);
-  }
-
-  const command = parseCommand(text);
-  if (command.kind === "help") {
-    return telegramResponse(chatId, helpText(command.merchantId), 200);
-  }
-  if (command.kind === "menu") {
-    return telegramResponse(chatId, menuText(command.merchantId), 200);
-  }
-
-  const merchant = merchantProfileForId(command.merchantId);
-  const menuItem = merchant.menu.find((item) => item.id === command.itemId);
-  if (!menuItem) {
-    return telegramResponse(
-      chatId,
-      [`Item not found: ${command.itemId || "(missing)"}`, "", menuText(command.merchantId)].join("\n"),
-      200,
-    );
-  }
-
+async function createTelegramOrderReply({
+  chatId,
+  customer,
+  idempotencyKey,
+  merchant,
+  menuItem,
+  quantity,
+  notes,
+}: {
+  chatId: number | string | null;
+  customer?: TelegramUser;
+  idempotencyKey: string;
+  merchant: MerchantProfile;
+  menuItem: MenuItem;
+  quantity: number;
+  notes: string | null;
+}) {
   const item: MerchantOrderItem = {
     id: menuItem.id,
     name: menuItem.name,
-    quantity: command.quantity,
+    quantity,
     unitAmountCents: dollarsToCents(menuItem.amountUsd),
   };
   if (item.unitAmountCents <= 0) {
@@ -431,14 +457,14 @@ export async function POST(request: Request) {
   }
 
   const result = await createMerchantOrder({
-    idempotencyKey: telegramOrderIdempotencyKey(payload, message, merchant.id),
+    idempotencyKey,
     merchantId: merchant.id,
     merchantName: merchant.name,
     location: merchant.location,
-    customerLabel: telegramCustomerLabel(message?.from),
+    customerLabel: telegramCustomerLabel(customer),
     source: "telegram",
     items: [item],
-    notes: command.notes || null,
+    notes,
   });
 
   if (result.configured && !result.persisted) {
@@ -498,5 +524,73 @@ export async function POST(request: Request) {
     "After staff taps Paid + Done, use Telegram, NFC, or QR at pickup to claim the receipt into Jiagon Passport.",
   ].join("\n");
 
-  return telegramResponse(chatId, reply);
+  return telegramResponse(chatId, reply, 200, { reply_markup: menuKeyboard(merchant.id) });
+}
+
+export async function POST(request: Request) {
+  const authError = validateTelegramSecret(request);
+  if (authError) {
+    return Response.json({ error: authError }, { status: authError.startsWith("Invalid") ? 401 : 503 });
+  }
+
+  if (!request.headers.get("content-type")?.toLowerCase().includes("application/json")) {
+    return Response.json({ error: "Telegram webhook requires JSON." }, { status: 415 });
+  }
+
+  let payload: TelegramWebhookPayload;
+  try {
+    const rawBody = await request.text();
+    const rawBodyBytes = new TextEncoder().encode(rawBody).length;
+    if (rawBodyBytes > MAX_TELEGRAM_BODY_BYTES) {
+      return Response.json({ error: "Telegram webhook payload is too large." }, { status: 413 });
+    }
+    const parsed: unknown = JSON.parse(rawBody);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return Response.json({ error: "Telegram webhook payload must be an object." }, { status: 400 });
+    }
+    payload = parsed as TelegramWebhookPayload;
+  } catch {
+    return Response.json({ error: "Invalid Telegram webhook JSON." }, { status: 400 });
+  }
+
+  if (payload.callback_query) {
+    return handleCallback(request, payload.callback_query);
+  }
+
+  const message = payload.message;
+  const chatId = message?.chat?.id ?? null;
+  const text = typeof message?.text === "string" ? message.text : "";
+  if (!message || !text) {
+    return telegramResponse(chatId, helpText(), 200, { reply_markup: menuKeyboard(DEFAULT_MERCHANT_ID) });
+  }
+
+  const command = parseCommand(text);
+  if (command.kind === "help") {
+    const merchantId = command.merchantId || DEFAULT_MERCHANT_ID;
+    return telegramResponse(chatId, helpText(merchantId), 200, { reply_markup: menuKeyboard(merchantId) });
+  }
+  if (command.kind === "menu") {
+    return telegramResponse(chatId, menuText(command.merchantId), 200, { reply_markup: menuKeyboard(command.merchantId) });
+  }
+
+  const merchant = merchantProfileForId(command.merchantId);
+  const menuItem = merchant.menu.find((item) => item.id === command.itemId);
+  if (!menuItem) {
+    return telegramResponse(
+      chatId,
+      [`Item not found: ${command.itemId || "(missing)"}`, "", menuText(command.merchantId)].join("\n"),
+      200,
+      { reply_markup: menuKeyboard(command.merchantId) },
+    );
+  }
+
+  return createTelegramOrderReply({
+    chatId,
+    customer: message?.from,
+    idempotencyKey: telegramOrderIdempotencyKey(payload, message, merchant.id),
+    merchant,
+    menuItem,
+    quantity: command.quantity,
+    notes: command.notes || null,
+  });
 }
