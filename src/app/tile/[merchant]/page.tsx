@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { fallbackMenu, merchantProfileForId } from "@/lib/merchantCatalog";
 
 type MerchantOrderResponse = {
   order?: {
     id: string;
+    pickupCode: string;
     status: string;
     subtotalUsd: string;
     proofLevel: string;
@@ -45,6 +46,28 @@ export default function TilePage() {
     return `/merchant?${query.toString()}`;
   }, [merchant.category, merchant.location, merchant.name, merchant.purpose, merchantId]);
 
+  async function recordPilotEvent(eventName: "qr_opened" | "order_started") {
+    try {
+      await fetch("/api/merchant/pilot-events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          merchantId,
+          eventName,
+          source: eventName === "qr_opened" ? "tile-open" : "tile-order",
+        }),
+      });
+    } catch {
+      // Pilot metrics should never block customer ordering.
+    }
+  }
+
+  useEffect(() => {
+    void recordPilotEvent("qr_opened");
+    // Record only when the tile/NFC landing page changes merchant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [merchantId]);
+
   async function submitOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -52,6 +75,7 @@ export default function TilePage() {
     setOrder(null);
 
     try {
+      void recordPilotEvent("order_started");
       const response = await fetch("/api/merchant/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -185,7 +209,7 @@ export default function TilePage() {
             {error ? <p className="tile-alert error">{error}</p> : null}
             {order ? (
               <p className="tile-alert success">
-                Order {order.id} is pending merchant confirmation. Receipt proof upgrades after completion.
+                Order #{order.pickupCode} is pending merchant confirmation. Show this code at pickup; receipt proof upgrades after staff marks Paid + Done.
               </p>
             ) : null}
 

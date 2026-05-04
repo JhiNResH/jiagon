@@ -37,9 +37,11 @@ type MerchantOrderItem = {
 };
 
 type MerchantOrderStatus = "pending" | "accepted" | "completed" | "cancelled";
+type MerchantOrderPaymentStatus = "waiting_counter_payment" | "merchant_attested_paid" | "cancelled";
 
 type MerchantOrder = {
   id: string;
+  pickupCode: string;
   merchantId: string;
   merchantName: string;
   location: string | null;
@@ -47,15 +49,46 @@ type MerchantOrder = {
   source: "tile" | "telegram" | "web";
   status: MerchantOrderStatus;
   items: MerchantOrderItem[];
+  subtotalCents: number;
   subtotalUsd: string;
+  paymentProvider: "external_pos";
+  paymentStatus: MerchantOrderPaymentStatus;
   notes: string | null;
   proofLevel: string;
   receiptId: string | null;
   receiptClaimUrl: string | null;
   receiptHash: string | null;
   receiptIssuedAt: string | null;
+  receiptClaimedAt: string | null;
+  receiptClaimedBy: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type PilotMetrics = {
+  merchantId: string;
+  qrOpened: number;
+  orderStarted: number;
+  orderConfirmed: number;
+  merchantDone: number;
+  receiptClaimed: number;
+  reviewSubmitted: number;
+  estimatedGmvUsd: string;
+};
+
+type CreditMemo = {
+  merchantId: string;
+  merchantName: string;
+  title: string;
+  telegramOrders: number;
+  merchantCompleted: number;
+  customerClaimed: number;
+  receiptGatedReviews: number;
+  estimatedGmvUsd: string;
+  proofLevel: string;
+  suggestedNextProofUpgrade: string;
+  suggestedPurposeCredit: string;
+  note: string;
 };
 
 type MerchantOrdersResponse = {
@@ -68,6 +101,16 @@ type MerchantOrdersResponse = {
     receiptHash: string;
     claimUrl: string;
   } | null;
+  error?: string;
+};
+
+type PilotMetricsResponse = {
+  metrics?: PilotMetrics;
+  error?: string;
+};
+
+type CreditMemoResponse = {
+  memo?: CreditMemo;
   error?: string;
 };
 
@@ -112,6 +155,12 @@ function statusLabel(status: MerchantOrderStatus) {
   return "Pending";
 }
 
+function paymentStatusLabel(status: MerchantOrderPaymentStatus) {
+  if (status === "merchant_attested_paid") return "Paid via counter POS";
+  if (status === "cancelled") return "Cancelled";
+  return "Waiting counter payment";
+}
+
 export default function MerchantPage() {
   const [form, setForm] = useState(merchantFromQuery);
   const [issuerKey, setIssuerKey] = useState("");
@@ -128,6 +177,10 @@ export default function MerchantPage() {
   const [orderStatusFilter, setOrderStatusFilter] = useState<MerchantOrderStatus | "all">("pending");
   const [orderQrUrls, setOrderQrUrls] = useState<Record<string, string>>({});
   const [copiedOrderId, setCopiedOrderId] = useState("");
+  const [pilotMetrics, setPilotMetrics] = useState<PilotMetrics | null>(null);
+  const [creditMemo, setCreditMemo] = useState<CreditMemo | null>(null);
+  const [pilotBusy, setPilotBusy] = useState(false);
+  const [pilotError, setPilotError] = useState("");
 
   const canSubmit = useMemo(() => {
     return form.merchantName.trim().length >= 2 && Number(form.amountUsd) > 0 && !busy;
@@ -170,6 +223,50 @@ export default function MerchantPage() {
     }
   };
 
+  const loadPilotSummary = async () => {
+    setPilotBusy(true);
+    setPilotError("");
+
+    try {
+      const query = new URLSearchParams({
+        merchantId: form.merchantId,
+      });
+      const memoQuery = new URLSearchParams({
+        merchantId: form.merchantId,
+        merchantName: form.merchantName,
+      });
+
+      const [metricsResponse, memoResponse] = await Promise.all([
+        fetch(`/api/merchant/pilot-metrics?${query.toString()}`, {
+          headers: orderHeaders(),
+        }),
+        fetch(`/api/merchant/credit-memo?${memoQuery.toString()}`, {
+          headers: orderHeaders(),
+        }),
+      ]);
+      const [metricsPayload, memoPayload] = await Promise.all([
+        metricsResponse.json() as Promise<PilotMetricsResponse>,
+        memoResponse.json() as Promise<CreditMemoResponse>,
+      ]);
+
+      if (!metricsResponse.ok) {
+        throw new Error(metricsPayload.error || "Unable to load pilot metrics.");
+      }
+      if (!memoResponse.ok) {
+        throw new Error(memoPayload.error || "Unable to load credit memo.");
+      }
+
+      setPilotMetrics(metricsPayload.metrics || null);
+      setCreditMemo(memoPayload.memo || null);
+    } catch (loadError) {
+      setPilotMetrics(null);
+      setCreditMemo(null);
+      setPilotError(loadError instanceof Error ? loadError.message : "Unable to load pilot summary.");
+    } finally {
+      setPilotBusy(false);
+    }
+  };
+
   const updateOrderStatus = async (orderId: string, status: MerchantOrderStatus) => {
     if (status === "completed") {
       await completeOrder(orderId);
@@ -200,6 +297,7 @@ export default function MerchantPage() {
             ? nextOrders
             : nextOrders.filter((order) => order.id !== updatedOrder.id);
         });
+        void loadPilotSummary();
       }
     } catch (actionError) {
       setOrdersError(actionError instanceof Error ? actionError.message : "Unable to update merchant order.");
@@ -235,6 +333,7 @@ export default function MerchantPage() {
             ? current.map((order) => (order.id === updatedOrder.id ? updatedOrder : order))
             : [updatedOrder, ...current];
         });
+        void loadPilotSummary();
       }
     } catch (actionError) {
       setOrdersError(actionError instanceof Error ? actionError.message : "Unable to complete merchant order.");
@@ -314,6 +413,7 @@ export default function MerchantPage() {
 
   useEffect(() => {
     loadOrders();
+    loadPilotSummary();
     // The first load intentionally uses the initial query-derived merchant profile.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -360,6 +460,7 @@ export default function MerchantPage() {
   return (
     <main className="merchant-page">
       <style>{merchantStyles}</style>
+      <style>{merchantEnhancementStyles}</style>
       <section className="merchant-shell">
         <header className="merchant-header">
           <a className="merchant-brand" href="/">
@@ -473,13 +574,68 @@ export default function MerchantPage() {
                   <option value="all">All</option>
                 </select>
               </label>
-              <button type="button" onClick={loadOrders} disabled={ordersBusy}>
-                {ordersBusy ? "Refreshing..." : "Refresh"}
+              <button
+                type="button"
+                onClick={() => {
+                  void loadOrders();
+                  void loadPilotSummary();
+                }}
+                disabled={ordersBusy || pilotBusy}
+              >
+                {ordersBusy || pilotBusy ? "Refreshing..." : "Refresh"}
               </button>
             </div>
           </div>
 
+          <div className="merchant-pilot-grid">
+            <div>
+              <span>QR opens</span>
+              <strong>{pilotMetrics?.qrOpened ?? 0}</strong>
+            </div>
+            <div>
+              <span>Orders</span>
+              <strong>{pilotMetrics?.orderConfirmed ?? 0}</strong>
+            </div>
+            <div>
+              <span>Paid + Done</span>
+              <strong>{pilotMetrics?.merchantDone ?? 0}</strong>
+            </div>
+            <div>
+              <span>Claimed</span>
+              <strong>{pilotMetrics?.receiptClaimed ?? 0}</strong>
+            </div>
+            <div>
+              <span>Reviews</span>
+              <strong>{pilotMetrics?.reviewSubmitted ?? 0}</strong>
+            </div>
+            <div>
+              <span>GMV</span>
+              <strong>${pilotMetrics?.estimatedGmvUsd ?? "0.00"}</strong>
+            </div>
+          </div>
+
+          {creditMemo && (
+            <section className="merchant-credit-memo">
+              <div>
+                <div className="merchant-kicker">Event credit memo</div>
+                <h3>{creditMemo.proofLevel}</h3>
+                <p>{creditMemo.note}</p>
+              </div>
+              <div className="merchant-credit-memo-grid">
+                <div>
+                  <span>Next proof</span>
+                  <strong>{creditMemo.suggestedNextProofUpgrade}</strong>
+                </div>
+                <div>
+                  <span>Purpose credit</span>
+                  <strong>{creditMemo.suggestedPurposeCredit}</strong>
+                </div>
+              </div>
+            </section>
+          )}
+
           {ordersError && <div className="merchant-error">{ordersError}</div>}
+          {pilotError && <div className="merchant-error">{pilotError}</div>}
 
           <div className="merchant-order-list">
             {orders.length === 0 ? (
@@ -497,14 +653,17 @@ export default function MerchantPage() {
                     <div className="merchant-order-main">
                       <div>
                         <span className={`merchant-status ${order.status}`}>{statusLabel(order.status)}</span>
+                        <span className="merchant-pickup-code">#{order.pickupCode}</span>
                         <strong>{order.customerLabel || "Walk-in customer"}</strong>
                       </div>
                       <p>{orderLineItems(order.items)}</p>
                       {order.notes && <p className="merchant-order-note">{order.notes}</p>}
+                      <p className="merchant-order-note">{paymentStatusLabel(order.paymentStatus)}</p>
                     </div>
                     <div className="merchant-order-meta">
                       <span>${order.subtotalUsd}</span>
                       <code>{order.proofLevel}</code>
+                      {order.receiptClaimedAt && <code>customer_claimed</code>}
                       <small>{new Date(order.createdAt).toLocaleString()}</small>
                     </div>
                     <div className="merchant-order-actions">
@@ -523,7 +682,7 @@ export default function MerchantPage() {
                           disabled={Boolean(orderActionId)}
                           onClick={() => updateOrderStatus(order.id, "completed")}
                         >
-                          {orderActionId === `${order.id}:completed` ? "Completing..." : "Complete"}
+                          {orderActionId === `${order.id}:completed` ? "Completing..." : "Paid + Done"}
                         </button>
                       )}
                       {canCancel && (
@@ -552,6 +711,9 @@ export default function MerchantPage() {
                             </button>
                             <a href={order.receiptClaimUrl} target="_blank" rel="noreferrer">Open claim</a>
                           </div>
+                          {order.receiptClaimedAt && (
+                            <small>Claimed {new Date(order.receiptClaimedAt).toLocaleString()}</small>
+                          )}
                         </div>
                       </div>
                     )}
@@ -619,4 +781,22 @@ export default function MerchantPage() {
 
 const merchantStyles = `
 .merchant-page{min-height:100vh;background:radial-gradient(circle at 12% 0%,oklch(0.98 0.008 105) 0 260px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink);padding:24px clamp(18px,4vw,56px) 48px}.merchant-shell{max-width:1160px;margin:0 auto}.merchant-header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:44px}.merchant-brand{display:flex;align-items:center;gap:10px;color:var(--verified);text-decoration:none}.merchant-brand img{width:54px;height:60px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(24,58,38,.10))}.merchant-brand span{font-family:var(--display);font-size:34px;line-height:.9}.merchant-header nav{display:flex;gap:8px}.merchant-header nav a{min-height:36px;display:inline-flex;align-items:center;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.992 0.004 100 / .75);padding:0 12px;color:var(--ink-muted);font-size:13px;font-weight:800;text-decoration:none}.merchant-grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(420px,1fr);gap:28px;align-items:start}.merchant-copy{padding-top:26px}.merchant-kicker{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-muted)}.merchant-copy h1{max-width:520px;margin:10px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(52px,7vw,86px);line-height:.9;color:var(--ink)}.merchant-copy p{max-width:520px;margin:18px 0 0;color:var(--ink-muted);font-size:16px;line-height:1.55}.merchant-flow{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.merchant-flow span{border:.5px solid var(--rule);border-radius:999px;background:oklch(0.992 0.004 100 / .72);padding:8px 10px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--verified)}.merchant-card,.merchant-result,.merchant-order-panel{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .86);box-shadow:0 22px 80px rgba(24,58,38,.10);padding:18px}.merchant-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.merchant-form-grid label{display:grid;gap:6px}.merchant-form-grid span,.merchant-order-controls span{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.75px;color:var(--ink-muted)}.merchant-form-grid input,.merchant-form-grid textarea,.merchant-order-controls input,.merchant-order-controls select{width:100%;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);color:var(--ink);padding:11px 12px;font-family:var(--ui);font-size:14px;outline:none}.merchant-form-grid textarea{min-height:78px;resize:vertical}.merchant-form-grid input:focus,.merchant-form-grid textarea:focus,.merchant-order-controls input:focus,.merchant-order-controls select:focus{border-color:color-mix(in oklch,var(--verified) 48%,var(--rule));box-shadow:0 0 0 3px color-mix(in oklch,var(--verified-soft) 64%,transparent)}.merchant-wide{grid-column:1/-1}.merchant-primary{width:100%;min-height:48px;margin-top:14px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-family:var(--ui);font-size:14px;font-weight:900;cursor:pointer;box-shadow:0 10px 28px rgba(0,96,48,.16)}.merchant-primary:disabled{opacity:.52;cursor:not-allowed}.merchant-error{margin-top:12px;border:.5px solid oklch(0.76 .08 32);border-radius:8px;background:oklch(0.96 .03 42);color:oklch(0.38 .08 36);padding:10px 12px;font-size:13px;font-weight:750}.merchant-result,.merchant-order-panel{margin-top:26px;display:grid;gap:16px}.merchant-result h2,.merchant-order-panel h2{margin:6px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:38px;line-height:.95;color:var(--ink)}.merchant-result p,.merchant-order-panel p{margin:8px 0 0;color:var(--ink-muted);font-size:14px}.merchant-claim{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}.merchant-claim code{min-height:44px;display:flex;align-items:center;overflow:auto;border:.5px solid var(--rule);border-radius:8px;background:var(--surface-raised);padding:0 12px;color:var(--ink);font-family:var(--mono);font-size:11px}.merchant-claim button{border:none;border-radius:8px;background:var(--verified);color:var(--panel-text);padding:0 14px;font-weight:850;cursor:pointer}.merchant-qr-wrap{display:grid;grid-template-columns:180px minmax(0,1fr);gap:14px;align-items:center;border:.5px solid var(--rule);border-radius:10px;background:var(--surface-raised);padding:12px}.merchant-qr-wrap img,.merchant-qr-placeholder{width:180px;height:180px;border-radius:8px;background:white}.merchant-qr-placeholder{display:grid;place-items:center;border:.5px dashed var(--rule);font-family:var(--mono);font-size:13px;color:var(--ink-muted)}.merchant-qr-wrap code{display:block;margin-top:8px;overflow:auto;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);padding:10px;font-family:var(--mono);font-size:11px;color:var(--ink)}.merchant-qr-wrap p{margin:9px 0 0;color:var(--ink-muted);font-size:13px;line-height:1.45}.merchant-proof-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:.5px solid var(--rule);border-radius:10px;overflow:hidden}.merchant-proof-grid div{display:grid;gap:5px;padding:12px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .76)}.merchant-proof-grid div:last-child{border-right:none}.merchant-proof-grid span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.merchant-proof-grid strong{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;color:var(--ink)}.merchant-order-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,.8fr);gap:18px;align-items:end}.merchant-order-controls{display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:10px;align-items:end}.merchant-order-controls label{display:grid;gap:6px}.merchant-order-controls button,.merchant-order-actions button{min-height:42px;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);color:var(--ink);padding:0 12px;font-weight:900;cursor:pointer}.merchant-order-controls button{background:var(--verified);color:var(--panel-text);border:none}.merchant-order-controls button:disabled,.merchant-order-actions button:disabled{opacity:.58;cursor:not-allowed}.merchant-order-list{display:grid;gap:10px}.merchant-empty{display:grid;gap:5px;border:.5px dashed var(--rule);border-radius:10px;background:oklch(0.985 0.005 95 / .62);padding:18px}.merchant-empty strong{font-size:15px;color:var(--ink)}.merchant-empty span{font-size:13px;color:var(--ink-muted)}.merchant-order-row{display:grid;grid-template-columns:minmax(0,1.35fr) 190px minmax(210px,.7fr);gap:12px;align-items:center;border:.5px solid var(--rule);border-radius:10px;background:oklch(0.985 0.005 95 / .76);padding:12px}.merchant-order-main{display:grid;gap:7px}.merchant-order-main>div{display:flex;align-items:center;gap:8px}.merchant-order-main strong{font-size:16px;color:var(--ink)}.merchant-order-main p{margin:0;color:var(--ink-muted);font-size:13px;line-height:1.4}.merchant-order-note{color:var(--ink)!important}.merchant-status{display:inline-flex;align-items:center;min-height:24px;border-radius:999px;padding:0 8px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.7px;background:oklch(0.93 0.018 95);color:var(--ink-muted)}.merchant-status.accepted{background:oklch(0.95 0.032 145);color:var(--verified)}.merchant-status.completed{background:oklch(0.93 0.05 150);color:var(--verified)}.merchant-status.cancelled{background:oklch(0.94 0.024 38);color:oklch(0.42 0.09 36)}.merchant-order-meta{display:grid;gap:5px}.merchant-order-meta span{font-size:22px;font-weight:950;color:var(--ink)}.merchant-order-meta code{overflow:hidden;text-overflow:ellipsis;border:.5px solid var(--rule);border-radius:7px;background:var(--receipt);padding:6px 7px;font-family:var(--mono);font-size:10px;color:var(--verified)}.merchant-order-meta small{font-size:11px;color:var(--ink-muted)}.merchant-order-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.merchant-order-actions button:nth-child(2){background:var(--verified);color:var(--panel-text);border:none}.merchant-queue-mode{justify-self:end;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.merchant-order-claim{grid-column:1/-1;display:grid;grid-template-columns:116px minmax(0,1fr);gap:12px;align-items:center;border:.5px solid var(--rule);border-radius:10px;background:oklch(0.96 0.026 145 / .72);padding:10px}.merchant-order-claim img,.merchant-order-qr-placeholder{width:116px;height:116px;border-radius:8px;background:white}.merchant-order-qr-placeholder{display:grid;place-items:center;border:.5px dashed var(--rule);font-family:var(--mono);font-size:12px;color:var(--ink-muted)}.merchant-order-claim span{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.75px;color:var(--verified)}.merchant-order-claim code{display:block;margin-top:7px;overflow:auto;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);padding:9px;font-family:var(--mono);font-size:11px;color:var(--ink)}.merchant-order-claim-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}.merchant-order-claim-actions button,.merchant-order-claim-actions a{min-height:36px;display:inline-flex;align-items:center;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);color:var(--ink);padding:0 11px;font-size:12px;font-weight:900;text-decoration:none;cursor:pointer}.merchant-order-claim-actions a{background:var(--verified);color:var(--panel-text);border:none}@media(max-width:900px){.merchant-header{align-items:flex-start}.merchant-grid,.merchant-order-top,.merchant-order-controls,.merchant-order-row{grid-template-columns:1fr}.merchant-copy{padding-top:0}.merchant-form-grid,.merchant-claim,.merchant-qr-wrap,.merchant-proof-grid{grid-template-columns:1fr}.merchant-order-actions{justify-content:flex-start}.merchant-proof-grid div{border-right:none;border-bottom:.5px solid var(--rule)}.merchant-proof-grid div:last-child{border-bottom:none}}
+`;
+
+const merchantEnhancementStyles = `
+.merchant-pilot-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border:.5px solid var(--rule);border-radius:10px;overflow:hidden;background:oklch(0.985 0.005 95 / .68)}
+.merchant-pilot-grid div{display:grid;gap:5px;padding:12px;border-right:.5px solid var(--rule)}
+.merchant-pilot-grid div:last-child{border-right:none}
+.merchant-pilot-grid span,.merchant-credit-memo-grid span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}
+.merchant-pilot-grid strong{font-size:23px;line-height:1;color:var(--ink)}
+.merchant-credit-memo{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.85fr);gap:14px;align-items:center;border:.5px solid var(--rule);border-radius:10px;background:oklch(0.96 0.026 145 / .58);padding:14px}
+.merchant-credit-memo h3{margin:5px 0 0;font-family:var(--mono);font-size:14px;letter-spacing:.3px;color:var(--verified)}
+.merchant-credit-memo p{margin:7px 0 0!important}
+.merchant-credit-memo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.merchant-credit-memo-grid div{display:grid;gap:5px;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);padding:10px}
+.merchant-credit-memo-grid strong{font-size:13px;line-height:1.35;color:var(--ink)}
+.merchant-order-main>div{flex-wrap:wrap}
+.merchant-pickup-code{display:inline-flex;align-items:center;min-height:24px;border-radius:999px;padding:0 8px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.5px;background:var(--verified);color:var(--panel-text)}
+.merchant-order-claim small{display:block;margin-top:8px;font-size:11px;color:var(--verified)}
+@media(max-width:900px){.merchant-pilot-grid,.merchant-credit-memo,.merchant-credit-memo-grid{grid-template-columns:1fr}.merchant-pilot-grid div{border-right:none;border-bottom:.5px solid var(--rule)}.merchant-pilot-grid div:last-child{border-bottom:none}}
 `;

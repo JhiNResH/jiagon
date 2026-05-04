@@ -75,12 +75,20 @@ Early event pilots can use L2/L3. Credit scoring should weight L4/L5 higher when
 
 - Add `POST /api/telegram/webhook` for Telegram bot command integration.
 - Telegram creates the same order payload as `/tile/{merchant}`.
-- Bot returns order status and tells the customer to claim the receipt by NFC/QR after pickup.
+- Bot returns pickup code and tells the customer to pay at the counter.
+- Bot can post each new order into the merchant Telegram group.
+- Merchant staff can tap `[Paid + Done]` in Telegram to complete the order and create the receipt claim link.
 
 ### PR 5: Credit Connection Polish
 
 - Passport shows order source and proof level.
 - Credit page distinguishes order-intent, merchant-completed, customer-claimed, and payment-backed receipts.
+
+### PR 6: Pilot Metrics + Memo
+
+- L3 receipt record schema tracks `merchant_completed` through `status=completed` and `customer_claimed` through `receiptClaimedAt`.
+- Pilot dashboard tracks QR opens, order starts, confirmed orders, merchant done, claimed receipts, reviews, and estimated GMV.
+- Event credit memo summarizes orders, L2/L3 proof, receipt-gated review count, next proof upgrade, and suggested purpose-bound credit path after the event.
 
 ## Demo Flow
 
@@ -88,14 +96,16 @@ Early event pilots can use L2/L3. Credit scoring should weight L4/L5 higher when
 User opens Telegram bot
 -> /menu raposa-coffee
 -> /order raposa-coffee espresso 1
--> merchant dashboard sees pending order
--> merchant completes order
+-> user receives pickup code, for example A17
+-> merchant Telegram group receives the order
+-> staff taps Paid + Done
 -> Jiagon issues claimable receipt
 -> user taps NFC receipt card or scans QR at pickup
 -> user claims receipt with Privy
 -> Passport shows merchant receipt
 -> Bubblegum receipt cNFT can be minted
 -> Credit unlock / draw / repay flow works
+-> event credit memo summarizes the pilot after Consensus
 ```
 
 Telegram is the order surface. NFC is the physical receipt-claim surface. The backend primitive is order intent plus merchant-issued receipt.
