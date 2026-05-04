@@ -69,7 +69,8 @@ Early event pilots can use L2/L3. Credit scoring should weight L4/L5 higher when
 - Add `POST /api/merchant/orders/{id}/complete`.
 - Completion calls existing merchant receipt issuer.
 - Merchant dashboard receives a claim URL and locally generated QR code.
-- NFC is the receipt pickup surface: the physical card/sticker points customers to the current claim flow at the counter, while QR/claim link remains the per-receipt fallback because each completed order has a unique claim token.
+- NFC is the receipt pickup surface: the physical card/sticker points customers to `/tile/{merchant}`, where they enter the pickup code and Jiagon resolves it to the completed order's one-time `/claim/{token}` link.
+- QR/claim link remains the direct per-receipt fallback because each completed order has a unique claim token.
 
 ### PR 4: Telegram Entry
 
@@ -100,7 +101,9 @@ User opens Telegram bot
 -> merchant Telegram group receives the order
 -> staff taps Paid + Done
 -> Jiagon issues claimable receipt
--> user taps NFC receipt card or scans QR at pickup
+-> user taps NFC receipt card at pickup
+-> user enters pickup code
+-> Jiagon opens the matching /claim/{token}
 -> user claims receipt with Privy
 -> Passport shows merchant receipt
 -> Bubblegum receipt cNFT can be minted

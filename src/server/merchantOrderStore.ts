@@ -582,6 +582,72 @@ export async function listMerchantOrders(input: {
   }
 }
 
+export async function findMerchantOrderByPickupCode(input: {
+  merchantId: string;
+  pickupCode: string;
+}): Promise<{
+  configured: boolean;
+  order: MerchantOrder | null;
+  error?: string;
+}> {
+  const merchantId = input.merchantId.trim();
+  const pickupCode = input.pickupCode.trim().toUpperCase();
+  if (!merchantId || !pickupCode) {
+    return { configured: Boolean(getPool()), order: null, error: "Merchant id and pickup code are required." };
+  }
+
+  const memoryMatch = () => Array.from(merchantOrderMemory().values()).find(
+    (order) => order.merchantId === merchantId && order.pickupCode.toUpperCase() === pickupCode,
+  ) || null;
+
+  const pool = getPool();
+  if (!pool) {
+    return { configured: false, order: memoryMatch() };
+  }
+
+  try {
+    await ensureMerchantOrderSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          id,
+          idempotency_key,
+          pickup_code,
+          merchant_id,
+          merchant_name,
+          location,
+          customer_label,
+          source,
+          status,
+          items,
+          subtotal_cents,
+          subtotal_usd,
+          payment_provider,
+          payment_status,
+          notes,
+          proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
+          receipt_claimed_at,
+          receipt_claimed_by,
+          created_at,
+          updated_at
+        from jiagon_merchant_orders
+        where merchant_id = $1
+          and upper(pickup_code) = $2
+        limit 1
+      `,
+      [merchantId, pickupCode],
+    );
+
+    return { configured: true, order: result.rows[0] ? mapMerchantOrderRow(result.rows[0]) : null };
+  } catch {
+    return { configured: true, order: null, error: "Merchant receipt claim lookup failed." };
+  }
+}
+
 async function getMerchantOrderById(id: string): Promise<{
   configured: boolean;
   order: MerchantOrder | null;
