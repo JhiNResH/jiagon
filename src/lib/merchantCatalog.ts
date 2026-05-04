@@ -68,3 +68,8 @@ export function merchantProfileForId(merchantId: string): MerchantProfile {
     menu: [...fallbackMenu],
   };
 }
+
+export function knownMerchantProfileForId(merchantId: string): MerchantProfile | null {
+  const profile = merchantProfiles[merchantId];
+  return profile ? { ...profile, menu: [...profile.menu] } : null;
+}

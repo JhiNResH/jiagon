@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { merchantProfileForId, type MenuItem, type MerchantProfile } from "@/lib/merchantCatalog";
+import { knownMerchantProfileForId, type MenuItem, type MerchantProfile } from "@/lib/merchantCatalog";
 import {
   completeMerchantOrderWithReceipt,
   createMerchantOrder,
@@ -154,8 +154,23 @@ function telegramCustomerLabel(from: TelegramUser | undefined) {
   return name || (from.id ? `tg:${from.id}` : "Telegram user");
 }
 
-function menuText(merchantId: string) {
-  const merchant = merchantProfileForId(merchantId);
+function defaultMerchantProfile() {
+  const merchant = knownMerchantProfileForId(DEFAULT_MERCHANT_ID);
+  if (!merchant) {
+    throw new Error(`Default merchant ${DEFAULT_MERCHANT_ID} is not configured.`);
+  }
+  return merchant;
+}
+
+function unknownMerchantText(merchantId: string) {
+  return [
+    `Unknown merchant: ${merchantId || "(missing)"}`,
+    "",
+    `Use /menu ${DEFAULT_MERCHANT_ID} for the Raposa Coffee demo menu.`,
+  ].join("\n");
+}
+
+function menuText(merchant: MerchantProfile) {
   const items = merchant.menu
     .map((item) => `- ${item.id} · ${item.name} · $${item.amountUsd}`)
     .join("\n");
@@ -170,8 +185,7 @@ function menuText(merchantId: string) {
   ].join("\n");
 }
 
-function helpText(merchantId = DEFAULT_MERCHANT_ID) {
-  const merchant = merchantProfileForId(merchantId);
+function helpText(merchant: MerchantProfile) {
   return [
     "Jiagon Telegram POS",
     "",
@@ -182,8 +196,7 @@ function helpText(merchantId = DEFAULT_MERCHANT_ID) {
   ].join("\n");
 }
 
-function menuKeyboard(merchantId: string) {
-  const merchant = merchantProfileForId(merchantId);
+function menuKeyboard(merchant: MerchantProfile) {
   return {
     inline_keyboard: merchant.menu.map((item) => [
       {
@@ -288,7 +301,7 @@ async function notifyMerchantGroup(order: MerchantOrder) {
   if (!telegramBotToken()) return { sent: false, skipped: false };
 
   const text = [
-    `New Raposa order #${order.pickupCode}`,
+    `New ${order.merchantName} order #${order.pickupCode}`,
     "",
     `Customer: ${order.customerLabel || "Telegram customer"}`,
     telegramOrderLines(order),
@@ -344,7 +357,16 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
   }
 
   if (parsed.action === "order_item") {
-    const merchant = merchantProfileForId(parsed.merchantId);
+    const merchant = knownMerchantProfileForId(parsed.merchantId);
+    if (!merchant) {
+      await sendTelegramMethod("answerCallbackQuery", {
+        callback_query_id: callback.id,
+        text: "Unknown merchant",
+        show_alert: false,
+      });
+      return telegramResponse(chatId, unknownMerchantText(parsed.merchantId), 200);
+    }
+
     const menuItem = merchant.menu.find((item) => item.id === parsed.itemId);
     if (!menuItem) {
       await sendTelegramMethod("answerCallbackQuery", {
@@ -352,7 +374,7 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
         text: "Item unavailable",
         show_alert: false,
       });
-      return telegramResponse(chatId, menuText(merchant.id), 200, { reply_markup: menuKeyboard(merchant.id) });
+      return telegramResponse(chatId, menuText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
     }
 
     await sendTelegramMethod("answerCallbackQuery", {
@@ -520,11 +542,11 @@ async function createTelegramOrderReply({
     `${item.quantity}x ${item.name} · $${order.subtotalUsd}`,
     `Status: ${order.status}`,
     "",
-    `Show pickup code ${order.pickupCode} at Raposa. Pay at the counter as usual.`,
+    `Show pickup code ${order.pickupCode} at ${merchant.name}. Pay at the counter as usual.`,
     "After staff taps Paid + Done, use Telegram, NFC, or QR at pickup to claim the receipt into Jiagon Passport.",
   ].join("\n");
 
-  return telegramResponse(chatId, reply, 200, { reply_markup: menuKeyboard(merchant.id) });
+  return telegramResponse(chatId, reply, 200, { reply_markup: menuKeyboard(merchant) });
 }
 
 export async function POST(request: Request) {
@@ -561,26 +583,33 @@ export async function POST(request: Request) {
   const chatId = message?.chat?.id ?? null;
   const text = typeof message?.text === "string" ? message.text : "";
   if (!message || !text) {
-    return telegramResponse(chatId, helpText(), 200, { reply_markup: menuKeyboard(DEFAULT_MERCHANT_ID) });
+    const merchant = defaultMerchantProfile();
+    return telegramResponse(chatId, helpText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
   }
 
   const command = parseCommand(text);
   if (command.kind === "help") {
     const merchantId = command.merchantId || DEFAULT_MERCHANT_ID;
-    return telegramResponse(chatId, helpText(merchantId), 200, { reply_markup: menuKeyboard(merchantId) });
+    const merchant = knownMerchantProfileForId(merchantId);
+    if (!merchant) return telegramResponse(chatId, unknownMerchantText(merchantId), 200);
+    return telegramResponse(chatId, helpText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
   }
   if (command.kind === "menu") {
-    return telegramResponse(chatId, menuText(command.merchantId), 200, { reply_markup: menuKeyboard(command.merchantId) });
+    const merchant = knownMerchantProfileForId(command.merchantId);
+    if (!merchant) return telegramResponse(chatId, unknownMerchantText(command.merchantId), 200);
+    return telegramResponse(chatId, menuText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
   }
 
-  const merchant = merchantProfileForId(command.merchantId);
+  const merchant = knownMerchantProfileForId(command.merchantId);
+  if (!merchant) return telegramResponse(chatId, unknownMerchantText(command.merchantId), 200);
+
   const menuItem = merchant.menu.find((item) => item.id === command.itemId);
   if (!menuItem) {
     return telegramResponse(
       chatId,
-      [`Item not found: ${command.itemId || "(missing)"}`, "", menuText(command.merchantId)].join("\n"),
+      [`Item not found: ${command.itemId || "(missing)"}`, "", menuText(merchant)].join("\n"),
       200,
-      { reply_markup: menuKeyboard(command.merchantId) },
+      { reply_markup: menuKeyboard(merchant) },
     );
   }
 
