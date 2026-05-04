@@ -1,6 +1,14 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { merchantProfileForId } from "@/lib/merchantCatalog";
-import { createMerchantOrder, publicMerchantOrder, type MerchantOrderItem } from "@/server/merchantOrderStore";
+import {
+  completeMerchantOrderWithReceipt,
+  createMerchantOrder,
+  publicMerchantOrder,
+  recordMerchantPilotEvent,
+  updateMerchantOrderStatus,
+  type MerchantOrder,
+  type MerchantOrderItem,
+} from "@/server/merchantOrderStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,9 +29,17 @@ type TelegramMessage = {
   from?: TelegramUser;
 };
 
+type TelegramCallbackQuery = {
+  id?: string;
+  data?: string;
+  message?: TelegramMessage;
+  from?: TelegramUser;
+};
+
 type TelegramWebhookPayload = {
   update_id?: number;
   message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
 };
 
 type ParsedCommand =
@@ -33,6 +49,9 @@ type ParsedCommand =
 
 const DEFAULT_MERCHANT_ID = "raposa-coffee";
 const MAX_TELEGRAM_BODY_BYTES = 20_000;
+const DEFAULT_TELEGRAM_API_TIMEOUT_MS = 5_000;
+
+let warnedMissingProductionOrigin = false;
 
 function cleanToken(value: string | undefined, fallback = "") {
   return (value || fallback)
@@ -162,6 +181,190 @@ function telegramResponse(chatId: number | string | null, text: string, status =
   );
 }
 
+function cleanConfiguredOrigin(value: string) {
+  const configured = value.trim();
+  if (!configured) return "";
+
+  try {
+    const url = new URL(configured);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : "";
+  } catch {
+    return "";
+  }
+}
+
+function requestOrigin(request: Request) {
+  const configuredOrigin = cleanConfiguredOrigin(
+    process.env.JIAGON_APP_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "",
+  );
+  if (configuredOrigin) return configuredOrigin;
+
+  const vercelHost = (process.env.VERCEL_URL || "").trim();
+  if (vercelHost) return cleanConfiguredOrigin(`https://${vercelHost}`);
+
+  if (process.env.NODE_ENV !== "production") return new URL(request.url).origin;
+
+  if (!warnedMissingProductionOrigin) {
+    warnedMissingProductionOrigin = true;
+    console.warn(
+      "Jiagon Telegram webhook cannot issue receipt claim links because JIAGON_APP_ORIGIN, NEXT_PUBLIC_APP_URL, and VERCEL_URL are unset.",
+    );
+  }
+
+  return "";
+}
+
+function telegramBotToken() {
+  return (process.env.TELEGRAM_BOT_TOKEN || "").trim();
+}
+
+function merchantGroupChatId() {
+  return (process.env.TELEGRAM_MERCHANT_GROUP_CHAT_ID || "").trim();
+}
+
+function telegramApiTimeoutMs() {
+  const configured = Number.parseInt(process.env.TELEGRAM_API_TIMEOUT_MS || "", 10);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TELEGRAM_API_TIMEOUT_MS;
+}
+
+async function sendTelegramMethod(method: string, payload: Record<string, unknown>) {
+  const token = telegramBotToken();
+  if (!token) return { sent: false, skipped: true };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), telegramApiTimeoutMs());
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    return { sent: response.ok, skipped: false };
+  } catch {
+    return { sent: false, skipped: false };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function telegramOrderLines(order: MerchantOrder) {
+  return order.items.map((item) => `- ${item.quantity}x ${item.name}`).join("\n");
+}
+
+async function notifyMerchantGroup(order: MerchantOrder) {
+  const chatId = merchantGroupChatId();
+  if (!chatId) return { sent: false, skipped: true };
+  if (!telegramBotToken()) return { sent: false, skipped: false };
+
+  const text = [
+    `New Raposa order #${order.pickupCode}`,
+    "",
+    `Customer: ${order.customerLabel || "Telegram customer"}`,
+    telegramOrderLines(order),
+    `Estimated total: $${order.subtotalUsd}`,
+    order.notes ? `Notes: ${order.notes}` : "",
+    "",
+    `Pickup code: ${order.pickupCode}`,
+    "Payment: counter POS / cash / card",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return sendTelegramMethod("sendMessage", {
+    chat_id: chatId,
+    text,
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "Paid + Done", callback_data: `paid_done:${order.id}` },
+          { text: "Cancel", callback_data: `cancel:${order.id}` },
+        ],
+      ],
+    },
+  });
+}
+
+function callbackData(value: unknown) {
+  if (typeof value !== "string") return null;
+  const match = /^(paid_done|cancel):(ord-[a-f0-9]{16})$/.exec(value.trim());
+  return match ? { action: match[1], orderId: match[2] } : null;
+}
+
+function sameTelegramChat(left: number | string | null, right: string) {
+  return String(left ?? "").trim() === right.trim();
+}
+
+async function handleCallback(request: Request, callback: TelegramCallbackQuery) {
+  const chatId = callback.message?.chat?.id ?? null;
+  const parsed = callbackData(callback.data);
+  if (!parsed) {
+    await sendTelegramMethod("answerCallbackQuery", {
+      callback_query_id: callback.id,
+      text: "Unsupported Jiagon action.",
+      show_alert: false,
+    });
+    return telegramResponse(chatId, "Unsupported Jiagon order action.", 200);
+  }
+
+  const expectedGroupChatId = merchantGroupChatId();
+  if (expectedGroupChatId && !sameTelegramChat(chatId, expectedGroupChatId)) {
+    await sendTelegramMethod("answerCallbackQuery", {
+      callback_query_id: callback.id,
+      text: "Merchant group only.",
+      show_alert: true,
+    });
+    return telegramResponse(chatId, "Jiagon order actions are only enabled in the configured merchant Telegram group.", 200);
+  }
+
+  if (parsed.action === "cancel") {
+    const result = await updateMerchantOrderStatus({ id: parsed.orderId, nextStatus: "cancelled" });
+    const order = result.order ? publicMerchantOrder(result.order) : null;
+    const text = result.updated && order
+      ? `Cancelled order #${order.pickupCode}.`
+      : `Could not cancel order ${parsed.orderId}: ${result.error || "order not found"}`;
+    await sendTelegramMethod("answerCallbackQuery", {
+      callback_query_id: callback.id,
+      text: result.updated ? "Cancelled" : "Cancel failed",
+      show_alert: false,
+    });
+    return telegramResponse(chatId, text, 200);
+  }
+
+  const origin = requestOrigin(request);
+  if (!origin) {
+    await sendTelegramMethod("answerCallbackQuery", {
+      callback_query_id: callback.id,
+      text: "Missing app origin configuration",
+      show_alert: true,
+    });
+    return telegramResponse(chatId, "JIAGON_APP_ORIGIN or NEXT_PUBLIC_APP_URL is required to issue claim links.", 200);
+  }
+
+  const result = await completeMerchantOrderWithReceipt({
+    id: parsed.orderId,
+    origin,
+    issuedBy: "Raposa Coffee Telegram staff",
+  });
+  const order = result.order ? publicMerchantOrder(result.order) : null;
+  const text = result.updated && order
+    ? [
+        `Paid + Done: #${order.pickupCode}`,
+        "",
+        `Receipt claim: ${order.receiptClaimUrl || "(claim link unavailable)"}`,
+        "Proof: merchant_completed -> customer_claimed after customer claim.",
+      ].join("\n")
+    : `Could not complete order ${parsed.orderId}: ${result.error || "order not found"}`;
+
+  await sendTelegramMethod("answerCallbackQuery", {
+    callback_query_id: callback.id,
+    text: result.updated ? "Receipt ready" : "Complete failed",
+    show_alert: false,
+  });
+
+  return telegramResponse(chatId, text, 200);
+}
+
 export async function POST(request: Request) {
   const authError = validateTelegramSecret(request);
   if (authError) {
@@ -186,6 +389,10 @@ export async function POST(request: Request) {
     payload = parsed as TelegramWebhookPayload;
   } catch {
     return Response.json({ error: "Invalid Telegram webhook JSON." }, { status: 400 });
+  }
+
+  if (payload.callback_query) {
+    return handleCallback(request, payload.callback_query);
   }
 
   const message = payload.message;
@@ -246,12 +453,49 @@ export async function POST(request: Request) {
   }
 
   const order = publicMerchantOrder(result.order);
+  try {
+    const pilotEvent = await recordMerchantPilotEvent({
+      merchantId: merchant.id,
+      eventName: "order_started",
+      source: "telegram-order",
+    });
+    if (!pilotEvent.recorded) {
+      console.warn("Jiagon Telegram order_started pilot event was not recorded.", {
+        merchantId: merchant.id,
+        error: pilotEvent.error,
+      });
+    }
+  } catch (error) {
+    console.warn("Jiagon Telegram order_started pilot event failed.", {
+      merchantId: merchant.id,
+      error,
+    });
+  }
+  const merchantNotify = await notifyMerchantGroup(result.order);
+  if (!merchantNotify.sent && !merchantNotify.skipped) {
+    console.warn("Jiagon Telegram merchant group dispatch failed.", {
+      orderId: order.id,
+      pickupCode: order.pickupCode,
+      merchantId: merchant.id,
+    });
+    return Response.json(
+      {
+        error: "Order created but merchant dispatch failed. Please retry /order.",
+        order: {
+          id: order.id,
+          pickupCode: order.pickupCode,
+        },
+      },
+      { status: 503 },
+    );
+  }
   const reply = [
-    `Order created: ${order.id}`,
+    `Order created: #${order.pickupCode}`,
     `${item.quantity}x ${item.name} · $${order.subtotalUsd}`,
     `Status: ${order.status}`,
     "",
-    "Pickup flow: merchant completes the order, then you tap the NFC receipt card or scan the QR claim link to add it to Jiagon Passport.",
+    `Show pickup code ${order.pickupCode} at Raposa. Pay at the counter as usual.`,
+    "After staff taps Paid + Done, use Telegram, NFC, or QR at pickup to claim the receipt into Jiagon Passport.",
   ].join("\n");
 
   return telegramResponse(chatId, reply);

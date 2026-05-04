@@ -1,4 +1,5 @@
 import { bearerTokenFromRequest, verifyPrivyAccessToken } from "@/server/privyAuth";
+import { markMerchantOrderReceiptClaimed, publicMerchantOrder } from "@/server/merchantOrderStore";
 import { claimMerchantIssuedReceipt, publicMerchantReceipt, savePrivateAccountState } from "@/server/receiptStore";
 
 export const runtime = "nodejs";
@@ -76,6 +77,11 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const publicReceipt = publicMerchantReceipt(claimedReceipt);
+  const orderSync = await markMerchantOrderReceiptClaimed({
+    receiptId: claimedReceipt.id,
+    claimedBy: claims.userId,
+    claimedAt: claimedReceipt.claimedAt,
+  });
   const accountState = await savePrivateAccountState({
     privyUserId: claims.userId,
     sessionId: claims.sessionId,
@@ -107,6 +113,12 @@ export async function POST(request: Request, context: RouteContext) {
     product: "Jiagon merchant-issued receipt claim",
     configured: result.configured,
     receipt: publicReceipt,
+    orderProof: {
+      configured: orderSync.configured,
+      updated: orderSync.updated,
+      order: orderSync.order ? publicMerchantOrder(orderSync.order) : null,
+      error: orderSync.error,
+    },
     accountState: {
       configured: accountState.configured,
       updatedAt: accountState.updatedAt || null,
