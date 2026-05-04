@@ -15,6 +15,20 @@ type MerchantOrderResponse = {
   error?: string;
 };
 
+type MerchantReceiptClaimLookupResponse = {
+  claimable?: boolean;
+  claimUrl?: string;
+  status?: string;
+  message?: string;
+  order?: {
+    pickupCode: string;
+    status: string;
+    subtotalUsd: string;
+    receiptClaimedAt?: string | null;
+  };
+  error?: string;
+};
+
 function clampQuantity(value: string) {
   const parsed = Number.parseInt(value || "1", 10);
   if (!Number.isFinite(parsed)) return 1;
@@ -29,6 +43,9 @@ export default function TilePage() {
   const [quantity, setQuantity] = useState(1);
   const [customerLabel, setCustomerLabel] = useState("");
   const [notes, setNotes] = useState("");
+  const [pickupCode, setPickupCode] = useState("");
+  const [claimBusy, setClaimBusy] = useState(false);
+  const [claimMessage, setClaimMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [order, setOrder] = useState<MerchantOrderResponse["order"] | null>(null);
@@ -67,6 +84,34 @@ export default function TilePage() {
     // Record only when the tile/NFC landing page changes merchant.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [merchantId]);
+
+  async function lookupReceiptClaim(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setClaimBusy(true);
+    setClaimMessage("");
+    setError("");
+
+    try {
+      const query = new URLSearchParams({
+        merchantId,
+        pickupCode,
+      });
+      const response = await fetch(`/api/merchant/orders/claim?${query.toString()}`, { cache: "no-store" });
+      const payload = await response.json() as MerchantReceiptClaimLookupResponse;
+      if (!response.ok && response.status !== 404) {
+        throw new Error(payload.error || "Unable to find receipt.");
+      }
+      if (payload.claimable && payload.claimUrl) {
+        window.location.assign(payload.claimUrl);
+        return;
+      }
+      setClaimMessage(payload.message || "Receipt is not ready yet. Ask staff to tap Paid + Done.");
+    } catch (lookupError) {
+      setError(lookupError instanceof Error ? lookupError.message : "Unable to find receipt.");
+    } finally {
+      setClaimBusy(false);
+    }
+  }
 
   async function submitOrder(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -126,10 +171,10 @@ export default function TilePage() {
 
         <section className="tile-card">
           <div className="tile-kicker">NFC / Telegram order tile</div>
-          <h1>{merchant.name}</h1>
+          <h1>Tap to claim.</h1>
           <p>
-            Tap from NFC or open from Telegram to place an order intent. The merchant completes the order into a
-            claimable Jiagon receipt after fulfillment.
+            This NFC station is for receipt pickup at {merchant.name}. Enter the pickup code after staff marks the order
+            Paid + Done, then claim the receipt into Jiagon Passport.
           </p>
 
           <div className="tile-grid">
@@ -142,16 +187,37 @@ export default function TilePage() {
               <strong>{merchant.location}</strong>
             </div>
             <div>
-              <span>Order source</span>
-              <strong>NFC / Telegram</strong>
+              <span>Tap action</span>
+              <strong>Claim receipt</strong>
             </div>
             <div>
               <span>Receipt proof</span>
-              <strong>Merchant completion</strong>
+              <strong>Customer claimed</strong>
             </div>
           </div>
 
+          <form className="tile-claim" onSubmit={lookupReceiptClaim}>
+            <div>
+              <span>Pickup code</span>
+              <strong>{pickupCode.trim() || "A______"}</strong>
+            </div>
+            <label className="tile-field">
+              <span>Code from staff</span>
+              <input
+                value={pickupCode}
+                onChange={(event) => setPickupCode(event.target.value.toUpperCase())}
+                placeholder="A17 / A0K92Q"
+                maxLength={16}
+              />
+            </label>
+            {claimMessage ? <p className="tile-alert success">{claimMessage}</p> : null}
+            <button className="tile-submit" type="submit" disabled={claimBusy || pickupCode.trim().length < 2}>
+              {claimBusy ? "Finding receipt..." : "Claim receipt"}
+            </button>
+          </form>
+
           <form className="tile-order" onSubmit={submitOrder}>
+            <div className="tile-section-label">Demo order fallback</div>
             <div className="tile-order-head">
               <div>
                 <span>Order</span>
@@ -229,5 +295,5 @@ export default function TilePage() {
 }
 
 const tileStyles = `
-.tile-page{min-height:100vh;background:radial-gradient(circle at 14% 0%,oklch(0.98 0.008 105) 0 260px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink);padding:24px clamp(18px,4vw,56px) 48px}.tile-shell{max-width:1040px;margin:0 auto}.tile-header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:44px}.tile-brand{display:flex;align-items:center;gap:10px;color:var(--verified);text-decoration:none}.tile-brand img{width:54px;height:60px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(24,58,38,.10))}.tile-brand span{font-family:var(--display);font-size:34px;line-height:.9}.tile-nav{min-height:36px;display:inline-flex;align-items:center;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.992 0.004 100 / .75);padding:0 12px;color:var(--ink-muted);font-size:13px;font-weight:800;text-decoration:none}.tile-card{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .88);box-shadow:0 22px 80px rgba(24,58,38,.10);padding:clamp(22px,4vw,36px)}.tile-kicker{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-muted)}.tile-card h1{margin:10px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(56px,8vw,96px);line-height:.88;color:var(--ink)}.tile-card p{max-width:760px;margin:16px 0 0;color:var(--ink-muted);font-size:16px;line-height:1.55}.tile-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:.5px solid var(--rule);border-radius:10px;overflow:hidden;margin-top:24px}.tile-grid div{display:grid;gap:6px;padding:14px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .76)}.tile-grid div:last-child{border-right:none}.tile-grid span,.tile-order-head span,.tile-field span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.tile-grid strong{font-size:14px;color:var(--ink)}.tile-order{display:grid;gap:14px;margin-top:24px;border:.5px solid var(--rule);border-radius:10px;background:oklch(0.985 0.006 105 / .8);padding:16px}.tile-order-head{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.tile-order-head div{display:grid;gap:4px;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.996 0.003 100 / .8);padding:12px}.tile-order-head strong{font-size:22px;color:var(--ink)}.tile-menu{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.tile-menu button{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;text-align:left;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);min-height:54px;padding:10px 12px;color:var(--ink);cursor:pointer}.tile-menu button.selected{border-color:oklch(0.45 0.12 145);box-shadow:inset 0 0 0 1px oklch(0.45 0.12 145 / .35);background:oklch(0.95 0.032 145)}.tile-menu span{font-size:14px;font-weight:850}.tile-menu strong{font-size:13px;color:var(--verified)}.tile-field{display:grid;gap:7px}.tile-field input,.tile-field textarea{width:100%;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.996 0.003 100);color:var(--ink);font:inherit;font-size:15px;padding:11px 12px;outline:none}.tile-field textarea{min-height:78px;resize:vertical}.tile-alert{border-radius:8px;padding:10px 12px!important;margin:0!important;font-size:13px!important;line-height:1.45!important}.tile-alert.error{border:.5px solid oklch(0.62 0.16 28 / .35);background:oklch(0.96 0.035 32);color:oklch(0.36 0.11 28)}.tile-alert.success{border:.5px solid oklch(0.54 0.12 145 / .32);background:oklch(0.95 0.032 145);color:var(--verified)}.tile-submit{min-height:48px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-weight:950;font-size:14px;cursor:pointer;box-shadow:0 10px 28px rgba(0,96,48,.16)}.tile-submit:disabled{cursor:wait;opacity:.72}.tile-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}.tile-actions a{min-height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:0 14px;font-size:13px;font-weight:900;text-decoration:none}.tile-actions a:first-child{border:.5px solid var(--rule);background:var(--receipt);color:var(--ink)}.tile-actions a:last-child{border:.5px solid var(--rule);background:oklch(0.992 0.004 100 / .75);color:var(--ink)}@media(max-width:760px){.tile-header{align-items:flex-start}.tile-grid,.tile-order-head,.tile-menu{grid-template-columns:1fr}.tile-grid div{border-right:none;border-bottom:.5px solid var(--rule)}.tile-grid div:last-child{border-bottom:none}}
+.tile-page{min-height:100vh;background:radial-gradient(circle at 14% 0%,oklch(0.98 0.008 105) 0 260px,transparent 430px),linear-gradient(135deg,oklch(0.945 0.016 115) 0%,oklch(0.91 0.014 92) 58%,oklch(0.90 0.018 128) 100%);color:var(--ink);padding:24px clamp(18px,4vw,56px) 48px}.tile-shell{max-width:1040px;margin:0 auto}.tile-header{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:44px}.tile-brand{display:flex;align-items:center;gap:10px;color:var(--verified);text-decoration:none}.tile-brand img{width:54px;height:60px;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(24,58,38,.10))}.tile-brand span{font-family:var(--display);font-size:34px;line-height:.9}.tile-nav{min-height:36px;display:inline-flex;align-items:center;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.992 0.004 100 / .75);padding:0 12px;color:var(--ink-muted);font-size:13px;font-weight:800;text-decoration:none}.tile-card{border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .88);box-shadow:0 22px 80px rgba(24,58,38,.10);padding:clamp(22px,4vw,36px)}.tile-kicker{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-muted)}.tile-card h1{margin:10px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(56px,8vw,96px);line-height:.88;color:var(--ink)}.tile-card p{max-width:760px;margin:16px 0 0;color:var(--ink-muted);font-size:16px;line-height:1.55}.tile-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:.5px solid var(--rule);border-radius:10px;overflow:hidden;margin-top:24px}.tile-grid div{display:grid;gap:6px;padding:14px;border-right:.5px solid var(--rule);background:oklch(0.985 0.005 95 / .76)}.tile-grid div:last-child{border-right:none}.tile-grid span,.tile-order-head span,.tile-field span,.tile-claim span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}.tile-grid strong{font-size:14px;color:var(--ink)}.tile-claim{display:grid;grid-template-columns:minmax(140px,.36fr) minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:24px;border:.5px solid color-mix(in oklch,var(--verified) 30%,var(--rule));border-radius:10px;background:oklch(0.96 0.026 145 / .58);padding:16px}.tile-claim>div{display:grid;gap:6px}.tile-claim strong{font-size:28px;line-height:1;color:var(--ink)}.tile-order{display:grid;gap:14px;margin-top:24px;border:.5px solid var(--rule);border-radius:10px;background:oklch(0.985 0.006 105 / .8);padding:16px}.tile-section-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-muted)}.tile-order-head{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.tile-order-head div{display:grid;gap:4px;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.996 0.003 100 / .8);padding:12px}.tile-order-head strong{font-size:22px;color:var(--ink)}.tile-menu{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.tile-menu button{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;text-align:left;border:.5px solid var(--rule);border-radius:8px;background:var(--receipt);min-height:54px;padding:10px 12px;color:var(--ink);cursor:pointer}.tile-menu button.selected{border-color:oklch(0.45 0.12 145);box-shadow:inset 0 0 0 1px oklch(0.45 0.12 145 / .35);background:oklch(0.95 0.032 145)}.tile-menu span{font-size:14px;font-weight:850}.tile-menu strong{font-size:13px;color:var(--verified)}.tile-field{display:grid;gap:7px}.tile-field input,.tile-field textarea{width:100%;border:.5px solid var(--rule);border-radius:8px;background:oklch(0.996 0.003 100);color:var(--ink);font:inherit;font-size:15px;padding:11px 12px;outline:none}.tile-field textarea{min-height:78px;resize:vertical}.tile-alert{border-radius:8px;padding:10px 12px!important;margin:0!important;font-size:13px!important;line-height:1.45!important}.tile-alert.error{border:.5px solid oklch(0.62 0.16 28 / .35);background:oklch(0.96 0.035 32);color:oklch(0.36 0.11 28)}.tile-alert.success{border:.5px solid oklch(0.54 0.12 145 / .32);background:oklch(0.95 0.032 145);color:var(--verified)}.tile-submit{min-height:48px;border:none;border-radius:10px;background:var(--verified);color:var(--panel-text);font-weight:950;font-size:14px;cursor:pointer;box-shadow:0 10px 28px rgba(0,96,48,.16)}.tile-submit:disabled{cursor:wait;opacity:.72}.tile-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}.tile-actions a{min-height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:0 14px;font-size:13px;font-weight:900;text-decoration:none}.tile-actions a:first-child{border:.5px solid var(--rule);background:var(--receipt);color:var(--ink)}.tile-actions a:last-child{border:.5px solid var(--rule);background:oklch(0.992 0.004 100 / .75);color:var(--ink)}@media(max-width:760px){.tile-header{align-items:flex-start}.tile-grid,.tile-claim,.tile-order-head,.tile-menu{grid-template-columns:1fr}.tile-grid div{border-right:none;border-bottom:.5px solid var(--rule)}.tile-grid div:last-child{border-bottom:none}}
 `;
