@@ -17,6 +17,15 @@ Telegram agentic order entry
 
 The goal is not to replace Square, Toast, or a full POS. The MVP proves that an agent-mediated order can become a merchant-issued, customer-claimed receipt that feeds Jiagon reputation and credit.
 
+## Current Demo Links
+
+- Vercel preview: https://jiagon-git-codex-nfc-receipt-claim-station-jhinreshs-projects.vercel.app
+- Raposa NFC claim station: https://jiagon-git-codex-nfc-receipt-claim-station-jhinreshs-projects.vercel.app/tile/raposa-coffee
+- Merchant dashboard: https://jiagon-git-codex-nfc-receipt-claim-station-jhinreshs-projects.vercel.app/merchant
+- Passport: https://jiagon-git-codex-nfc-receipt-claim-station-jhinreshs-projects.vercel.app/passport
+
+After PR 61 merges, replace these preview URLs with the production Vercel domain before writing NFC stickers.
+
 ## Product Boundary
 
 In scope:
@@ -112,3 +121,13 @@ User opens Telegram bot
 ```
 
 Telegram is the order surface. NFC is the physical receipt-claim surface. The backend primitive is order intent plus merchant-issued receipt.
+
+## Onsite Raposa Plan
+
+First day on site:
+
+- Ask Raposa whether they are comfortable with a small demo that does not touch their POS or payments.
+- Explain the customer loop: order in Telegram, pay normally at counter, staff taps Paid + Done, customer taps NFC and enters pickup code to claim a digital receipt.
+- Confirm where an NFC sticker can sit: counter, pickup area, or a demo card carried by us.
+- Test one staff-assisted order end to end with a small item.
+- If the shop is busy, keep it as a self-contained demo with our own phone and NFC card, then ask only for feedback.
