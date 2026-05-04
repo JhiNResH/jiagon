@@ -43,6 +43,12 @@ function checkPilotEventRateLimit(request: Request) {
   const store = globalStore.jiagonPilotEventRateLimit || new Map<string, PilotEventRateLimitEntry>();
   globalStore.jiagonPilotEventRateLimit = store;
 
+  for (const [storedKey, storedEntry] of store) {
+    if (storedEntry.resetAt <= now) {
+      store.delete(storedKey);
+    }
+  }
+
   const existing = store.get(key);
   const entry = existing && existing.resetAt > now
     ? existing

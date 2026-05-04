@@ -219,9 +219,9 @@ function orderId(merchantId: string, items: MerchantOrderItem[]) {
 }
 
 function pickupCodeForOrderId(id: string) {
-  const hex = id.replace(/^ord-/, "").slice(-6);
+  const hex = id.replace(/^ord-/, "").slice(-8);
   const numeric = Number.parseInt(hex || "0", 16);
-  return `A${numeric.toString(36).toUpperCase().padStart(3, "0").slice(-3)}`;
+  return `A${numeric.toString(36).toUpperCase().padStart(4, "0").slice(-4)}`;
 }
 
 function formatUsd(cents: number) {

@@ -49,6 +49,9 @@ type ParsedCommand =
 
 const DEFAULT_MERCHANT_ID = "raposa-coffee";
 const MAX_TELEGRAM_BODY_BYTES = 20_000;
+const DEFAULT_TELEGRAM_API_TIMEOUT_MS = 5_000;
+
+let warnedMissingProductionOrigin = false;
 
 function cleanToken(value: string | undefined, fallback = "") {
   return (value || fallback)
@@ -199,7 +202,16 @@ function requestOrigin(request: Request) {
   const vercelHost = (process.env.VERCEL_URL || "").trim();
   if (vercelHost) return cleanConfiguredOrigin(`https://${vercelHost}`);
 
-  return process.env.NODE_ENV !== "production" ? new URL(request.url).origin : "";
+  if (process.env.NODE_ENV !== "production") return new URL(request.url).origin;
+
+  if (!warnedMissingProductionOrigin) {
+    warnedMissingProductionOrigin = true;
+    console.warn(
+      "Jiagon Telegram webhook cannot issue receipt claim links because JIAGON_APP_ORIGIN, NEXT_PUBLIC_APP_URL, and VERCEL_URL are unset.",
+    );
+  }
+
+  return "";
 }
 
 function telegramBotToken() {
@@ -210,19 +222,29 @@ function merchantGroupChatId() {
   return (process.env.TELEGRAM_MERCHANT_GROUP_CHAT_ID || "").trim();
 }
 
+function telegramApiTimeoutMs() {
+  const configured = Number.parseInt(process.env.TELEGRAM_API_TIMEOUT_MS || "", 10);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TELEGRAM_API_TIMEOUT_MS;
+}
+
 async function sendTelegramMethod(method: string, payload: Record<string, unknown>) {
   const token = telegramBotToken();
   if (!token) return { sent: false, skipped: true };
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), telegramApiTimeoutMs());
   try {
     const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
     return { sent: response.ok, skipped: false };
   } catch {
     return { sent: false, skipped: false };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -425,11 +447,24 @@ export async function POST(request: Request) {
   }
 
   const order = publicMerchantOrder(result.order);
-  await recordMerchantPilotEvent({
-    merchantId: merchant.id,
-    eventName: "order_started",
-    source: "telegram-order",
-  });
+  try {
+    const pilotEvent = await recordMerchantPilotEvent({
+      merchantId: merchant.id,
+      eventName: "order_started",
+      source: "telegram-order",
+    });
+    if (!pilotEvent.recorded) {
+      console.warn("Jiagon Telegram order_started pilot event was not recorded.", {
+        merchantId: merchant.id,
+        error: pilotEvent.error,
+      });
+    }
+  } catch (error) {
+    console.warn("Jiagon Telegram order_started pilot event failed.", {
+      merchantId: merchant.id,
+      error,
+    });
+  }
   await notifyMerchantGroup(result.order);
   const reply = [
     `Order created: #${order.pickupCode}`,
