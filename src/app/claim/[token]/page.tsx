@@ -138,7 +138,7 @@ function mergeStoredMerchantReceipt(receipt: ClaimReceipt, privyUserId?: string 
             ? existingReceipt.creditImpact
         : {
             eligible: false,
-            unlockedCreditUsd: 25,
+            unlockedCreditUsd: 0,
             reason: "Merchant-issued receipt must be minted as a Bubblegum cNFT before credit unlock.",
           },
   };
@@ -253,9 +253,6 @@ function ClaimContent({ token }: { token: string }) {
       const accessToken = await getAccessToken();
       if (!accessToken) throw new Error("Privy access token is required.");
       const owner = solanaOwner.trim();
-      if (owner) {
-        window.localStorage.setItem("jiagon:solana-owner", owner);
-      }
       const response = await fetch("/api/solana/merchant-receipts/mint", {
         method: "POST",
         headers: {
@@ -270,6 +267,13 @@ function ClaimContent({ token }: { token: string }) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || "Unable to mint Bubblegum receipt credential.");
+      try {
+        if (owner) {
+          window.localStorage.setItem("jiagon:solana-owner", owner);
+        }
+      } catch {
+        // Solana owner cache is best-effort; the accepted mint response is authoritative.
+      }
 
       const updates: Partial<ClaimReceipt> = {
         mintStatus: payload.status === "minted" ? "minted" : "prepared",
