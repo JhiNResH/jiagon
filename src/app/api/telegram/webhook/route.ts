@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { merchantProfileForId } from "@/lib/merchantCatalog";
+import { knownMerchantProfileForId, type MenuItem, type MerchantProfile } from "@/lib/merchantCatalog";
 import {
   completeMerchantOrderWithReceipt,
   createMerchantOrder,
@@ -47,9 +47,16 @@ type ParsedCommand =
   | { kind: "menu"; merchantId: string }
   | { kind: "order"; merchantId: string; itemId: string; quantity: number; notes: string };
 
+type ParsedCallbackData =
+  | { action: "paid_done" | "cancel"; orderId: string }
+  | { action: "order_item"; merchantId: string; itemId: string };
+
 const DEFAULT_MERCHANT_ID = "raposa-coffee";
 const MAX_TELEGRAM_BODY_BYTES = 20_000;
 const DEFAULT_TELEGRAM_API_TIMEOUT_MS = 5_000;
+const TELEGRAM_CALLBACK_TOKEN_MAX = 32;
+const TELEGRAM_CALLBACK_TOKEN_PATTERN = /^[a-z0-9-]{1,32}$/;
+const TELEGRAM_STAFF_ORDER_CALLBACK_PATTERN = /^ord-[a-f0-9]{16}$/;
 
 let warnedMissingProductionOrigin = false;
 
@@ -91,6 +98,12 @@ function telegramOrderIdempotencyKey(payload: TelegramWebhookPayload, message: T
   const fromId = message.from?.id ?? "unknown-from";
   const messageId = message.message_id ?? "unknown-message";
   return `telegram:${merchantId}:message:${chatId}:${fromId}:${messageId}:${messageDigest(message.text || "")}`;
+}
+
+function telegramCallbackOrderIdempotencyKey(callback: TelegramCallbackQuery, merchantId: string, itemId: string) {
+  const chatId = callback.message?.chat?.id ?? "unknown-chat";
+  const fromId = callback.from?.id ?? "unknown-from";
+  return `telegram:${merchantId}:callback:${chatId}:${fromId}:${callback.id || "unknown-callback"}:${itemId}`;
 }
 
 function safeEqual(left: string, right: string) {
@@ -144,8 +157,23 @@ function telegramCustomerLabel(from: TelegramUser | undefined) {
   return name || (from.id ? `tg:${from.id}` : "Telegram user");
 }
 
-function menuText(merchantId: string) {
-  const merchant = merchantProfileForId(merchantId);
+function defaultMerchantProfile() {
+  const merchant = knownMerchantProfileForId(DEFAULT_MERCHANT_ID);
+  if (!merchant) {
+    throw new Error(`Default merchant ${DEFAULT_MERCHANT_ID} is not configured.`);
+  }
+  return merchant;
+}
+
+function unknownMerchantText(merchantId: string) {
+  return [
+    `Unknown merchant: ${merchantId || "(missing)"}`,
+    "",
+    `Use /menu ${DEFAULT_MERCHANT_ID} for the Raposa Coffee demo menu.`,
+  ].join("\n");
+}
+
+function menuText(merchant: MerchantProfile) {
   const items = merchant.menu
     .map((item) => `- ${item.id} · ${item.name} · $${item.amountUsd}`)
     .join("\n");
@@ -154,28 +182,55 @@ function menuText(merchantId: string) {
     `${merchant.name} menu`,
     items,
     "",
-    `Order: /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
+    "Tap an item below, or use:",
+    ` /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
     "After pickup, tap the NFC receipt card or scan the QR claim link at the counter.",
   ].join("\n");
 }
 
-function helpText(merchantId = DEFAULT_MERCHANT_ID) {
+function helpText(merchant: MerchantProfile) {
   return [
     "Jiagon Telegram POS",
     "",
-    `Menu: /menu ${merchantId}`,
-    `Order: /order ${merchantId} espresso 1`,
+    `${merchant.name}: tap an item below to create a pickup order.`,
+    `Manual fallback: /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
     "",
     "Telegram creates the order. NFC or QR is used at pickup to claim the receipt into Passport.",
   ].join("\n");
 }
 
-function telegramResponse(chatId: number | string | null, text: string, status = 200) {
+function orderItemCallbackData(merchantId: string, itemId: string) {
+  if (!TELEGRAM_CALLBACK_TOKEN_PATTERN.test(merchantId) || !TELEGRAM_CALLBACK_TOKEN_PATTERN.test(itemId)) {
+    throw new Error(
+      `Telegram order callback ids must be ${TELEGRAM_CALLBACK_TOKEN_MAX} characters or fewer and URL-safe.`,
+    );
+  }
+  return `order_item:${merchantId}:${itemId}`;
+}
+
+function menuKeyboard(merchant: MerchantProfile) {
+  return {
+    inline_keyboard: merchant.menu.map((item) => [
+      {
+        text: `${item.name} · $${item.amountUsd}`,
+        callback_data: orderItemCallbackData(merchant.id, item.id),
+      },
+    ]),
+  };
+}
+
+function telegramResponse(
+  chatId: number | string | null,
+  text: string,
+  status = 200,
+  extra: Record<string, unknown> = {},
+) {
   return Response.json(
     {
       method: "sendMessage",
       chat_id: chatId,
       text,
+      ...extra,
     },
     { status },
   );
@@ -252,13 +307,20 @@ function telegramOrderLines(order: MerchantOrder) {
   return order.items.map((item) => `- ${item.quantity}x ${item.name}`).join("\n");
 }
 
+function staffOrderCallbackData(action: "paid_done" | "cancel", orderId: string) {
+  if (!TELEGRAM_STAFF_ORDER_CALLBACK_PATTERN.test(orderId)) {
+    throw new Error("Telegram staff callback order id does not match the parser contract.");
+  }
+  return `${action}:${orderId}`;
+}
+
 async function notifyMerchantGroup(order: MerchantOrder) {
   const chatId = merchantGroupChatId();
   if (!chatId) return { sent: false, skipped: true };
   if (!telegramBotToken()) return { sent: false, skipped: false };
 
   const text = [
-    `New Raposa order #${order.pickupCode}`,
+    `New ${order.merchantName} order #${order.pickupCode}`,
     "",
     `Customer: ${order.customerLabel || "Telegram customer"}`,
     telegramOrderLines(order),
@@ -277,18 +339,24 @@ async function notifyMerchantGroup(order: MerchantOrder) {
     reply_markup: {
       inline_keyboard: [
         [
-          { text: "Paid + Done", callback_data: `paid_done:${order.id}` },
-          { text: "Cancel", callback_data: `cancel:${order.id}` },
+          { text: "Paid + Done", callback_data: staffOrderCallbackData("paid_done", order.id) },
+          { text: "Cancel", callback_data: staffOrderCallbackData("cancel", order.id) },
         ],
       ],
     },
   });
 }
 
-function callbackData(value: unknown) {
+function callbackData(value: unknown): ParsedCallbackData | null {
   if (typeof value !== "string") return null;
-  const match = /^(paid_done|cancel):(ord-[a-f0-9]{16})$/.exec(value.trim());
-  return match ? { action: match[1], orderId: match[2] } : null;
+  const trimmed = value.trim();
+  const staffMatch = /^(paid_done|cancel):(ord-[a-f0-9]{16})$/.exec(trimmed);
+  if (staffMatch) {
+    return { action: staffMatch[1] as "paid_done" | "cancel", orderId: staffMatch[2] };
+  }
+
+  const itemMatch = /^order_item:([a-z0-9-]{1,32}):([a-z0-9-]{1,32})$/.exec(trimmed);
+  return itemMatch ? { action: "order_item", merchantId: itemMatch[1], itemId: itemMatch[2] } : null;
 }
 
 function sameTelegramChat(left: number | string | null, right: string) {
@@ -305,6 +373,43 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
       show_alert: false,
     });
     return telegramResponse(chatId, "Unsupported Jiagon order action.", 200);
+  }
+
+  if (parsed.action === "order_item") {
+    const merchant = knownMerchantProfileForId(parsed.merchantId);
+    if (!merchant) {
+      await sendTelegramMethod("answerCallbackQuery", {
+        callback_query_id: callback.id,
+        text: "Unknown merchant",
+        show_alert: false,
+      });
+      return telegramResponse(chatId, unknownMerchantText(parsed.merchantId), 200);
+    }
+
+    const menuItem = merchant.menu.find((item) => item.id === parsed.itemId);
+    if (!menuItem) {
+      await sendTelegramMethod("answerCallbackQuery", {
+        callback_query_id: callback.id,
+        text: "Item unavailable",
+        show_alert: false,
+      });
+      return telegramResponse(chatId, menuText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
+    }
+
+    await sendTelegramMethod("answerCallbackQuery", {
+      callback_query_id: callback.id,
+      text: `Ordering ${menuItem.name}`,
+      show_alert: false,
+    });
+    return createTelegramOrderReply({
+      chatId,
+      customer: callback.from,
+      idempotencyKey: telegramCallbackOrderIdempotencyKey(callback, merchant.id, menuItem.id),
+      merchant,
+      menuItem,
+      quantity: 1,
+      notes: null,
+    });
   }
 
   const expectedGroupChatId = merchantGroupChatId();
@@ -365,6 +470,114 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
   return telegramResponse(chatId, text, 200);
 }
 
+async function createTelegramOrderReply({
+  chatId,
+  customer,
+  idempotencyKey,
+  merchant,
+  menuItem,
+  quantity,
+  notes,
+}: {
+  chatId: number | string | null;
+  customer?: TelegramUser;
+  idempotencyKey: string;
+  merchant: MerchantProfile;
+  menuItem: MenuItem;
+  quantity: number;
+  notes: string | null;
+}) {
+  const item: MerchantOrderItem = {
+    id: menuItem.id,
+    name: menuItem.name,
+    quantity,
+    unitAmountCents: dollarsToCents(menuItem.amountUsd),
+  };
+  if (item.unitAmountCents <= 0) {
+    console.error("Invalid Telegram menu price.", {
+      merchantId: merchant.id,
+      itemId: menuItem.id,
+      amountUsd: menuItem.amountUsd,
+    });
+    return telegramResponse(
+      chatId,
+      "That item is temporarily unavailable. Please choose another item.",
+      200,
+      { reply_markup: menuKeyboard(merchant) },
+    );
+  }
+
+  const result = await createMerchantOrder({
+    idempotencyKey,
+    merchantId: merchant.id,
+    merchantName: merchant.name,
+    location: merchant.location,
+    customerLabel: telegramCustomerLabel(customer),
+    source: "telegram",
+    items: [item],
+    notes,
+  });
+
+  if (result.configured && !result.persisted) {
+    console.error("Failed to persist Telegram merchant order.", {
+      merchantId: merchant.id,
+      itemId: menuItem.id,
+      idempotencyKey,
+      error: result.error,
+    });
+    return telegramResponse(
+      chatId,
+      "Order could not be saved right now. Please try again at the counter.",
+      200,
+      { reply_markup: menuKeyboard(merchant) },
+    );
+  }
+
+  const order = publicMerchantOrder(result.order);
+  try {
+    const pilotEvent = await recordMerchantPilotEvent({
+      merchantId: merchant.id,
+      eventName: "order_started",
+      source: "telegram-order",
+    });
+    if (!pilotEvent.recorded) {
+      console.warn("Jiagon Telegram order_started pilot event was not recorded.", {
+        merchantId: merchant.id,
+        error: pilotEvent.error,
+      });
+    }
+  } catch (error) {
+    console.warn("Jiagon Telegram order_started pilot event failed.", {
+      merchantId: merchant.id,
+      error,
+    });
+  }
+  const merchantNotify = await notifyMerchantGroup(result.order);
+  if (!merchantNotify.sent && !merchantNotify.skipped) {
+    console.warn("Jiagon Telegram merchant group dispatch failed.", {
+      orderId: order.id,
+      pickupCode: order.pickupCode,
+      merchantId: merchant.id,
+    });
+    return telegramResponse(
+      chatId,
+      `Order created: #${order.pickupCode}\nStaff notification failed, so please show this pickup code at the counter if needed.`,
+      200,
+      { reply_markup: menuKeyboard(merchant) },
+    );
+  }
+  const reply = [
+    `Order created: #${order.pickupCode}`,
+    `${item.quantity}x ${item.name} · $${order.subtotalUsd}`,
+    `Status: ${order.status}`,
+    "",
+    `Show pickup code ${order.pickupCode} at ${merchant.name}. Pay at the counter as usual.`,
+    "After staff taps Paid + Done, use Telegram, NFC, or QR at pickup to claim the receipt into Jiagon Passport.",
+  ].join("\n");
+
+  return telegramResponse(chatId, reply, 200, { reply_markup: menuKeyboard(merchant) });
+}
+
 export async function POST(request: Request) {
   const authError = validateTelegramSecret(request);
   if (authError) {
@@ -399,104 +612,43 @@ export async function POST(request: Request) {
   const chatId = message?.chat?.id ?? null;
   const text = typeof message?.text === "string" ? message.text : "";
   if (!message || !text) {
-    return telegramResponse(chatId, helpText(), 200);
+    const merchant = defaultMerchantProfile();
+    return telegramResponse(chatId, helpText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
   }
 
   const command = parseCommand(text);
   if (command.kind === "help") {
-    return telegramResponse(chatId, helpText(command.merchantId), 200);
+    const merchantId = command.merchantId || DEFAULT_MERCHANT_ID;
+    const merchant = knownMerchantProfileForId(merchantId);
+    if (!merchant) return telegramResponse(chatId, unknownMerchantText(merchantId), 200);
+    return telegramResponse(chatId, helpText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
   }
   if (command.kind === "menu") {
-    return telegramResponse(chatId, menuText(command.merchantId), 200);
+    const merchant = knownMerchantProfileForId(command.merchantId);
+    if (!merchant) return telegramResponse(chatId, unknownMerchantText(command.merchantId), 200);
+    return telegramResponse(chatId, menuText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
   }
 
-  const merchant = merchantProfileForId(command.merchantId);
+  const merchant = knownMerchantProfileForId(command.merchantId);
+  if (!merchant) return telegramResponse(chatId, unknownMerchantText(command.merchantId), 200);
+
   const menuItem = merchant.menu.find((item) => item.id === command.itemId);
   if (!menuItem) {
     return telegramResponse(
       chatId,
-      [`Item not found: ${command.itemId || "(missing)"}`, "", menuText(command.merchantId)].join("\n"),
+      [`Item not found: ${command.itemId || "(missing)"}`, "", menuText(merchant)].join("\n"),
       200,
+      { reply_markup: menuKeyboard(merchant) },
     );
   }
 
-  const item: MerchantOrderItem = {
-    id: menuItem.id,
-    name: menuItem.name,
-    quantity: command.quantity,
-    unitAmountCents: dollarsToCents(menuItem.amountUsd),
-  };
-  if (item.unitAmountCents <= 0) {
-    return Response.json({ error: "Configured menu item has an invalid price." }, { status: 500 });
-  }
-
-  const result = await createMerchantOrder({
+  return createTelegramOrderReply({
+    chatId,
+    customer: message?.from,
     idempotencyKey: telegramOrderIdempotencyKey(payload, message, merchant.id),
-    merchantId: merchant.id,
-    merchantName: merchant.name,
-    location: merchant.location,
-    customerLabel: telegramCustomerLabel(message?.from),
-    source: "telegram",
-    items: [item],
+    merchant,
+    menuItem,
+    quantity: command.quantity,
     notes: command.notes || null,
   });
-
-  if (result.configured && !result.persisted) {
-    return Response.json(
-      {
-        error: result.error || "Failed to persist Telegram merchant order.",
-        configured: result.configured,
-        persisted: result.persisted,
-      },
-      { status: 503 },
-    );
-  }
-
-  const order = publicMerchantOrder(result.order);
-  try {
-    const pilotEvent = await recordMerchantPilotEvent({
-      merchantId: merchant.id,
-      eventName: "order_started",
-      source: "telegram-order",
-    });
-    if (!pilotEvent.recorded) {
-      console.warn("Jiagon Telegram order_started pilot event was not recorded.", {
-        merchantId: merchant.id,
-        error: pilotEvent.error,
-      });
-    }
-  } catch (error) {
-    console.warn("Jiagon Telegram order_started pilot event failed.", {
-      merchantId: merchant.id,
-      error,
-    });
-  }
-  const merchantNotify = await notifyMerchantGroup(result.order);
-  if (!merchantNotify.sent && !merchantNotify.skipped) {
-    console.warn("Jiagon Telegram merchant group dispatch failed.", {
-      orderId: order.id,
-      pickupCode: order.pickupCode,
-      merchantId: merchant.id,
-    });
-    return Response.json(
-      {
-        error: "Order created but merchant dispatch failed. Please retry /order.",
-        order: {
-          id: order.id,
-          pickupCode: order.pickupCode,
-        },
-      },
-      { status: 503 },
-    );
-  }
-  const reply = [
-    `Order created: #${order.pickupCode}`,
-    `${item.quantity}x ${item.name} · $${order.subtotalUsd}`,
-    `Status: ${order.status}`,
-    "",
-    `Show pickup code ${order.pickupCode} at Raposa. Pay at the counter as usual.`,
-    "After staff taps Paid + Done, use Telegram, NFC, or QR at pickup to claim the receipt into Jiagon Passport.",
-  ].join("\n");
-
-  return telegramResponse(chatId, reply);
 }
