@@ -2,6 +2,7 @@
 
 import QRCode from "qrcode";
 import { useEffect, useMemo, useState } from "react";
+import type { DemoReadinessResponse } from "@/lib/demoReadiness";
 
 type IssuedReceiptResponse = {
   mode: string;
@@ -111,28 +112,6 @@ type PilotMetricsResponse = {
 
 type CreditMemoResponse = {
   memo?: CreditMemo;
-  error?: string;
-};
-
-type DemoReadinessCheck = {
-  id: string;
-  label: string;
-  status: "ready" | "missing" | "blocked";
-  configured: boolean;
-  enabled?: boolean;
-  mode: string;
-  cluster?: string;
-  missingEnv: string[];
-  detail: string;
-};
-
-type DemoReadinessResponse = {
-  overall?: {
-    ready: boolean;
-    readyCount: number;
-    total: number;
-  };
-  checks?: DemoReadinessCheck[];
   error?: string;
 };
 
@@ -297,7 +276,7 @@ export default function MerchantPage() {
     setReadinessError("");
 
     try {
-      const response = await fetch("/api/demo-readiness", { cache: "no-store" });
+      const response = await fetch("/api/demo-readiness", { cache: "no-store", headers: orderHeaders() });
       const payload = await response.json() as DemoReadinessResponse;
       if (!response.ok) {
         throw new Error(payload.error || "Unable to load demo readiness.");
@@ -609,7 +588,7 @@ export default function MerchantPage() {
           <div className="merchant-readiness-summary">
             <span>{demoReadiness?.overall?.ready ? "Ready" : "Needs setup"}</span>
             <strong>
-              {demoReadiness?.overall ? `${demoReadiness.overall.readyCount}/${demoReadiness.overall.total}` : "0/3"}
+              {`${demoReadiness?.overall?.readyCount ?? 0}/${demoReadiness?.overall?.total ?? 0}`}
             </strong>
           </div>
           <div className="merchant-readiness-grid">
@@ -620,14 +599,8 @@ export default function MerchantPage() {
                   <strong>{check.status === "ready" ? "Ready" : check.status === "blocked" ? "Blocked" : "Missing setup"}</strong>
                 </div>
                 <p>{check.detail}</p>
-                <code>{check.cluster ? `${check.mode} · ${check.cluster}` : check.mode}</code>
-                {check.missingEnv.length > 0 && (
-                  <ul>
-                    {check.missingEnv.map((name) => (
-                      <li key={name}>{name}</li>
-                    ))}
-                  </ul>
-                )}
+                <code>{check.mode}</code>
+                {check.missingCount > 0 && <small>{check.missingCount} setup item{check.missingCount === 1 ? "" : "s"} missing</small>}
               </article>
             ))}
             {!demoReadiness?.checks?.length && !readinessError && (

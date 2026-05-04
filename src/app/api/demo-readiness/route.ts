@@ -1,5 +1,7 @@
+import type { DemoReadinessCheck, DemoReadinessResponse, DemoReadinessStatus } from "@/lib/demoReadiness";
 import { solanaBubblegumConfig } from "@/server/solanaBubblegum";
 import { solanaCreditDepositConfig } from "@/server/solanaCreditDeposit";
+import { authorizeMerchantDashboard } from "@/server/merchantAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,12 +40,21 @@ function missing(names: string[]) {
   });
 }
 
-function readinessStatus(configuredValue: boolean, blockedValue = false) {
+function readinessStatus(configuredValue: boolean, blockedValue = false): DemoReadinessStatus {
   if (blockedValue) return "blocked";
   return configuredValue ? "ready" : "missing";
 }
 
-export async function GET() {
+function authStatus(error: string) {
+  return error.startsWith("Invalid") ? 401 : 503;
+}
+
+export async function GET(request: Request) {
+  const authError = authorizeMerchantDashboard(request);
+  if (authError) {
+    return Response.json({ error: authError } satisfies DemoReadinessResponse, { status: authStatus(authError) });
+  }
+
   const bubblegum = solanaBubblegumConfig();
   const credit = solanaCreditDepositConfig();
   const telegramMissing = missing([
@@ -55,14 +66,14 @@ export async function GET() {
 
   const bubblegumMissing = missing(["SOLANA_BUBBLEGUM_TREE", "SOLANA_BUBBLEGUM_MINTER_SECRET_KEY"]);
   const creditMissing = missing(CREDIT_REQUIRED_ENV);
-  const checks = [
+  const checks: DemoReadinessCheck[] = [
     {
       id: "telegram",
       label: "Telegram POS",
       status: readinessStatus(telegramMissing.length === 0),
       configured: telegramMissing.length === 0,
-      mode: configured(process.env.TELEGRAM_WEBHOOK_SECRET) ? "webhook-secret" : "local-or-unsealed-webhook",
-      missingEnv: telegramMissing,
+      mode: telegramMissing.length === 0 ? "merchant Telegram ready" : "setup required",
+      missingCount: telegramMissing.length,
       detail: "Customer Telegram orders can notify the merchant group and staff can tap Paid + Done.",
     },
     {
@@ -70,9 +81,8 @@ export async function GET() {
       label: "Bubblegum receipt cNFT",
       status: readinessStatus(bubblegum.mintConfigured),
       configured: bubblegum.mintConfigured,
-      mode: bubblegum.mintConfigured ? "mint-enabled" : "prepare-only",
-      cluster: bubblegum.cluster,
-      missingEnv: bubblegumMissing,
+      mode: bubblegum.mintConfigured ? "mint path ready" : "setup required",
+      missingCount: bubblegumMissing.length,
       detail: "Claimed receipts can mint real Solana compressed NFT credentials.",
     },
     {
@@ -81,21 +91,23 @@ export async function GET() {
       status: readinessStatus(credit.configured, !credit.enabled),
       configured: credit.configured,
       enabled: credit.enabled,
-      mode: credit.configured ? "draw-repay-enabled" : "disabled-or-missing-env",
-      cluster: credit.cluster,
-      missingEnv: creditMissing,
+      mode: credit.configured && credit.enabled ? "draw-repay ready" : credit.enabled ? "setup required" : "disabled",
+      missingCount: creditMissing.length,
       detail: "Credit page can send real devnet draw and repay transactions.",
     },
   ];
+  const readyCount = checks.filter((check) => check.status === "ready").length;
 
-  return Response.json({
+  const body: DemoReadinessResponse = {
     product: "Jiagon Consensus demo readiness",
     generatedAt: new Date().toISOString(),
     overall: {
-      ready: checks.every((check) => check.configured),
-      readyCount: checks.filter((check) => check.configured).length,
+      ready: readyCount === checks.length,
+      readyCount,
       total: checks.length,
     },
     checks,
-  });
+  };
+
+  return Response.json(body);
 }
