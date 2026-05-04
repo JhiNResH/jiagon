@@ -54,6 +54,9 @@ type ParsedCallbackData =
 const DEFAULT_MERCHANT_ID = "raposa-coffee";
 const MAX_TELEGRAM_BODY_BYTES = 20_000;
 const DEFAULT_TELEGRAM_API_TIMEOUT_MS = 5_000;
+const TELEGRAM_CALLBACK_TOKEN_MAX = 32;
+const TELEGRAM_CALLBACK_TOKEN_PATTERN = /^[a-z0-9-]{1,32}$/;
+const TELEGRAM_STAFF_ORDER_CALLBACK_PATTERN = /^ord-[a-f0-9]{16}$/;
 
 let warnedMissingProductionOrigin = false;
 
@@ -189,11 +192,20 @@ function helpText(merchant: MerchantProfile) {
   return [
     "Jiagon Telegram POS",
     "",
-    `${merchant.name}: tap a drink below to create a pickup order.`,
+    `${merchant.name}: tap an item below to create a pickup order.`,
     `Manual fallback: /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
     "",
     "Telegram creates the order. NFC or QR is used at pickup to claim the receipt into Passport.",
   ].join("\n");
+}
+
+function orderItemCallbackData(merchantId: string, itemId: string) {
+  if (!TELEGRAM_CALLBACK_TOKEN_PATTERN.test(merchantId) || !TELEGRAM_CALLBACK_TOKEN_PATTERN.test(itemId)) {
+    throw new Error(
+      `Telegram order callback ids must be ${TELEGRAM_CALLBACK_TOKEN_MAX} characters or fewer and URL-safe.`,
+    );
+  }
+  return `order_item:${merchantId}:${itemId}`;
 }
 
 function menuKeyboard(merchant: MerchantProfile) {
@@ -201,7 +213,7 @@ function menuKeyboard(merchant: MerchantProfile) {
     inline_keyboard: merchant.menu.map((item) => [
       {
         text: `${item.name} · $${item.amountUsd}`,
-        callback_data: `order_item:${merchant.id}:${item.id}`,
+        callback_data: orderItemCallbackData(merchant.id, item.id),
       },
     ]),
   };
@@ -295,6 +307,13 @@ function telegramOrderLines(order: MerchantOrder) {
   return order.items.map((item) => `- ${item.quantity}x ${item.name}`).join("\n");
 }
 
+function staffOrderCallbackData(action: "paid_done" | "cancel", orderId: string) {
+  if (!TELEGRAM_STAFF_ORDER_CALLBACK_PATTERN.test(orderId)) {
+    throw new Error("Telegram staff callback order id does not match the parser contract.");
+  }
+  return `${action}:${orderId}`;
+}
+
 async function notifyMerchantGroup(order: MerchantOrder) {
   const chatId = merchantGroupChatId();
   if (!chatId) return { sent: false, skipped: true };
@@ -320,8 +339,8 @@ async function notifyMerchantGroup(order: MerchantOrder) {
     reply_markup: {
       inline_keyboard: [
         [
-          { text: "Paid + Done", callback_data: `paid_done:${order.id}` },
-          { text: "Cancel", callback_data: `cancel:${order.id}` },
+          { text: "Paid + Done", callback_data: staffOrderCallbackData("paid_done", order.id) },
+          { text: "Cancel", callback_data: staffOrderCallbackData("cancel", order.id) },
         ],
       ],
     },
@@ -475,7 +494,17 @@ async function createTelegramOrderReply({
     unitAmountCents: dollarsToCents(menuItem.amountUsd),
   };
   if (item.unitAmountCents <= 0) {
-    return Response.json({ error: "Configured menu item has an invalid price." }, { status: 500 });
+    console.error("Invalid Telegram menu price.", {
+      merchantId: merchant.id,
+      itemId: menuItem.id,
+      amountUsd: menuItem.amountUsd,
+    });
+    return telegramResponse(
+      chatId,
+      "That item is temporarily unavailable. Please choose another item.",
+      200,
+      { reply_markup: menuKeyboard(merchant) },
+    );
   }
 
   const result = await createMerchantOrder({
@@ -490,13 +519,17 @@ async function createTelegramOrderReply({
   });
 
   if (result.configured && !result.persisted) {
-    return Response.json(
-      {
-        error: result.error || "Failed to persist Telegram merchant order.",
-        configured: result.configured,
-        persisted: result.persisted,
-      },
-      { status: 503 },
+    console.error("Failed to persist Telegram merchant order.", {
+      merchantId: merchant.id,
+      itemId: menuItem.id,
+      idempotencyKey,
+      error: result.error,
+    });
+    return telegramResponse(
+      chatId,
+      "Order could not be saved right now. Please try again at the counter.",
+      200,
+      { reply_markup: menuKeyboard(merchant) },
     );
   }
 
@@ -526,15 +559,11 @@ async function createTelegramOrderReply({
       pickupCode: order.pickupCode,
       merchantId: merchant.id,
     });
-    return Response.json(
-      {
-        error: "Order created but merchant dispatch failed. Please retry /order.",
-        order: {
-          id: order.id,
-          pickupCode: order.pickupCode,
-        },
-      },
-      { status: 503 },
+    return telegramResponse(
+      chatId,
+      `Order created: #${order.pickupCode}\nStaff notification failed, so please show this pickup code at the counter if needed.`,
+      200,
+      { reply_markup: menuKeyboard(merchant) },
     );
   }
   const reply = [
