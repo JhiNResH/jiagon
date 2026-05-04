@@ -221,7 +221,18 @@ function orderId(merchantId: string, items: MerchantOrderItem[]) {
 function pickupCodeForOrderId(id: string) {
   const hex = id.replace(/^ord-/, "").slice(-8);
   const numeric = Number.parseInt(hex || "0", 16);
-  return `A${numeric.toString(36).toUpperCase().padStart(4, "0").slice(-4)}`;
+  return `A${numeric.toString(36).toUpperCase().padStart(6, "0").slice(-6)}`;
+}
+
+function isPickupCodeUniqueViolation(error: unknown) {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const text = [record.constraint, record.detail, record.message]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+  return record.code === "23505" && (
+    text.includes("jiagon_merchant_orders_pickup_idx") ||
+    text.includes("pickup_code")
+  );
 }
 
 function formatUsd(cents: number) {
@@ -340,34 +351,37 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
   error?: string;
 }> {
   const subtotalCents = input.items.reduce((total, item) => total + item.unitAmountCents * item.quantity, 0);
-  const now = new Date().toISOString();
-  const id = orderId(input.merchantId, input.items);
-  const order: MerchantOrder = {
-    id,
-    idempotencyKey: input.idempotencyKey?.trim() || null,
-    pickupCode: pickupCodeForOrderId(id),
-    merchantId: input.merchantId,
-    merchantName: input.merchantName,
-    location: input.location?.trim() || null,
-    customerLabel: input.customerLabel?.trim() || null,
-    source: input.source || "tile",
-    status: "pending",
-    items: input.items,
-    subtotalCents,
-    subtotalUsd: formatUsd(subtotalCents),
-    paymentProvider: "external_pos",
-    paymentStatus: "waiting_counter_payment",
-    notes: input.notes?.trim() || null,
-    proofLevel: proofLevelForStatus("pending"),
-    receiptId: null,
-    receiptClaimUrl: null,
-    receiptHash: null,
-    receiptIssuedAt: null,
-    receiptClaimedAt: null,
-    receiptClaimedBy: null,
-    createdAt: now,
-    updatedAt: now,
+  const buildOrder = (): MerchantOrder => {
+    const now = new Date().toISOString();
+    const id = orderId(input.merchantId, input.items);
+    return {
+      id,
+      idempotencyKey: input.idempotencyKey?.trim() || null,
+      pickupCode: pickupCodeForOrderId(id),
+      merchantId: input.merchantId,
+      merchantName: input.merchantName,
+      location: input.location?.trim() || null,
+      customerLabel: input.customerLabel?.trim() || null,
+      source: input.source || "tile",
+      status: "pending",
+      items: input.items,
+      subtotalCents,
+      subtotalUsd: formatUsd(subtotalCents),
+      paymentProvider: "external_pos",
+      paymentStatus: "waiting_counter_payment",
+      notes: input.notes?.trim() || null,
+      proofLevel: proofLevelForStatus("pending"),
+      receiptId: null,
+      receiptClaimUrl: null,
+      receiptHash: null,
+      receiptIssuedAt: null,
+      receiptClaimedAt: null,
+      receiptClaimedBy: null,
+      createdAt: now,
+      updatedAt: now,
+    };
   };
+  let order = buildOrder();
 
   const pool = getPool();
   if (!pool) {
@@ -377,98 +391,119 @@ export async function createMerchantOrder(input: MerchantOrderCreateInput): Prom
       );
       if (existing) return { configured: false, persisted: false, order: existing };
     }
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const collision = Array.from(merchantOrderMemory().values()).some(
+        (memoryOrder) => memoryOrder.merchantId === order.merchantId && memoryOrder.pickupCode === order.pickupCode,
+      );
+      if (!collision) break;
+      order = buildOrder();
+    }
+    const finalCollision = Array.from(merchantOrderMemory().values()).some(
+      (memoryOrder) => memoryOrder.merchantId === order.merchantId && memoryOrder.pickupCode === order.pickupCode,
+    );
+    if (finalCollision) {
+      return { configured: false, persisted: false, order, error: "Merchant order pickup code generation failed." };
+    }
     merchantOrderMemory().set(order.id, order);
     return { configured: false, persisted: false, order };
   }
 
-  try {
-    await ensureMerchantOrderSchema(pool);
-    const result = await pool.query(
-      `
-        insert into jiagon_merchant_orders (
-          id,
-          idempotency_key,
-          pickup_code,
-          merchant_id,
-          merchant_name,
-          location,
-          customer_label,
-          source,
-          status,
-          items,
-          subtotal_cents,
-          subtotal_usd,
-          payment_provider,
-          payment_status,
-          notes,
-          proof_level,
-          receipt_id,
-          receipt_claim_url,
-          receipt_hash,
-          receipt_issued_at,
-          receipt_claimed_at,
-          receipt_claimed_by,
-          payload
-        )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20::timestamptz, $21::timestamptz, $22, $23::jsonb)
-        on conflict (merchant_id, idempotency_key) where idempotency_key is not null do update
-          set idempotency_key = excluded.idempotency_key
-        returning
-          id,
-          idempotency_key,
-          pickup_code,
-          merchant_id,
-          merchant_name,
-          location,
-          customer_label,
-          source,
-          status,
-          items,
-          subtotal_cents,
-          subtotal_usd,
-          payment_provider,
-          payment_status,
-          notes,
-          proof_level,
-          receipt_id,
-          receipt_claim_url,
-          receipt_hash,
-          receipt_issued_at,
-          receipt_claimed_at,
-          receipt_claimed_by,
-          created_at,
-          updated_at
-      `,
-      [
-        order.id,
-        order.idempotencyKey,
-        order.pickupCode,
-        order.merchantId,
-        order.merchantName,
-        order.location,
-        order.customerLabel,
-        order.source,
-        order.status,
-        JSON.stringify(order.items),
-        order.subtotalCents,
-        order.subtotalUsd,
-        order.paymentProvider,
-        order.paymentStatus,
-        order.notes,
-        order.proofLevel,
-        order.receiptId,
-        order.receiptClaimUrl,
-        order.receiptHash,
-        order.receiptIssuedAt,
-        order.receiptClaimedAt,
-        order.receiptClaimedBy,
-        JSON.stringify(order),
-      ],
-    );
-    return { configured: true, persisted: true, order: mapMerchantOrderRow(result.rows[0]) };
-  } catch {
-    return { configured: true, persisted: false, order, error: "Merchant order persistence failed." };
+  await ensureMerchantOrderSchema(pool);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const result = await pool.query(
+        `
+          insert into jiagon_merchant_orders (
+            id,
+            idempotency_key,
+            pickup_code,
+            merchant_id,
+            merchant_name,
+            location,
+            customer_label,
+            source,
+            status,
+            items,
+            subtotal_cents,
+            subtotal_usd,
+            payment_provider,
+            payment_status,
+            notes,
+            proof_level,
+            receipt_id,
+            receipt_claim_url,
+            receipt_hash,
+            receipt_issued_at,
+            receipt_claimed_at,
+            receipt_claimed_by,
+            payload
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20::timestamptz, $21::timestamptz, $22, $23::jsonb)
+          on conflict (merchant_id, idempotency_key) where idempotency_key is not null do update
+            set idempotency_key = excluded.idempotency_key
+          returning
+            id,
+            idempotency_key,
+            pickup_code,
+            merchant_id,
+            merchant_name,
+            location,
+            customer_label,
+            source,
+            status,
+            items,
+            subtotal_cents,
+            subtotal_usd,
+            payment_provider,
+            payment_status,
+            notes,
+            proof_level,
+            receipt_id,
+            receipt_claim_url,
+            receipt_hash,
+            receipt_issued_at,
+            receipt_claimed_at,
+            receipt_claimed_by,
+            created_at,
+            updated_at
+        `,
+        [
+          order.id,
+          order.idempotencyKey,
+          order.pickupCode,
+          order.merchantId,
+          order.merchantName,
+          order.location,
+          order.customerLabel,
+          order.source,
+          order.status,
+          JSON.stringify(order.items),
+          order.subtotalCents,
+          order.subtotalUsd,
+          order.paymentProvider,
+          order.paymentStatus,
+          order.notes,
+          order.proofLevel,
+          order.receiptId,
+          order.receiptClaimUrl,
+          order.receiptHash,
+          order.receiptIssuedAt,
+          order.receiptClaimedAt,
+          order.receiptClaimedBy,
+          JSON.stringify(order),
+        ],
+      );
+      return { configured: true, persisted: true, order: mapMerchantOrderRow(result.rows[0]) };
+    } catch (error) {
+      if (attempt < 4 && isPickupCodeUniqueViolation(error)) {
+        order = buildOrder();
+        continue;
+      }
+      return { configured: true, persisted: false, order, error: "Merchant order persistence failed." };
+    }
   }
+
+  return { configured: true, persisted: false, order, error: "Merchant order persistence failed." };
 }
 
 export async function listMerchantOrders(input: {
@@ -1047,6 +1082,9 @@ export async function markMerchantOrderReceiptClaimed(input: {
   if (!pool) {
     const current = Array.from(memory.values()).find((order) => order.receiptId === input.receiptId) || null;
     if (!current) return { configured: false, updated: false, order: null };
+    if (current.receiptClaimedAt || current.receiptClaimedBy) {
+      return { configured: false, updated: false, order: current };
+    }
     const nextOrder: MerchantOrder = {
       ...current,
       proofLevel: "customer_claimed",
@@ -1070,6 +1108,7 @@ export async function markMerchantOrderReceiptClaimed(input: {
           updated_at = now(),
           payload = jsonb_set(jsonb_set(jsonb_set(payload, '{proofLevel}', to_jsonb('customer_claimed'::text), true), '{receiptClaimedAt}', to_jsonb($2::text), true), '{receiptClaimedBy}', to_jsonb($3::text), true)
         where receipt_id = $1
+          and receipt_claimed_at is null
         returning
           id,
           idempotency_key,
@@ -1098,7 +1137,48 @@ export async function markMerchantOrderReceiptClaimed(input: {
       `,
       [input.receiptId, claimedAt, input.claimedBy],
     );
-    return { configured: true, updated: Boolean(result.rows[0]), order: result.rows[0] ? mapMerchantOrderRow(result.rows[0]) : null };
+    if (result.rows[0]) {
+      return { configured: true, updated: true, order: mapMerchantOrderRow(result.rows[0]) };
+    }
+
+    const existingResult = await pool.query(
+      `
+        select
+          id,
+          idempotency_key,
+          pickup_code,
+          merchant_id,
+          merchant_name,
+          location,
+          customer_label,
+          source,
+          status,
+          items,
+          subtotal_cents,
+          subtotal_usd,
+          payment_provider,
+          payment_status,
+          notes,
+          proof_level,
+          receipt_id,
+          receipt_claim_url,
+          receipt_hash,
+          receipt_issued_at,
+          receipt_claimed_at,
+          receipt_claimed_by,
+          created_at,
+          updated_at
+        from jiagon_merchant_orders
+        where receipt_id = $1
+        limit 1
+      `,
+      [input.receiptId],
+    );
+    return {
+      configured: true,
+      updated: false,
+      order: existingResult.rows[0] ? mapMerchantOrderRow(existingResult.rows[0]) : null,
+    };
   } catch {
     return { configured: true, updated: false, order: null, error: "Merchant order receipt claim sync failed." };
   }

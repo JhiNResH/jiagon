@@ -255,6 +255,7 @@ function telegramOrderLines(order: MerchantOrder) {
 async function notifyMerchantGroup(order: MerchantOrder) {
   const chatId = merchantGroupChatId();
   if (!chatId) return { sent: false, skipped: true };
+  if (!telegramBotToken()) return { sent: false, skipped: false };
 
   const text = [
     `New Raposa order #${order.pickupCode}`,
@@ -332,6 +333,11 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
 
   const origin = requestOrigin(request);
   if (!origin) {
+    await sendTelegramMethod("answerCallbackQuery", {
+      callback_query_id: callback.id,
+      text: "Missing app origin configuration",
+      show_alert: true,
+    });
     return telegramResponse(chatId, "JIAGON_APP_ORIGIN or NEXT_PUBLIC_APP_URL is required to issue claim links.", 200);
   }
 
@@ -465,7 +471,24 @@ export async function POST(request: Request) {
       error,
     });
   }
-  await notifyMerchantGroup(result.order);
+  const merchantNotify = await notifyMerchantGroup(result.order);
+  if (!merchantNotify.sent && !merchantNotify.skipped) {
+    console.warn("Jiagon Telegram merchant group dispatch failed.", {
+      orderId: order.id,
+      pickupCode: order.pickupCode,
+      merchantId: merchant.id,
+    });
+    return Response.json(
+      {
+        error: "Order created but merchant dispatch failed. Please retry /order.",
+        order: {
+          id: order.id,
+          pickupCode: order.pickupCode,
+        },
+      },
+      { status: 503 },
+    );
+  }
   const reply = [
     `Order created: #${order.pickupCode}`,
     `${item.quantity}x ${item.name} · $${order.subtotalUsd}`,
