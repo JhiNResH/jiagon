@@ -103,15 +103,18 @@ function getPool() {
 
   const globalStore = globalThis as MerchantOrderGlobal;
   if (!globalStore.jiagonMerchantOrderPool) {
-    const wantsSsl = process.env.DATABASE_SSL === "true" || url.includes("sslmode=require");
+    const wantsSsl =
+      process.env.DATABASE_SSL === "true" ||
+      url.includes("sslmode=require");
     const allowInsecureSsl =
       process.env.DATABASE_SSL_INSECURE === "true" ||
       process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "false" ||
       url.includes("sslmode=no-verify");
+    const enableSsl = wantsSsl || allowInsecureSsl;
     globalStore.jiagonMerchantOrderPool = new Pool({
       connectionString: url,
       max: 5,
-      ssl: wantsSsl ? { rejectUnauthorized: !allowInsecureSsl } : undefined,
+      ssl: enableSsl ? { rejectUnauthorized: !allowInsecureSsl } : undefined,
     });
   }
 

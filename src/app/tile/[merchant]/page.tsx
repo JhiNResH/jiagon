@@ -123,7 +123,13 @@ export default function TilePage() {
           ? "NFC station detected. Checking your paired Order Pass..."
           : "Found your paired Order Pass on this phone. Tap the Raposa NFC station after payment to claim.",
       );
+      return;
     }
+
+    window.localStorage.removeItem(storageKey);
+    setPickupCode("");
+    setPairedPass("");
+    setClaimMessage("");
   }, [isNfcStation, merchantId, searchParams]);
 
   async function lookupReceiptClaimByCode(code: string, options: { auto?: boolean } = {}) {

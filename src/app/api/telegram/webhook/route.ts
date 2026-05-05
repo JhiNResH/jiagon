@@ -88,8 +88,11 @@ function quantityFrom(value: string | undefined) {
 
 function quantityFromNaturalText(text: string) {
   const normalized = text.toLowerCase();
-  const numericMatch = /\b([1-9]|1\d|20)\b/.exec(normalized);
-  if (numericMatch) return quantityFrom(numericMatch[1]);
+  const blockedNumericContext = /\b(table|seat|room|order|for|at)\s+([1-9]|1\d|20)\b/.exec(normalized);
+  const markedNumericMatch = /\b([1-9]|1\d|20)\s*(x|pcs?|pieces?|cups?|杯|份)\b|\b(x|qty|quantity)\s*([1-9]|1\d|20)\b/.exec(normalized);
+  if (markedNumericMatch && !blockedNumericContext) return quantityFrom(markedNumericMatch[1] || markedNumericMatch[4]);
+  const leadingNumericMatch = /^\s*([1-9]|1\d|20)\b/.exec(normalized);
+  if (leadingNumericMatch) return quantityFrom(leadingNumericMatch[1]);
 
   const quantityWords: Record<string, number> = {
     a: 1,
@@ -153,7 +156,8 @@ function telegramConfirmOrderIdempotencyKey(
 ) {
   const chatId = callback.message?.chat?.id ?? "unknown-chat";
   const fromId = callback.from?.id ?? "unknown-from";
-  return `telegram:${merchantId}:confirm:${chatId}:${fromId}:${callback.id || "unknown-callback"}:${itemId}:${quantity}:${cleanNoteCode(noteCode) || "none"}`;
+  const messageId = callback.message?.message_id ?? "unknown-message";
+  return `telegram:${merchantId}:confirm:${chatId}:${fromId}:${messageId}:${itemId}:${quantity}:${cleanNoteCode(noteCode) || "none"}`;
 }
 
 function safeEqual(left: string, right: string) {
