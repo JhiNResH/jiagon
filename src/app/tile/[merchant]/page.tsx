@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { fallbackMenu, merchantProfileForId } from "@/lib/merchantCatalog";
 
 type MerchantOrderResponse = {
@@ -35,8 +35,17 @@ function clampQuantity(value: string) {
   return Math.min(Math.max(parsed, 1), 20);
 }
 
+function cleanReceiptPass(value: string | null) {
+  return (value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]+/g, "")
+    .slice(0, 16);
+}
+
 export default function TilePage() {
   const params = useParams<{ merchant?: string | string[] }>();
+  const searchParams = useSearchParams();
   const merchantId = Array.isArray(params.merchant) ? params.merchant[0] : params.merchant || "raposa-coffee";
   const merchant = merchantProfileForId(merchantId);
   const [selectedItemId, setSelectedItemId] = useState(merchant.menu[0]?.id || fallbackMenu[0].id);
@@ -46,11 +55,14 @@ export default function TilePage() {
   const [pickupCode, setPickupCode] = useState("");
   const [claimBusy, setClaimBusy] = useState(false);
   const [claimMessage, setClaimMessage] = useState("");
+  const [pairedPass, setPairedPass] = useState("");
+  const [autoClaimAttempted, setAutoClaimAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [order, setOrder] = useState<MerchantOrderResponse["order"] | null>(null);
   const selectedItem = merchant.menu.find((item) => item.id === selectedItemId) || merchant.menu[0] || fallbackMenu[0];
   const subtotal = (Number(selectedItem.amountUsd) * quantity).toFixed(2);
+  const isNfcStation = searchParams.get("station") === "raposa-counter" || searchParams.get("nfc") === "1";
 
   const issueUrl = useMemo(() => {
     const query = new URLSearchParams({
@@ -85,8 +97,42 @@ export default function TilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [merchantId]);
 
-  async function lookupReceiptClaim(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  useEffect(() => {
+    const storageKey = `jiagon:receipt-pass:${merchantId}`;
+    const urlPass = cleanReceiptPass(
+      searchParams.get("pass") || searchParams.get("receiptPass") || searchParams.get("pickupCode"),
+    );
+    if (urlPass) {
+      window.localStorage.setItem(storageKey, urlPass);
+      setPickupCode(urlPass);
+      setPairedPass(urlPass);
+      setClaimMessage(
+        isNfcStation
+          ? "NFC station detected. Checking your paired Order Pass..."
+          : "Order Pass paired with this phone. Tap the Raposa NFC station after staff confirms payment.",
+      );
+      return;
+    }
+
+    const storedPass = cleanReceiptPass(window.localStorage.getItem(storageKey));
+    if (storedPass) {
+      setPickupCode(storedPass);
+      setPairedPass(storedPass);
+      setClaimMessage(
+        isNfcStation
+          ? "NFC station detected. Checking your paired Order Pass..."
+          : "Found your paired Order Pass on this phone. Tap the Raposa NFC station after payment to claim.",
+      );
+    }
+  }, [isNfcStation, merchantId, searchParams]);
+
+  async function lookupReceiptClaimByCode(code: string, options: { auto?: boolean } = {}) {
+    const cleanedCode = cleanReceiptPass(code);
+    if (!cleanedCode) {
+      setClaimMessage("Enter your Order Pass from Telegram.");
+      return;
+    }
+
     setClaimBusy(true);
     setClaimMessage("");
     setError("");
@@ -94,7 +140,7 @@ export default function TilePage() {
     try {
       const query = new URLSearchParams({
         merchantId,
-        pickupCode,
+        pickupCode: cleanedCode,
       });
       const response = await fetch(`/api/merchant/orders/claim?${query.toString()}`, { cache: "no-store" });
       const payload = await response.json() as MerchantReceiptClaimLookupResponse;
@@ -105,12 +151,39 @@ export default function TilePage() {
         window.location.assign(payload.claimUrl);
         return;
       }
-      setClaimMessage(payload.message || "Receipt is not ready yet. Ask staff to tap Paid + Done.");
+      setClaimMessage(
+        payload.message ||
+          (options.auto
+            ? "Your Order Pass is paired. Ask staff to confirm payment and tap Paid + Done, then tap NFC again."
+            : "Receipt is not ready yet. Ask staff to tap Paid + Done."),
+      );
     } catch (lookupError) {
       setError(lookupError instanceof Error ? lookupError.message : "Unable to find receipt.");
     } finally {
       setClaimBusy(false);
     }
+  }
+
+  useEffect(() => {
+    if (!isNfcStation || !pairedPass || autoClaimAttempted) return;
+    setAutoClaimAttempted(true);
+    void lookupReceiptClaimByCode(pairedPass, { auto: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNfcStation, pairedPass, autoClaimAttempted]);
+
+  async function lookupReceiptClaim(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cleanedCode = cleanReceiptPass(pickupCode);
+    if (cleanedCode) {
+      window.localStorage.setItem(`jiagon:receipt-pass:${merchantId}`, cleanedCode);
+      setPairedPass(cleanedCode);
+      setPickupCode(cleanedCode);
+    }
+    if (!isNfcStation) {
+      setClaimMessage("Order Pass paired with this phone. Tap the Raposa NFC station to claim after staff confirms payment.");
+      return;
+    }
+    await lookupReceiptClaimByCode(cleanedCode);
   }
 
   async function submitOrder(event: React.FormEvent<HTMLFormElement>) {
@@ -171,10 +244,11 @@ export default function TilePage() {
 
         <section className="tile-card">
           <div className="tile-kicker">NFC / Telegram order tile</div>
-          <h1>Tap to claim.</h1>
+          <h1>{isNfcStation ? "Tap to claim." : "Pair for NFC."}</h1>
           <p>
-            This NFC station is for receipt pickup at {merchant.name}. Enter the pickup code after staff marks the order
-            Paid + Done, then claim the receipt into Jiagon Passport.
+            {isNfcStation
+              ? `This NFC station is for receipt pickup at ${merchant.name}. After staff confirms payment and taps Paid + Done, Jiagon checks the paired Order Pass and opens the verified receipt claim.`
+              : `This page pairs an Order Pass with this phone. It does not claim a receipt. After paying at ${merchant.name}, tap the physical NFC station to pick up the verified receipt.`}
           </p>
 
           <div className="tile-grid">
@@ -188,7 +262,7 @@ export default function TilePage() {
             </div>
             <div>
               <span>Tap action</span>
-              <strong>Claim receipt</strong>
+              <strong>{isNfcStation ? "Claim receipt" : "Pair phone"}</strong>
             </div>
             <div>
               <span>Receipt proof</span>
@@ -198,21 +272,21 @@ export default function TilePage() {
 
           <form className="tile-claim" onSubmit={lookupReceiptClaim}>
             <div>
-              <span>Pickup code</span>
+              <span>Order Pass</span>
               <strong>{pickupCode.trim() || "A______"}</strong>
             </div>
             <label className="tile-field">
-              <span>Code from staff</span>
+              <span>Order Pass from Telegram</span>
               <input
                 value={pickupCode}
                 onChange={(event) => setPickupCode(event.target.value.toUpperCase())}
-                placeholder="A17 / A0K92Q"
+                placeholder="A0K92Q"
                 maxLength={16}
               />
             </label>
             {claimMessage ? <p className="tile-alert success">{claimMessage}</p> : null}
             <button className="tile-submit" type="submit" disabled={claimBusy || pickupCode.trim().length < 2}>
-              {claimBusy ? "Finding receipt..." : "Claim receipt"}
+              {claimBusy ? "Checking..." : isNfcStation ? "Claim receipt" : "Pair phone"}
             </button>
           </form>
 
@@ -275,7 +349,7 @@ export default function TilePage() {
             {error ? <p className="tile-alert error">{error}</p> : null}
             {order ? (
               <p className="tile-alert success">
-                Order #{order.pickupCode} is pending merchant confirmation. Show this code at pickup; receipt proof upgrades after staff marks Paid + Done.
+                Order Pass #{order.pickupCode} is pending counter payment confirmation. Show this pass at pickup; receipt proof upgrades after staff taps Paid + Done.
               </p>
             ) : null}
 

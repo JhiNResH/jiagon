@@ -104,7 +104,10 @@ function getPool() {
   const globalStore = globalThis as MerchantOrderGlobal;
   if (!globalStore.jiagonMerchantOrderPool) {
     const wantsSsl = process.env.DATABASE_SSL === "true" || url.includes("sslmode=require");
-    const allowInsecureSsl = process.env.DATABASE_SSL_INSECURE === "true" && process.env.NODE_ENV !== "production";
+    const allowInsecureSsl =
+      process.env.DATABASE_SSL_INSECURE === "true" ||
+      process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "false" ||
+      url.includes("sslmode=no-verify");
     globalStore.jiagonMerchantOrderPool = new Pool({
       connectionString: url,
       max: 5,

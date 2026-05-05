@@ -45,11 +45,14 @@ type TelegramWebhookPayload = {
 type ParsedCommand =
   | { kind: "help"; merchantId?: string }
   | { kind: "menu"; merchantId: string }
-  | { kind: "order"; merchantId: string; itemId: string; quantity: number; notes: string };
+  | { kind: "draft_order"; merchantId: string; itemId: string; quantity: number; notes: string; noteCode?: string }
+  | { kind: "clarify"; merchantId: string; text: string };
 
 type ParsedCallbackData =
   | { action: "paid_done" | "cancel"; orderId: string }
-  | { action: "order_item"; merchantId: string; itemId: string };
+  | { action: "order_item" | "draft_order"; merchantId: string; itemId: string; quantity: number; noteCode?: string }
+  | { action: "confirm_order"; merchantId: string; itemId: string; quantity: number; noteCode?: string }
+  | { action: "change_order"; merchantId: string };
 
 const DEFAULT_MERCHANT_ID = "raposa-coffee";
 const MAX_TELEGRAM_BODY_BYTES = 20_000;
@@ -73,10 +76,45 @@ function cleanNotes(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, 240);
 }
 
+function cleanNoteCode(value: string | undefined) {
+  return cleanToken(value, "").slice(0, 24);
+}
+
 function quantityFrom(value: string | undefined) {
   const parsed = Number.parseInt(value || "1", 10);
   if (!Number.isFinite(parsed)) return 1;
   return Math.min(Math.max(parsed, 1), 20);
+}
+
+function quantityFromNaturalText(text: string) {
+  const normalized = text.toLowerCase();
+  const numericMatch = /\b([1-9]|1\d|20)\b/.exec(normalized);
+  if (numericMatch) return quantityFrom(numericMatch[1]);
+
+  const quantityWords: Record<string, number> = {
+    a: 1,
+    an: 1,
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    一: 1,
+    壹: 1,
+    兩: 2,
+    二: 2,
+    貳: 2,
+    三: 3,
+    參: 3,
+  };
+  for (const [word, quantity] of Object.entries(quantityWords)) {
+    if (/[\u4e00-\u9fff]/.test(word)) {
+      if (normalized.includes(word)) return quantity;
+      continue;
+    }
+    if (new RegExp(`\\b${word}\\b`).test(normalized)) return quantity;
+  }
+  return 1;
 }
 
 function dollarsToCents(amountUsd: string) {
@@ -106,6 +144,18 @@ function telegramCallbackOrderIdempotencyKey(callback: TelegramCallbackQuery, me
   return `telegram:${merchantId}:callback:${chatId}:${fromId}:${callback.id || "unknown-callback"}:${itemId}`;
 }
 
+function telegramConfirmOrderIdempotencyKey(
+  callback: TelegramCallbackQuery,
+  merchantId: string,
+  itemId: string,
+  quantity: number,
+  noteCode = "",
+) {
+  const chatId = callback.message?.chat?.id ?? "unknown-chat";
+  const fromId = callback.from?.id ?? "unknown-from";
+  return `telegram:${merchantId}:confirm:${chatId}:${fromId}:${callback.id || "unknown-callback"}:${itemId}:${quantity}:${cleanNoteCode(noteCode) || "none"}`;
+}
+
 function safeEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
@@ -123,6 +173,90 @@ function validateTelegramSecret(request: Request) {
   return safeEqual(submitted, expected) ? null : "Invalid Telegram webhook secret.";
 }
 
+function noteCodeForText(text: string) {
+  const normalized = normalizedNaturalText(text);
+  if (normalized.includes(" less ice ") || normalized.includes(" 少冰 ")) return "less-ice";
+  if (normalized.includes(" no ice ") || normalized.includes(" 去冰 ")) return "no-ice";
+  if (normalized.includes(" oat ") || normalized.includes(" 燕麥 ")) return "oat-milk";
+  if (normalized.includes(" extra hot ") || normalized.includes(" 熱一點 ")) return "extra-hot";
+  return "";
+}
+
+function noteTextFromCode(noteCode: string | undefined) {
+  switch (cleanNoteCode(noteCode)) {
+    case "less-ice":
+      return "less ice";
+    case "no-ice":
+      return "no ice";
+    case "oat-milk":
+      return "oat milk";
+    case "extra-hot":
+      return "extra hot";
+    default:
+      return "";
+  }
+}
+
+function normalizedNaturalText(value: string) {
+  return ` ${value.toLowerCase().replace(/[_-]/g, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim()} `;
+}
+
+function isAmbiguousCoffeeRequest(text: string) {
+  const normalized = normalizedNaturalText(text);
+  const asksCoffee = normalized.includes(" coffee ") || normalized.includes(" 咖啡 ");
+  const picksSpecificDrink =
+    normalized.includes(" espresso ") ||
+    normalized.includes(" latte ") ||
+    normalized.includes(" 拿鐵 ") ||
+    normalized.includes(" 濃縮 ");
+  return asksCoffee && !picksSpecificDrink;
+}
+
+function itemAliases(item: MenuItem) {
+  const aliases = new Set<string>([
+    item.id.replace(/-/g, " "),
+    item.name,
+    ...item.name.split(/\s+/),
+    ...item.id.split("-"),
+  ]);
+
+  if (item.id === "iced-latte") {
+    aliases.add("latte");
+    aliases.add("iced latte");
+    aliases.add("拿鐵");
+    aliases.add("冰拿鐵");
+  }
+  if (item.id === "espresso") {
+    aliases.add("濃縮");
+    aliases.add("咖啡");
+  }
+  if (item.id === "croissant") {
+    aliases.add("croissant");
+    aliases.add("可頌");
+    aliases.add("麵包");
+  }
+
+  return [...aliases]
+    .map((alias) => alias.trim().toLowerCase())
+    .filter((alias) => alias.length >= 3 || /[\u4e00-\u9fff]/.test(alias));
+}
+
+function matchNaturalOrderItem(text: string, merchant: MerchantProfile) {
+  const normalized = normalizedNaturalText(text);
+  let best: { item: MenuItem; score: number } | null = null;
+
+  for (const item of merchant.menu) {
+    for (const alias of itemAliases(item)) {
+      const normalizedAlias = normalizedNaturalText(alias).trim();
+      if (!normalizedAlias || !normalized.includes(` ${normalizedAlias} `)) continue;
+      const score = normalizedAlias.length;
+      if (!best || score > best.score) best = { item, score };
+    }
+  }
+
+  return best?.item || null;
+}
+
 function parseCommand(text: string): ParsedCommand {
   const trimmed = text.trim();
   const [command = "", merchantArg, itemArg, quantityArg, ...rest] = trimmed.split(/\s+/);
@@ -135,16 +269,38 @@ function parseCommand(text: string): ParsedCommand {
 
   if (normalizedCommand === "/order") {
     return {
-      kind: "order",
+      kind: "draft_order",
       merchantId,
       itemId: cleanToken(itemArg),
       quantity: quantityFrom(quantityArg),
       notes: cleanNotes(rest.join(" ")),
+      noteCode: noteCodeForText(rest.join(" ")),
     };
   }
 
   if (normalizedCommand === "/start" || normalizedCommand === "/help") {
     return { kind: "help", merchantId };
+  }
+
+  if (normalizedCommand.startsWith("/")) {
+    return { kind: "help", merchantId };
+  }
+
+  if (isAmbiguousCoffeeRequest(trimmed)) {
+    return { kind: "clarify", merchantId: DEFAULT_MERCHANT_ID, text: trimmed };
+  }
+
+  const merchant = knownMerchantProfileForId(DEFAULT_MERCHANT_ID);
+  const matchedItem = merchant ? matchNaturalOrderItem(trimmed, merchant) : null;
+  if (merchant && matchedItem) {
+    return {
+      kind: "draft_order",
+      merchantId: merchant.id,
+      itemId: matchedItem.id,
+      quantity: quantityFromNaturalText(` ${trimmed} `),
+      notes: `Natural language order: ${cleanNotes(trimmed)}`,
+      noteCode: noteCodeForText(trimmed),
+    };
   }
 
   return { kind: "help", merchantId };
@@ -182,9 +338,13 @@ function menuText(merchant: MerchantProfile) {
     `${merchant.name} menu`,
     items,
     "",
-    "Tap an item below, or use:",
+    "Type naturally, like:",
+    " one iced latte",
+    " can I get an espresso",
+    "",
+    "Or tap an item below / use:",
     ` /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
-    "After pickup, tap the NFC receipt card or scan the QR claim link at the counter.",
+    "Jiagon will create an Order Pass. It becomes a receipt only after Raposa confirms payment at the counter.",
   ].join("\n");
 }
 
@@ -192,10 +352,10 @@ function helpText(merchant: MerchantProfile) {
   return [
     "Jiagon Telegram POS",
     "",
-    `${merchant.name}: tap an item below to create a pickup order.`,
+    `${merchant.name}: type a natural order, like "one iced latte".`,
     `Manual fallback: /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
     "",
-    "Telegram creates the order. NFC or QR is used at pickup to claim the receipt into Passport.",
+    "After Raposa confirms payment and taps Paid + Done, NFC lets the customer claim the verified receipt.",
   ].join("\n");
 }
 
@@ -208,12 +368,39 @@ function orderItemCallbackData(merchantId: string, itemId: string) {
   return `order_item:${merchantId}:${itemId}`;
 }
 
+function draftOrderCallbackData(merchantId: string, itemId: string, quantity = 1, noteCode = "") {
+  if (!TELEGRAM_CALLBACK_TOKEN_PATTERN.test(merchantId) || !TELEGRAM_CALLBACK_TOKEN_PATTERN.test(itemId)) {
+    throw new Error(
+      `Telegram order callback ids must be ${TELEGRAM_CALLBACK_TOKEN_MAX} characters or fewer and URL-safe.`,
+    );
+  }
+  const note = cleanNoteCode(noteCode);
+  return ["draft_order", merchantId, itemId, String(quantityFrom(String(quantity))), note].filter(Boolean).join(":");
+}
+
+function confirmOrderCallbackData(merchantId: string, itemId: string, quantity = 1, noteCode = "") {
+  if (!TELEGRAM_CALLBACK_TOKEN_PATTERN.test(merchantId) || !TELEGRAM_CALLBACK_TOKEN_PATTERN.test(itemId)) {
+    throw new Error(
+      `Telegram order callback ids must be ${TELEGRAM_CALLBACK_TOKEN_MAX} characters or fewer and URL-safe.`,
+    );
+  }
+  const note = cleanNoteCode(noteCode);
+  return ["confirm_order", merchantId, itemId, String(quantityFrom(String(quantity))), note].filter(Boolean).join(":");
+}
+
+function changeOrderCallbackData(merchantId: string) {
+  if (!TELEGRAM_CALLBACK_TOKEN_PATTERN.test(merchantId)) {
+    throw new Error(`Telegram merchant id must be ${TELEGRAM_CALLBACK_TOKEN_MAX} characters or fewer and URL-safe.`);
+  }
+  return `change_order:${merchantId}`;
+}
+
 function menuKeyboard(merchant: MerchantProfile) {
   return {
     inline_keyboard: merchant.menu.map((item) => [
       {
         text: `${item.name} · $${item.amountUsd}`,
-        callback_data: orderItemCallbackData(merchant.id, item.id),
+        callback_data: draftOrderCallbackData(merchant.id, item.id, 1),
       },
     ]),
   };
@@ -314,21 +501,27 @@ function staffOrderCallbackData(action: "paid_done" | "cancel", orderId: string)
   return `${action}:${orderId}`;
 }
 
+function nfcStationUrl(origin: string, merchantId: string) {
+  return `${origin}/tile/${merchantId}?station=raposa-counter`;
+}
+
 async function notifyMerchantGroup(order: MerchantOrder) {
   const chatId = merchantGroupChatId();
   if (!chatId) return { sent: false, skipped: true };
   if (!telegramBotToken()) return { sent: false, skipped: false };
 
   const text = [
-    `New ${order.merchantName} order #${order.pickupCode}`,
+    `Agent queued ${order.merchantName} Order Pass #${order.pickupCode}`,
     "",
     `Customer: ${order.customerLabel || "Telegram customer"}`,
+    "Parsed order:",
     telegramOrderLines(order),
     `Estimated total: $${order.subtotalUsd}`,
     order.notes ? `Notes: ${order.notes}` : "",
     "",
-    `Pickup code: ${order.pickupCode}`,
-    "Payment: counter POS / cash / card",
+    `Order Pass: ${order.pickupCode}`,
+    "Payment: collect at counter POS / cash / card",
+    "Next action: confirm payment, make the order, then tap Paid + Done.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -355,12 +548,80 @@ function callbackData(value: unknown): ParsedCallbackData | null {
     return { action: staffMatch[1] as "paid_done" | "cancel", orderId: staffMatch[2] };
   }
 
-  const itemMatch = /^order_item:([a-z0-9-]{1,32}):([a-z0-9-]{1,32})$/.exec(trimmed);
-  return itemMatch ? { action: "order_item", merchantId: itemMatch[1], itemId: itemMatch[2] } : null;
+  const itemMatch = /^(order_item|draft_order):([a-z0-9-]{1,32}):([a-z0-9-]{1,32})(?::([1-9]|1\d|20))?(?::([a-z0-9-]{1,24}))?$/.exec(trimmed);
+  if (itemMatch) {
+    return {
+      action: itemMatch[1] as "order_item" | "draft_order",
+      merchantId: itemMatch[2],
+      itemId: itemMatch[3],
+      quantity: quantityFrom(itemMatch[4]),
+      noteCode: cleanNoteCode(itemMatch[5]),
+    };
+  }
+
+  const confirmMatch = /^confirm_order:([a-z0-9-]{1,32}):([a-z0-9-]{1,32}):([1-9]|1\d|20)(?::([a-z0-9-]{1,24}))?$/.exec(trimmed);
+  if (confirmMatch) {
+    return {
+      action: "confirm_order",
+      merchantId: confirmMatch[1],
+      itemId: confirmMatch[2],
+      quantity: quantityFrom(confirmMatch[3]),
+      noteCode: cleanNoteCode(confirmMatch[4]),
+    };
+  }
+
+  const changeMatch = /^change_order:([a-z0-9-]{1,32})$/.exec(trimmed);
+  return changeMatch ? { action: "change_order", merchantId: changeMatch[1] } : null;
 }
 
 function sameTelegramChat(left: number | string | null, right: string) {
   return String(left ?? "").trim() === right.trim();
+}
+
+function orderDraftText(merchant: MerchantProfile, menuItem: MenuItem, quantity: number, noteCode = "") {
+  const note = noteTextFromCode(noteCode);
+  const total = (Number(menuItem.amountUsd) * quantity).toFixed(2);
+  return [
+    "I found this order:",
+    "",
+    `${quantity}x ${menuItem.name} · $${total}`,
+    note ? `Notes: ${note}` : "",
+    "",
+    "Payment is handled at the Raposa counter.",
+    "I will only create an Order Pass after you confirm.",
+  ].filter(Boolean).join("\n");
+}
+
+function orderDraftKeyboard(merchant: MerchantProfile, menuItem: MenuItem, quantity: number, noteCode = "") {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "Confirm order",
+          callback_data: confirmOrderCallbackData(merchant.id, menuItem.id, quantity, noteCode),
+        },
+        { text: "Change", callback_data: changeOrderCallbackData(merchant.id) },
+      ],
+    ],
+  };
+}
+
+function clarificationText(merchant: MerchantProfile) {
+  return [
+    "I can help with coffee.",
+    "",
+    "Which one should I add to your Order Pass?",
+    "Payment still happens at the counter; Jiagon issues a receipt only after staff confirms payment.",
+  ].join("\n");
+}
+
+function clarificationKeyboard(merchant: MerchantProfile) {
+  const coffeeItems = merchant.menu.filter((item) => item.id === "espresso" || item.id === "iced-latte");
+  return {
+    inline_keyboard: coffeeItems.map((item) => [
+      { text: item.name, callback_data: draftOrderCallbackData(merchant.id, item.id, 1) },
+    ]),
+  };
 }
 
 async function handleCallback(request: Request, callback: TelegramCallbackQuery) {
@@ -375,7 +636,18 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
     return telegramResponse(chatId, "Unsupported Jiagon order action.", 200);
   }
 
-  if (parsed.action === "order_item") {
+  if (parsed.action === "change_order") {
+    const merchant = knownMerchantProfileForId(parsed.merchantId);
+    if (!merchant) return telegramResponse(chatId, unknownMerchantText(parsed.merchantId), 200);
+    await sendTelegramMethod("answerCallbackQuery", {
+      callback_query_id: callback.id,
+      text: "Choose another item",
+      show_alert: false,
+    });
+    return telegramResponse(chatId, menuText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
+  }
+
+  if (parsed.action === "order_item" || parsed.action === "draft_order" || parsed.action === "confirm_order") {
     const merchant = knownMerchantProfileForId(parsed.merchantId);
     if (!merchant) {
       await sendTelegramMethod("answerCallbackQuery", {
@@ -396,19 +668,40 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
       return telegramResponse(chatId, menuText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
     }
 
+    if (parsed.action === "order_item" || parsed.action === "draft_order") {
+      await sendTelegramMethod("answerCallbackQuery", {
+        callback_query_id: callback.id,
+        text: `Drafting ${menuItem.name}`,
+        show_alert: false,
+      });
+      return telegramResponse(
+        chatId,
+        orderDraftText(merchant, menuItem, parsed.quantity, parsed.noteCode),
+        200,
+        { reply_markup: orderDraftKeyboard(merchant, menuItem, parsed.quantity, parsed.noteCode) },
+      );
+    }
+
     await sendTelegramMethod("answerCallbackQuery", {
       callback_query_id: callback.id,
-      text: `Ordering ${menuItem.name}`,
+      text: `Creating Order Pass`,
       show_alert: false,
     });
     return createTelegramOrderReply({
       chatId,
       customer: callback.from,
-      idempotencyKey: telegramCallbackOrderIdempotencyKey(callback, merchant.id, menuItem.id),
+      idempotencyKey: telegramConfirmOrderIdempotencyKey(
+        callback,
+        merchant.id,
+        menuItem.id,
+        parsed.quantity,
+        parsed.noteCode,
+      ),
       merchant,
       menuItem,
-      quantity: 1,
-      notes: null,
+      quantity: parsed.quantity,
+      notes: noteTextFromCode(parsed.noteCode),
+      origin: requestOrigin(request),
     });
   }
 
@@ -420,6 +713,10 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
       show_alert: true,
     });
     return telegramResponse(chatId, "Jiagon order actions are only enabled in the configured merchant Telegram group.", 200);
+  }
+
+  if (parsed.action !== "paid_done" && parsed.action !== "cancel") {
+    return telegramResponse(chatId, "Unsupported Jiagon order action.", 200);
   }
 
   if (parsed.action === "cancel") {
@@ -454,9 +751,13 @@ async function handleCallback(request: Request, callback: TelegramCallbackQuery)
   const order = result.order ? publicMerchantOrder(result.order) : null;
   const text = result.updated && order
     ? [
-        `Paid + Done: #${order.pickupCode}`,
+        `Receipt ready for Order Pass #${order.pickupCode}`,
         "",
-        `Receipt claim: ${order.receiptClaimUrl || "(claim link unavailable)"}`,
+        "Customer claim flow:",
+        "1. Ask the customer to tap the Raposa NFC receipt station.",
+        `2. Customer enters Order Pass ${order.pickupCode}.`,
+        `NFC station: ${nfcStationUrl(origin, order.merchantId)}`,
+        "",
         "Proof: merchant_completed -> customer_claimed after customer claim.",
       ].join("\n")
     : `Could not complete order ${parsed.orderId}: ${result.error || "order not found"}`;
@@ -478,6 +779,7 @@ async function createTelegramOrderReply({
   menuItem,
   quantity,
   notes,
+  origin,
 }: {
   chatId: number | string | null;
   customer?: TelegramUser;
@@ -486,6 +788,7 @@ async function createTelegramOrderReply({
   menuItem: MenuItem;
   quantity: number;
   notes: string | null;
+  origin?: string;
 }) {
   const item: MerchantOrderItem = {
     id: menuItem.id,
@@ -552,6 +855,9 @@ async function createTelegramOrderReply({
       error,
     });
   }
+  const pairUrl = origin
+    ? `${origin}/tile/${merchant.id}?pass=${encodeURIComponent(order.pickupCode)}`
+    : "";
   const merchantNotify = await notifyMerchantGroup(result.order);
   if (!merchantNotify.sent && !merchantNotify.skipped) {
     console.warn("Jiagon Telegram merchant group dispatch failed.", {
@@ -561,21 +867,30 @@ async function createTelegramOrderReply({
     });
     return telegramResponse(
       chatId,
-      `Order created: #${order.pickupCode}\nStaff notification failed, so please show this pickup code at the counter if needed.`,
+      [
+        `Your ${merchant.name} Order Pass is ready.`,
+        "",
+        `${item.name} · $${order.subtotalUsd}`,
+        `Pass: ${order.pickupCode}`,
+        pairUrl ? `Pair phone for NFC receipt pickup: ${pairUrl}` : "",
+        "",
+        "Staff notification failed, so please show this pass at the counter if needed.",
+      ].filter(Boolean).join("\n"),
       200,
-      { reply_markup: menuKeyboard(merchant) },
     );
   }
   const reply = [
-    `Order created: #${order.pickupCode}`,
-    `${item.quantity}x ${item.name} · $${order.subtotalUsd}`,
-    `Status: ${order.status}`,
+    `Your ${merchant.name} Order Pass is ready`,
     "",
-    `Show pickup code ${order.pickupCode} at ${merchant.name}. Pay at the counter as usual.`,
-    "After staff taps Paid + Done, use Telegram, NFC, or QR at pickup to claim the receipt into Jiagon Passport.",
-  ].join("\n");
+    `${item.quantity}x ${item.name} · $${order.subtotalUsd}`,
+    `Pass: ${order.pickupCode}`,
+    "",
+    pairUrl ? `Pair phone for NFC receipt pickup: ${pairUrl}` : "",
+    `Show this pass at ${merchant.name}. Pay at the counter as usual.`,
+    "This is not a receipt yet. After Raposa confirms payment and taps Paid + Done, tap NFC to claim the receipt into Jiagon Passport.",
+  ].filter(Boolean).join("\n");
 
-  return telegramResponse(chatId, reply, 200, { reply_markup: menuKeyboard(merchant) });
+  return telegramResponse(chatId, reply, 200);
 }
 
 export async function POST(request: Request) {
@@ -628,6 +943,11 @@ export async function POST(request: Request) {
     if (!merchant) return telegramResponse(chatId, unknownMerchantText(command.merchantId), 200);
     return telegramResponse(chatId, menuText(merchant), 200, { reply_markup: menuKeyboard(merchant) });
   }
+  if (command.kind === "clarify") {
+    const merchant = knownMerchantProfileForId(command.merchantId);
+    if (!merchant) return telegramResponse(chatId, unknownMerchantText(command.merchantId), 200);
+    return telegramResponse(chatId, clarificationText(merchant), 200, { reply_markup: clarificationKeyboard(merchant) });
+  }
 
   const merchant = knownMerchantProfileForId(command.merchantId);
   if (!merchant) return telegramResponse(chatId, unknownMerchantText(command.merchantId), 200);
@@ -642,13 +962,10 @@ export async function POST(request: Request) {
     );
   }
 
-  return createTelegramOrderReply({
+  return telegramResponse(
     chatId,
-    customer: message?.from,
-    idempotencyKey: telegramOrderIdempotencyKey(payload, message, merchant.id),
-    merchant,
-    menuItem,
-    quantity: command.quantity,
-    notes: command.notes || null,
-  });
+    orderDraftText(merchant, menuItem, command.quantity, command.noteCode),
+    200,
+    { reply_markup: orderDraftKeyboard(merchant, menuItem, command.quantity, command.noteCode) },
+  );
 }

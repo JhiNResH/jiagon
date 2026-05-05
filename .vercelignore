@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.env.*
+.git
+.next
+node_modules
+out
+target
+cache
+*.tsbuildinfo
