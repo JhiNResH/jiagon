@@ -9,6 +9,10 @@ export type DemoReadinessCheck = {
   mode: string;
   missingCount: number;
   detail: string;
+  diagnostics?: Array<{
+    label: string;
+    value: string;
+  }>;
 };
 
 export type DemoReadinessResponse = {

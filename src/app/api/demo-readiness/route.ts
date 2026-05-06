@@ -1,5 +1,5 @@
 import type { DemoReadinessCheck, DemoReadinessResponse, DemoReadinessStatus } from "@/lib/demoReadiness";
-import { solanaBubblegumConfig } from "@/server/solanaBubblegum";
+import { solanaBubblegumReadinessSmoke } from "@/server/solanaBubblegum";
 import { solanaCreditDepositConfig } from "@/server/solanaCreditDeposit";
 import { authorizeMerchantDashboard } from "@/server/merchantAuth";
 
@@ -55,7 +55,7 @@ export async function GET(request: Request) {
     return Response.json({ error: authError } satisfies DemoReadinessResponse, { status: authStatus(authError) });
   }
 
-  const bubblegum = solanaBubblegumConfig();
+  const bubblegum = await solanaBubblegumReadinessSmoke();
   const credit = solanaCreditDepositConfig();
   const telegramMissing = missing([
     "TELEGRAM_BOT_TOKEN",
@@ -64,7 +64,6 @@ export async function GET(request: Request) {
   ]);
   if (!configuredOrigin()) telegramMissing.push("JIAGON_APP_ORIGIN or NEXT_PUBLIC_APP_URL");
 
-  const bubblegumMissing = missing(["SOLANA_BUBBLEGUM_TREE", "SOLANA_BUBBLEGUM_MINTER_SECRET_KEY"]);
   const creditMissing = missing(CREDIT_REQUIRED_ENV);
   const checks: DemoReadinessCheck[] = [
     {
@@ -79,11 +78,12 @@ export async function GET(request: Request) {
     {
       id: "bubblegum",
       label: "Bubblegum receipt cNFT",
-      status: readinessStatus(bubblegum.mintConfigured),
-      configured: bubblegum.mintConfigured,
-      mode: bubblegum.mintConfigured ? "mint path ready" : "setup required",
-      missingCount: bubblegumMissing.length,
-      detail: "Claimed receipts can mint real Solana compressed NFT credentials.",
+      status: bubblegum.status,
+      configured: bubblegum.configured,
+      mode: bubblegum.mode,
+      missingCount: bubblegum.missing.length,
+      detail: bubblegum.detail,
+      diagnostics: bubblegum.diagnostics,
     },
     {
       id: "credit-vault",

@@ -600,6 +600,15 @@ export default function MerchantPage() {
                 </div>
                 <p>{check.detail}</p>
                 <code>{check.mode}</code>
+                {check.diagnostics?.length ? (
+                  <ul>
+                    {check.diagnostics.map((item) => (
+                      <li key={`${check.id}-${item.label}`}>
+                        {item.label}: {item.value}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 {check.missingCount > 0 && <small>{check.missingCount} setup item{check.missingCount === 1 ? "" : "s"} missing</small>}
               </article>
             ))}
