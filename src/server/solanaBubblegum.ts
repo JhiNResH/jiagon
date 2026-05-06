@@ -1,3 +1,4 @@
+import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey as SolanaPublicKey } from "@solana/web3.js";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { mintV2, mplBubblegum, parseLeafFromMintV2Transaction, type MetadataArgsV2Args } from "@metaplex-foundation/mpl-bubblegum";
 import { base58, keypairIdentity, none, publicKey, some, type OptionOrNullable, type PublicKey } from "@metaplex-foundation/umi";
@@ -37,6 +38,23 @@ function clusterParam(cluster: string) {
   return cluster === "mainnet-beta" ? "" : `?cluster=${encodeURIComponent(cluster)}`;
 }
 
+function shortKey(value: string | null | undefined) {
+  if (!value) return "missing";
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function rpcHost(rpcUrl: string) {
+  try {
+    return new URL(rpcUrl).host;
+  } catch {
+    return "custom rpc";
+  }
+}
+
+function solAmount(lamports: number) {
+  return `${(lamports / LAMPORTS_PER_SOL).toFixed(4)} SOL`;
+}
+
 export function solanaBubblegumConfig() {
   const cluster = process.env.SOLANA_CLUSTER || DEFAULT_SOLANA_CLUSTER;
   const rpcUrl = process.env.SOLANA_RPC_URL || DEFAULT_SOLANA_RPC_URL;
@@ -52,6 +70,104 @@ export function solanaBubblegumConfig() {
     mintConfigured: Boolean(merkleTree && minterSecret),
     dasRequired: true,
   };
+}
+
+export async function solanaBubblegumReadinessSmoke() {
+  const config = solanaBubblegumConfig();
+  const minterSecret = configuredSecret(process.env.SOLANA_BUBBLEGUM_MINTER_SECRET_KEY);
+  const missing = [
+    ...(config.merkleTree ? [] : ["SOLANA_BUBBLEGUM_TREE"]),
+    ...(minterSecret ? [] : ["SOLANA_BUBBLEGUM_MINTER_SECRET_KEY"]),
+  ];
+  const diagnostics = [
+    { label: "cluster", value: config.cluster },
+    { label: "rpc", value: rpcHost(config.rpcUrl) },
+    { label: "tree", value: shortKey(config.merkleTree) },
+    { label: "collection", value: shortKey(config.collection) },
+  ];
+
+  if (!config.merkleTree || !minterSecret) {
+    return {
+      status: "missing" as const,
+      configured: false,
+      mode: "setup required",
+      missing,
+      diagnostics,
+      detail: "Bubblegum minting is not configured yet.",
+    };
+  }
+
+  try {
+    const minter = Keypair.fromSecretKey(parseSecretKey(minterSecret));
+    const merkleTree = new SolanaPublicKey(config.merkleTree);
+    const collection = config.collection ? new SolanaPublicKey(config.collection) : null;
+    const connection = new Connection(config.rpcUrl, "confirmed");
+    const [version, minterBalance, treeAccount, collectionAccount] = await Promise.all([
+      connection.getVersion(),
+      connection.getBalance(minter.publicKey),
+      connection.getAccountInfo(merkleTree),
+      collection ? connection.getAccountInfo(collection) : Promise.resolve(null),
+    ]);
+    const smokeDiagnostics = [
+      ...diagnostics,
+      { label: "rpc version", value: version["solana-core"] || "reachable" },
+      { label: "minter", value: shortKey(minter.publicKey.toBase58()) },
+      { label: "minter balance", value: solAmount(minterBalance) },
+      { label: "tree account", value: treeAccount ? "readable" : "missing" },
+      ...(collection ? [{ label: "collection account", value: collectionAccount ? "readable" : "missing" }] : []),
+    ];
+
+    if (!treeAccount) {
+      return {
+        status: "blocked" as const,
+        configured: true,
+        mode: "tree account missing",
+        missing: [],
+        diagnostics: smokeDiagnostics,
+        detail: "Configured Bubblegum tree was not found on the selected Solana cluster.",
+      };
+    }
+
+    if (collection && !collectionAccount) {
+      return {
+        status: "blocked" as const,
+        configured: true,
+        mode: "collection account missing",
+        missing: [],
+        diagnostics: smokeDiagnostics,
+        detail: "Configured Bubblegum collection was not found on the selected Solana cluster.",
+      };
+    }
+
+    if (minterBalance <= 0) {
+      return {
+        status: "blocked" as const,
+        configured: true,
+        mode: "minter unfunded",
+        missing: [],
+        diagnostics: smokeDiagnostics,
+        detail: "Bubblegum minter has no SOL for devnet mint fees.",
+      };
+    }
+
+    return {
+      status: "ready" as const,
+      configured: true,
+      mode: "devnet smoke passed",
+      missing: [],
+      diagnostics: smokeDiagnostics,
+      detail: "Bubblegum RPC, tree account, and minter funding are ready for a real receipt mint.",
+    };
+  } catch (error) {
+    return {
+      status: "blocked" as const,
+      configured: true,
+      mode: "smoke failed",
+      missing: [],
+      diagnostics,
+      detail: error instanceof Error ? error.message : "Bubblegum readiness smoke failed.",
+    };
+  }
 }
 
 export async function mintJiagonBubblegumReceipt({
