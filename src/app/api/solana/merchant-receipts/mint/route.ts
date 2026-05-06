@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { isSolanaPubkey } from "@/lib/solanaCredit";
 import { bearerTokenFromRequest, verifyPrivyAccessToken } from "@/server/privyAuth";
-import { getPrivateAccountState, savePrivateAccountState } from "@/server/receiptStore";
+import { getPrivateAccountState, recordMerchantReceiptCredential, savePrivateAccountState } from "@/server/receiptStore";
 import { mintJiagonBubblegumReceipt, solanaBubblegumConfig } from "@/server/solanaBubblegum";
 
 export const runtime = "nodejs";
@@ -233,19 +233,37 @@ export async function POST(request: Request) {
     result = prepared;
   }
 
-  const creditEligible = result.mode === "bubblegum-minted" && result.status === "minted";
+  const mintedForCredit = result.mode === "bubblegum-minted" && result.status === "minted";
+  const mintStatus = mintedForCredit ? "minted" : "prepared";
+  const creditIndex = await recordMerchantReceiptCredential({
+    receiptId: receipt.id,
+    privyUserId: claims.userId,
+    mintStatus,
+    credentialId: result.credentialId,
+    credentialChain: result.credentialChain,
+    credentialStandard: result.standard,
+    solanaOwner,
+    credentialTx: "credentialTx" in result ? result.credentialTx : null,
+    dataHash: result.dataHash,
+    storageUri: result.storageUri,
+    explorerUrl: "explorerUrl" in result ? result.explorerUrl : null,
+    assetExplorerUrl: "assetExplorerUrl" in result ? result.assetExplorerUrl : null,
+    creditUnlockedCents: mintedForCredit ? 2_500 : 0,
+  });
+  const creditEligible = mintedForCredit && creditIndex.configured && creditIndex.updated && !creditIndex.error;
   const creditImpact = creditEligible
     ? {
         eligible: true,
         unlockedCreditUsd: 25,
-        reason: "Merchant receipt credential is ready for Jiagon credit underwriting.",
+        reason: "Merchant receipt credential is indexed for Jiagon credit underwriting.",
       }
     : {
         eligible: false,
         unlockedCreditUsd: 0,
-        reason: "Merchant-issued receipt must be minted as a Bubblegum cNFT before credit unlock.",
+        reason: mintedForCredit
+          ? "Bubblegum receipt minted, but server-side credit index is not ready yet."
+          : "Merchant-issued receipt must be minted as a Bubblegum cNFT before credit unlock.",
       };
-  const mintStatus = result.status === "minted" ? "minted" : "prepared";
   await savePrivateAccountState({
     privyUserId: claims.userId,
     sessionId: claims.sessionId,
@@ -269,5 +287,5 @@ export async function POST(request: Request) {
     },
   });
 
-  return Response.json({ ...result, creditImpact });
+  return Response.json({ ...result, creditImpact, creditIndex });
 }
