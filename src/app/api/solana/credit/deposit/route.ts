@@ -1,4 +1,5 @@
 import { bearerTokenFromRequest, verifyPrivyAccessToken } from "@/server/privyAuth";
+import { getMerchantReceiptCreditProfile } from "@/server/receiptStore";
 import {
   drawDevnetRestaurantDeposit,
   repayDevnetRestaurantDeposit,
@@ -73,8 +74,9 @@ export async function POST(request: Request) {
     return Response.json({ error: "Devnet deposit credit must be requested from the Jiagon app origin." }, { status: 403 });
   }
 
+  let claims: Awaited<ReturnType<typeof verifiedClaims>>;
   try {
-    await verifiedClaims(request);
+    claims = await verifiedClaims(request);
   } catch (error) {
     return authError(error);
   }
@@ -115,11 +117,43 @@ export async function POST(request: Request) {
       if (cents == null || cents <= 0 || cents > 2_500) {
         return Response.json({ error: "Draw amount must be greater than $0 and at most $25 for the demo." }, { status: 400 });
       }
+      const creditProfile = await getMerchantReceiptCreditProfile(claims.userId);
+      if (creditProfile.error) {
+        return Response.json({ error: creditProfile.error }, { status: 503 });
+      }
+      if (!creditProfile.configured) {
+        return Response.json(
+          { error: "Server-side merchant receipt credit index is not configured." },
+          { status: 503 },
+        );
+      }
+      if (creditProfile.unlockedCreditCents <= 0 || creditProfile.mintedReceiptCount <= 0) {
+        return Response.json(
+          { error: "Mint a Bubblegum merchant receipt cNFT before drawing devnet credit." },
+          { status: 403 },
+        );
+      }
+      if (cents > creditProfile.unlockedCreditCents) {
+        return Response.json(
+          {
+            error: `Draw amount exceeds unlocked credit of $${(creditProfile.unlockedCreditCents / 100).toFixed(2)}.`,
+            unlockedCreditUsd: (creditProfile.unlockedCreditCents / 100).toFixed(2),
+          },
+          { status: 400 },
+        );
+      }
       const result = await drawDevnetRestaurantDeposit({
         amountCents: cents,
         merchantName: cleanText(body.merchantName, "restaurant"),
       });
-      return Response.json(result);
+      return Response.json({
+        ...result,
+        creditProfile: {
+          unlockedCreditUsd: (creditProfile.unlockedCreditCents / 100).toFixed(2),
+          mintedReceiptCount: creditProfile.mintedReceiptCount,
+          receiptIds: creditProfile.receiptIds,
+        },
+      });
     }
 
     if (body.action === "repay") {

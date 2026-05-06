@@ -141,6 +141,17 @@ export type MerchantIssuedReceipt = {
   issuedAt: string;
   claimedAt: string | null;
   claimedBy: string | null;
+  mintStatus?: "none" | "prepared" | "minted";
+  credentialId?: string | null;
+  credentialChain?: string | null;
+  credentialStandard?: string | null;
+  credentialTx?: string | null;
+  solanaOwner?: string | null;
+  dataHash?: string | null;
+  storageUri?: string | null;
+  explorerUrl?: string | null;
+  assetExplorerUrl?: string | null;
+  creditUnlockedCents?: number;
 };
 
 export type MerchantReceiptIssueInput = {
@@ -342,14 +353,42 @@ async function ensureMerchantReceiptSchema(pool: Pool) {
         issued_at timestamptz not null,
         claimed_at timestamptz,
         claimed_by text,
+        mint_status text not null default 'none',
+        credential_id text,
+        credential_chain text,
+        credential_standard text,
+        credential_tx text,
+        solana_owner text,
+        data_hash text,
+        storage_uri text,
+        explorer_url text,
+        asset_explorer_url text,
+        credit_unlocked_cents integer not null default 0,
         payload jsonb not null
       );
+
+      alter table jiagon_merchant_receipts
+        add column if not exists mint_status text not null default 'none',
+        add column if not exists credential_id text,
+        add column if not exists credential_chain text,
+        add column if not exists credential_standard text,
+        add column if not exists credential_tx text,
+        add column if not exists solana_owner text,
+        add column if not exists data_hash text,
+        add column if not exists storage_uri text,
+        add column if not exists explorer_url text,
+        add column if not exists asset_explorer_url text,
+        add column if not exists credit_unlocked_cents integer not null default 0;
 
       create index if not exists jiagon_merchant_receipts_merchant_idx
         on jiagon_merchant_receipts (merchant_id, issued_at desc);
 
       create index if not exists jiagon_merchant_receipts_status_idx
         on jiagon_merchant_receipts (status, issued_at desc);
+
+      create index if not exists jiagon_merchant_receipts_claimed_credit_idx
+        on jiagon_merchant_receipts (claimed_by, mint_status)
+        where claimed_by is not null;
     `)
       .then(() => undefined)
       .catch((error) => {
@@ -580,6 +619,17 @@ function mapMerchantReceiptRow(row: Record<string, unknown>): MerchantIssuedRece
     issuedAt,
     claimedAt,
     claimedBy: typeof row.claimed_by === "string" ? row.claimed_by : null,
+    mintStatus: row.mint_status === "prepared" || row.mint_status === "minted" ? row.mint_status : "none",
+    credentialId: typeof row.credential_id === "string" ? row.credential_id : null,
+    credentialChain: typeof row.credential_chain === "string" ? row.credential_chain : null,
+    credentialStandard: typeof row.credential_standard === "string" ? row.credential_standard : null,
+    credentialTx: typeof row.credential_tx === "string" ? row.credential_tx : null,
+    solanaOwner: typeof row.solana_owner === "string" ? row.solana_owner : null,
+    dataHash: typeof row.data_hash === "string" ? row.data_hash : null,
+    storageUri: typeof row.storage_uri === "string" ? row.storage_uri : null,
+    explorerUrl: typeof row.explorer_url === "string" ? row.explorer_url : null,
+    assetExplorerUrl: typeof row.asset_explorer_url === "string" ? row.asset_explorer_url : null,
+    creditUnlockedCents: Number.isFinite(Number(row.credit_unlocked_cents)) ? Number(row.credit_unlocked_cents) : 0,
   };
 }
 
@@ -604,6 +654,17 @@ export function publicMerchantReceipt(receipt: MerchantIssuedReceipt) {
     claimUrl: receipt.claimUrl,
     issuedAt: receipt.issuedAt,
     claimedAt: receipt.claimedAt,
+    mintStatus: receipt.mintStatus || "none",
+    credentialId: receipt.credentialId || null,
+    credentialChain: receipt.credentialChain || null,
+    credentialStandard: receipt.credentialStandard || null,
+    credentialTx: receipt.credentialTx || null,
+    solanaOwner: receipt.solanaOwner || null,
+    dataHash: receipt.dataHash || null,
+    storageUri: receipt.storageUri || null,
+    explorerUrl: receipt.explorerUrl || null,
+    assetExplorerUrl: receipt.assetExplorerUrl || null,
+    creditUnlockedCents: receipt.creditUnlockedCents || 0,
   };
 }
 
@@ -647,7 +708,18 @@ export async function getMerchantIssuedReceiptByToken(claimToken: string): Promi
           claim_url,
           issued_at,
           claimed_at,
-          claimed_by
+          claimed_by,
+          mint_status,
+          credential_id,
+          credential_chain,
+          credential_standard,
+          credential_tx,
+          solana_owner,
+          data_hash,
+          storage_uri,
+          explorer_url,
+          asset_explorer_url,
+          credit_unlocked_cents
         from jiagon_merchant_receipts
         where claim_token_hash = $1
         limit 1
@@ -728,7 +800,18 @@ export async function claimMerchantIssuedReceipt(input: {
           claim_url,
           issued_at,
           claimed_at,
-          claimed_by
+          claimed_by,
+          mint_status,
+          credential_id,
+          credential_chain,
+          credential_standard,
+          credential_tx,
+          solana_owner,
+          data_hash,
+          storage_uri,
+          explorer_url,
+          asset_explorer_url,
+          credit_unlocked_cents
       `,
       [tokenHash, input.privyUserId],
     );
@@ -759,6 +842,138 @@ export async function claimMerchantIssuedReceipt(input: {
       claimed: false,
       receipt: null,
       error: "Merchant receipt claim failed.",
+    };
+  }
+}
+
+export async function recordMerchantReceiptCredential(input: {
+  receiptId: string;
+  privyUserId: string;
+  mintStatus: "prepared" | "minted";
+  credentialId?: string | null;
+  credentialChain?: string | null;
+  credentialStandard?: string | null;
+  credentialTx?: string | null;
+  solanaOwner?: string | null;
+  dataHash?: string | null;
+  storageUri?: string | null;
+  explorerUrl?: string | null;
+  assetExplorerUrl?: string | null;
+  creditUnlockedCents?: number;
+}): Promise<{
+  configured: boolean;
+  updated: boolean;
+  error?: string;
+}> {
+  const pool = getPool();
+  if (!pool) return { configured: false, updated: false };
+
+  try {
+    await ensureMerchantReceiptSchema(pool);
+    const creditUnlockedCents = input.mintStatus === "minted"
+      ? Math.max(0, Math.min(2_500, Math.trunc(input.creditUnlockedCents || 0)))
+      : 0;
+    const result = await pool.query(
+      `
+        update jiagon_merchant_receipts
+        set
+          updated_at = now(),
+          mint_status = $3,
+          credential_id = $4,
+          credential_chain = $5,
+          credential_standard = $6,
+          credential_tx = $7,
+          solana_owner = $8,
+          data_hash = $9,
+          storage_uri = $10,
+          explorer_url = $11,
+          asset_explorer_url = $12,
+          credit_unlocked_cents = $13
+        where id = $1
+          and claimed_by = $2
+          and status = 'claimed'
+      `,
+      [
+        input.receiptId,
+        input.privyUserId,
+        input.mintStatus,
+        input.credentialId || null,
+        input.credentialChain || null,
+        input.credentialStandard || null,
+        input.credentialTx || null,
+        input.solanaOwner || null,
+        input.dataHash || null,
+        input.storageUri || null,
+        input.explorerUrl || null,
+        input.assetExplorerUrl || null,
+        creditUnlockedCents,
+      ],
+    );
+
+    return {
+      configured: true,
+      updated: (result.rowCount || 0) > 0,
+    };
+  } catch {
+    return {
+      configured: true,
+      updated: false,
+      error: "Merchant receipt credential index update failed.",
+    };
+  }
+}
+
+export async function getMerchantReceiptCreditProfile(privyUserId: string): Promise<{
+  configured: boolean;
+  unlockedCreditCents: number;
+  mintedReceiptCount: number;
+  receiptIds: string[];
+  error?: string;
+}> {
+  const pool = getPool();
+  if (!pool) {
+    return {
+      configured: false,
+      unlockedCreditCents: 0,
+      mintedReceiptCount: 0,
+      receiptIds: [],
+    };
+  }
+
+  try {
+    await ensureMerchantReceiptSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          id,
+          credit_unlocked_cents
+        from jiagon_merchant_receipts
+        where claimed_by = $1
+          and status = 'claimed'
+          and mint_status = 'minted'
+          and credential_id is not null
+          and coalesce(credit_unlocked_cents, 0) > 0
+        order by updated_at desc
+        limit 25
+      `,
+      [privyUserId],
+    );
+    const receiptIds = result.rows.map((row) => String(row.id));
+    const total = result.rows.reduce((sum, row) => sum + Math.max(0, Number(row.credit_unlocked_cents) || 0), 0);
+
+    return {
+      configured: true,
+      unlockedCreditCents: Math.min(2_500, total),
+      mintedReceiptCount: receiptIds.length,
+      receiptIds,
+    };
+  } catch {
+    return {
+      configured: true,
+      unlockedCreditCents: 0,
+      mintedReceiptCount: 0,
+      receiptIds: [],
+      error: "Merchant receipt credit profile query failed.",
     };
   }
 }
