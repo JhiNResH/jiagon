@@ -2825,7 +2825,7 @@ const CreditScreen = ({
     mirroredState?.receiptCount ??
     Math.max(mintedCredentials.length, reviewedReceipts) + mintedMerchantReceipts.length;
   const hasReceiptInput = scannedReceipts > 0 || claimedMerchantReceipts.length > 0 || verifiedSignals > 0 || preparedCredentials.length > 0;
-  const creditUnlocked = mirroredState?.unlocked ?? (verifiedSignals > 0 || mintedCredentials.length > 0 || mintedMerchantReceipts.length > 0);
+  const creditUnlocked = mirroredState?.unlocked ?? (mintedCredentials.length > 0 || mintedMerchantReceipts.length > 0);
   const drawn = drawState === 'drawn' || drawState === 'repaid';
   const repaid = drawState === 'repaid';
   const depositCredit = mirroredState?.lending?.amountUsd ?? drawPolicy?.defaultDepositUsd ?? 10;
