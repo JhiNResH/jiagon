@@ -647,6 +647,7 @@ function PassportScreen({
   const verifiedSpend = merchantReceipts.reduce((sum, receipt) => sum + Number(receipt.amountUsd || 0), 0);
   const credentialReadyReceipts = merchantReceipts.filter((receipt) => receipt.mintStatus === "prepared" || receipt.mintStatus === "minted");
   const readyToMintReceipts = merchantReceipts.filter((receipt) => receipt.status === "claimed" && receipt.mintStatus !== "prepared" && receipt.mintStatus !== "minted");
+  const preparedOnlyReceipts = credentialReadyReceipts.filter((receipt) => receipt.mintStatus === "prepared" && !receipt.creditImpact?.eligible);
   const creditEligibleReceipts = credentialReadyReceipts.filter((receipt) => receipt.creditImpact?.eligible);
   const creditUnlocked = creditEligibleReceipts.length > 0;
   const unlockedCreditUsd = creditUnlocked
@@ -693,7 +694,7 @@ function PassportScreen({
           </div>
           <div>
             <span>Credit</span>
-            <strong>{creditUnlocked ? `$${unlockedCreditUsd} unlocked` : readyToMintReceipts.length > 0 ? "Mint required" : "Locked"}</strong>
+            <strong>{creditUnlocked ? `$${unlockedCreditUsd} unlocked` : preparedOnlyReceipts.length > 0 ? "Real mint required" : readyToMintReceipts.length > 0 ? "Mint required" : "Locked"}</strong>
           </div>
         </div>
       </div>
@@ -716,7 +717,15 @@ function PassportScreen({
       <div className="jiagon-passport-flow">
         {[
           ["Claim receipt", merchantReceipts.length > 0 ? "done" : "active", merchantReceipts.length > 0 ? `${merchantReceipts.length} claimed` : "issue or claim one"],
-          ["Mint cNFT", flowState === "credit" ? "done" : flowState === "mint" ? "active" : "locked", credentialReadyReceipts.length > 0 ? `${credentialReadyReceipts.length} credential` : "required before credit"],
+          [
+            "Mint cNFT",
+            flowState === "credit" ? "done" : flowState === "mint" ? "active" : "locked",
+            creditUnlocked
+              ? `${creditEligibleReceipts.length} minted`
+              : preparedOnlyReceipts.length > 0
+                ? "prepared only"
+                : "required before credit",
+          ],
           ["Unlock credit", flowState === "credit" ? "active" : "locked", creditUnlocked ? `$${unlockedCreditUsd} ready` : "after credential"],
         ].map(([label, state, detail]) => (
           <div className="jiagon-passport-flow-step" data-state={state} key={label}>
@@ -748,11 +757,11 @@ function PassportScreen({
               </div>
               <div>
                 <span>Status</span>
-                <strong>{receipt.mintStatus === "minted" ? "Minted" : receipt.mintStatus === "prepared" ? "Prepared" : "Ready to mint"}</strong>
+                <strong>{receipt.mintStatus === "minted" ? "Minted" : receipt.mintStatus === "prepared" ? "Prepared only" : "Ready to mint"}</strong>
               </div>
               <div>
                 <span>Credit impact</span>
-                <strong>{receipt.creditImpact?.eligible ? `+$${receipt.creditImpact.unlockedCreditUsd || 25}` : "Mint required"}</strong>
+                <strong>{receipt.creditImpact?.eligible ? `+$${receipt.creditImpact.unlockedCreditUsd || 25}` : receipt.mintStatus === "prepared" ? "Real mint required" : "Mint required"}</strong>
               </div>
               <div className="jiagon-passport-row-action">
                 <button
@@ -765,7 +774,7 @@ function PassportScreen({
                     : receipt.mintStatus === "minted"
                       ? "Minted"
                       : receipt.mintStatus === "prepared"
-                        ? "Prepared"
+                        ? "Retry real mint"
                         : "Mint cNFT"}
                 </button>
               </div>

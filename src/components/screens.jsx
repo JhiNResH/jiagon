@@ -2781,8 +2781,11 @@ const CreditScreen = ({
   const claimedMerchantReceipts = Array.isArray(merchantReceipts)
     ? merchantReceipts.filter(receipt => receipt?.status === 'claimed')
     : [];
-  const credentialMerchantReceipts = claimedMerchantReceipts.filter(
-    receipt => receipt?.mintStatus === 'prepared' || receipt?.mintStatus === 'minted',
+  const mintedMerchantReceipts = claimedMerchantReceipts.filter(
+    receipt => receipt?.mintStatus === 'minted' || receipt?.creditImpact?.eligible === true,
+  );
+  const preparedMerchantReceipts = claimedMerchantReceipts.filter(
+    receipt => receipt?.mintStatus === 'prepared' && receipt?.creditImpact?.eligible !== true,
   );
   const mintedCredentials = credentials.filter(credential => credential?.status === 'minted');
   const preparedCredentials = credentials.filter(credential => credential && credential?.status !== 'minted');
@@ -2820,9 +2823,9 @@ const CreditScreen = ({
   );
   const verifiedSignals =
     mirroredState?.receiptCount ??
-    Math.max(mintedCredentials.length, reviewedReceipts) + credentialMerchantReceipts.length;
+    Math.max(mintedCredentials.length, reviewedReceipts) + mintedMerchantReceipts.length;
   const hasReceiptInput = scannedReceipts > 0 || claimedMerchantReceipts.length > 0 || verifiedSignals > 0 || preparedCredentials.length > 0;
-  const creditUnlocked = mirroredState?.unlocked ?? (verifiedSignals > 0 || mintedCredentials.length > 0 || credentialMerchantReceipts.length > 0);
+  const creditUnlocked = mirroredState?.unlocked ?? (mintedCredentials.length > 0 || mintedMerchantReceipts.length > 0);
   const drawn = drawState === 'drawn' || drawState === 'repaid';
   const repaid = drawState === 'repaid';
   const depositCredit = mirroredState?.lending?.amountUsd ?? drawPolicy?.defaultDepositUsd ?? 10;
@@ -2835,7 +2838,7 @@ const CreditScreen = ({
     ['Receipt proofs', scannedReceipts],
     ['Merchant receipts', claimedMerchantReceipts.length],
     ['Solayer proofs', solayerProofCount],
-    ['Credential receipts', mintedCredentials.length || preparedCredentials.length || credentialMerchantReceipts.length],
+    ['Credential receipts', mintedCredentials.length || preparedCredentials.length || mintedMerchantReceipts.length || preparedMerchantReceipts.length],
     ['Credit PDA', activeMirror?.pda?.creditState ? shortValue(activeMirror.pda.creditState) : creditUnlocked ? 'ready to update' : 'waiting for credential'],
     ['CreditLine PDA', activeMirror?.pda?.creditLine ? shortValue(activeMirror.pda.creditLine) : 'ready after refresh'],
     ['Bubblegum cNFT', activeSolana?.bubblegum?.assetId ? shortValue(activeSolana.bubblegum.assetId) : activeMirror?.metaplexReceipt?.assetAddress ? shortValue(activeMirror.metaplexReceipt.assetAddress) : 'not prepared'],
@@ -2885,7 +2888,7 @@ const CreditScreen = ({
       return;
     }
 
-    if (claimedMerchantReceipts.length > 0 && credentialMerchantReceipts.length === 0) {
+    if (claimedMerchantReceipts.length > 0 && mintedMerchantReceipts.length === 0) {
       onOpenPassport?.();
       return;
     }
@@ -3205,8 +3208,10 @@ const CreditScreen = ({
             <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.45, color: 'var(--ink-muted)', margin: '8px 0 14px' }}>
               {!authenticated
                 ? 'Use Privy to start a session for the wallet that owns the card spend. Jiagon needs this session to sign receipt and Solana mirror proofs.'
+                : preparedMerchantReceipts.length > 0
+                ? 'A merchant receipt is prepared, but credit unlock requires a real Bubblegum mint. Retry minting from Passport after Bubblegum is configured.'
                 : claimedMerchantReceipts.length > 0
-                ? 'A merchant receipt is claimed. Mint or prepare the Bubblegum receipt credential from Passport to unlock the credit line.'
+                ? 'A merchant receipt is claimed. Mint the Bubblegum receipt credential from Passport to unlock the credit line.'
                 : hasReceiptInput
                 ? 'A payment proof exists. Add merchant context and mint the receipt credential to make it usable for underwriting.'
                 : 'Paste an ether.fi Cash spend transaction in Receipts. Jiagon turns the verified payment into private credit input.'}
