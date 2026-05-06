@@ -189,6 +189,29 @@ export default function MerchantPage() {
   const canSubmit = useMemo(() => {
     return form.merchantName.trim().length >= 2 && Number(form.amountUsd) > 0 && !busy;
   }, [busy, form.amountUsd, form.merchantName]);
+  const merchantSetup = useMemo(() => {
+    const merchantId = form.merchantId.trim() || "merchant";
+    const profile = new URLSearchParams({
+      merchantName: form.merchantName.trim() || defaultMerchant.merchantName,
+      location: form.location.trim() || defaultMerchant.location,
+      category: form.category.trim() || defaultMerchant.category,
+      purpose: form.purpose.trim() || defaultMerchant.purpose,
+    });
+    const dashboard = new URLSearchParams({
+      merchantId,
+      merchantName: form.merchantName.trim() || defaultMerchant.merchantName,
+      location: form.location.trim() || defaultMerchant.location,
+      category: form.category.trim() || defaultMerchant.category,
+      purpose: form.purpose.trim() || defaultMerchant.purpose,
+    });
+
+    return {
+      merchantId,
+      dashboardUrl: `/merchant?${dashboard.toString()}`,
+      customerTileUrl: `/tile/${encodeURIComponent(merchantId)}?${profile.toString()}`,
+      nfcStationUrl: `/tile/${encodeURIComponent(merchantId)}?nfc=1&${profile.toString()}`,
+    };
+  }, [form.category, form.location, form.merchantId, form.merchantName, form.purpose]);
 
   const update = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -624,6 +647,35 @@ export default function MerchantPage() {
           </div>
         </section>
 
+        <section className="merchant-setup-panel">
+          <div>
+            <div className="merchant-kicker">Merchant onboarding</div>
+            <h2>Set up a pilot without code changes</h2>
+            <p>
+              Use these URLs for a new cafe or restaurant pilot. Put the NFC station URL on a sticker, use the customer
+              tile for Telegram or QR ordering, and keep this dashboard open for Paid + Done.
+            </p>
+          </div>
+          <div className="merchant-setup-grid">
+            {[
+              ["Dashboard", merchantSetup.dashboardUrl],
+              ["Customer tile", merchantSetup.customerTileUrl],
+              ["NFC station", merchantSetup.nfcStationUrl],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <code>{value}</code>
+              </div>
+            ))}
+          </div>
+          <div className="merchant-setup-flow">
+            <span>1. Configure merchant</span>
+            <span>2. Share tile</span>
+            <span>3. Write NFC station URL</span>
+            <span>4. Staff taps Paid + Done</span>
+          </div>
+        </section>
+
         <section className="merchant-order-panel">
           <div className="merchant-order-top">
             <div>
@@ -891,5 +943,14 @@ const merchantEnhancementStyles = `
 .merchant-readiness-card p{margin:0!important;font-size:13px!important;line-height:1.45}
 .merchant-readiness-card code{overflow:auto;border:.5px solid var(--rule);border-radius:7px;background:var(--receipt);padding:7px;font-family:var(--mono);font-size:10px;color:var(--verified)}
 .merchant-readiness-card ul{margin:0;padding-left:17px;color:var(--ink-muted);font-family:var(--mono);font-size:10px;line-height:1.55}
-@media(max-width:900px){.merchant-pilot-grid,.merchant-credit-memo,.merchant-credit-memo-grid,.merchant-readiness-top,.merchant-readiness-grid{grid-template-columns:1fr}.merchant-pilot-grid div{border-right:none;border-bottom:.5px solid var(--rule)}.merchant-pilot-grid div:last-child{border-bottom:none}}
+.merchant-setup-panel{margin-top:26px;display:grid;gap:16px;border:.5px solid var(--rule);border-radius:12px;background:oklch(0.992 0.004 100 / .86);box-shadow:0 22px 80px rgba(24,58,38,.10);padding:18px}
+.merchant-setup-panel h2{margin:6px 0 0;font-family:var(--display);font-style:italic;font-weight:400;font-size:38px;line-height:.95;color:var(--ink)}
+.merchant-setup-panel p{margin:8px 0 0;color:var(--ink-muted);font-size:14px;line-height:1.45}
+.merchant-setup-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.merchant-setup-grid div{display:grid;gap:7px;border:.5px solid var(--rule);border-radius:10px;background:oklch(0.985 0.005 95 / .72);padding:12px;min-width:0}
+.merchant-setup-grid span,.merchant-setup-flow span{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-muted)}
+.merchant-setup-grid code{overflow:auto;border:.5px solid var(--rule);border-radius:7px;background:var(--receipt);padding:8px;font-family:var(--mono);font-size:10px;color:var(--verified)}
+.merchant-setup-flow{display:flex;flex-wrap:wrap;gap:8px}
+.merchant-setup-flow span{border:.5px solid var(--rule);border-radius:999px;background:var(--receipt);padding:8px 10px;color:var(--verified)}
+@media(max-width:900px){.merchant-pilot-grid,.merchant-credit-memo,.merchant-credit-memo-grid,.merchant-readiness-top,.merchant-readiness-grid,.merchant-setup-grid{grid-template-columns:1fr}.merchant-pilot-grid div{border-right:none;border-bottom:.5px solid var(--rule)}.merchant-pilot-grid div:last-child{border-bottom:none}}
 `;
