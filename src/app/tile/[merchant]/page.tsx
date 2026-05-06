@@ -49,7 +49,16 @@ export default function TilePage() {
   const params = useParams<{ merchant?: string | string[] }>();
   const searchParams = useSearchParams();
   const merchantId = Array.isArray(params.merchant) ? params.merchant[0] : params.merchant || "raposa-coffee";
-  const merchant = merchantProfileForId(merchantId);
+  const merchant = useMemo(() => {
+    const profile = merchantProfileForId(merchantId);
+    return {
+      ...profile,
+      name: searchParams.get("merchantName") || profile.name,
+      location: searchParams.get("location") || profile.location,
+      category: searchParams.get("category") || profile.category,
+      purpose: searchParams.get("purpose") || profile.purpose,
+    };
+  }, [merchantId, searchParams]);
   const [selectedItemId, setSelectedItemId] = useState(merchant.menu[0]?.id || fallbackMenu[0].id);
   const [quantity, setQuantity] = useState(1);
   const [customerLabel, setCustomerLabel] = useState("");
