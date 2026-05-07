@@ -1,6 +1,7 @@
 const apiBaseUrl = process.env.EXPO_PUBLIC_JIAGON_API_BASE_URL || "https://jiagon.vercel.app";
-const privyAppId = process.env.EXPO_PUBLIC_PRIVY_APP_ID || process.env.NEXT_PUBLIC_PRIVY_APP_ID || "";
+const privyAppId = process.env.EXPO_PUBLIC_PRIVY_APP_ID || "";
 const privyClientId = process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID || "";
+const solanaCluster = process.env.EXPO_PUBLIC_SOLANA_CLUSTER || "devnet";
 
 module.exports = {
   expo: {
@@ -9,14 +10,14 @@ module.exports = {
     scheme: "jiagon",
     version: "0.1.0",
     orientation: "portrait",
-    icon: "../../public/jiagon-logo-mark.png",
+    icon: "assets/jiagon-logo-mark.png",
     userInterfaceStyle: "light",
     assetBundlePatterns: ["**/*"],
     android: {
       package: "app.jiagon.mobile",
       versionCode: 1,
       adaptiveIcon: {
-        foregroundImage: "../../public/jiagon-logo-mark.png",
+        foregroundImage: "assets/jiagon-logo-mark.png",
         backgroundColor: "#F8F5EA",
       },
       intentFilters: [
@@ -32,7 +33,7 @@ module.exports = {
       apiBaseUrl,
       privyAppId,
       privyClientId,
-      solanaCluster: "devnet",
+      solanaCluster,
     },
     plugins: ["expo-secure-store", "expo-web-browser"],
   },
