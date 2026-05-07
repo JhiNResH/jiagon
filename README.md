@@ -109,9 +109,41 @@ Discovery:
 
 ```txt
 GET /.well-known/jiagon-agent.json
+GET /.well-known/ai-plugin.json
 GET /api/agent
 GET /openapi.json
 ```
+
+Personal agent setup:
+
+```txt
+1. Give the agent this OpenAPI URL: https://jiagon.vercel.app/openapi.json
+2. Tell it to call createAgentMerchantOrder when the user asks to order coffee,
+   food, or a supported merchant item.
+3. The user can speak naturally. The agent sends that text as userIntent.
+4. The agent returns only the pickup code, ETA, payment approval URL, and claim
+   instructions.
+```
+
+Example natural-language agent instruction:
+
+```txt
+You are my personal commerce agent. When I ask you to order coffee from Raposa,
+call Jiagon's createAgentMerchantOrder action. Preserve my natural-language
+request as userIntent, enforce my maxSpendUsd policy, prefer crypto_pay, and
+show me the pickup code plus payment approval step. Do not say a receipt exists
+until the merchant has fulfilled the order and Jiagon returns a claim URL.
+```
+
+CLI natural-language demo:
+
+```bash
+pnpm agent "Order one iced latte at Raposa Coffee under 10 dollars with Solana Pay"
+```
+
+The CLI calls the same agent order API and prints the fields needed for the live
+demo: `order.pickupCode`, `payment.url`, `urls.nfcStation`, and
+`urls.pairPhoneForNfcClaim`.
 
 Create a merchant order from a personal agent:
 
