@@ -181,14 +181,23 @@ Rerank a candidate set from Google Places, Maps, or another place graph:
 POST /api/agent/rerank
 ```
 
+Direct agent-readable trust and proof checks:
+
+```txt
+GET /api/agent/merchants/raposa-coffee/trust
+GET /api/agent/proofs/{receiptHash}
+GET /api/agent/credit-eligibility?owner={solanaOwner}
+```
+
 The intended agent pattern:
 
 ```txt
 1. Use Google Places or another place graph for broad coverage.
 2. Send candidates to Jiagon rerank.
-3. Boost candidates with verified receipts, credit repayment, and useful taste
-   signals.
-4. Preserve proof-level caveats in the response.
+3. Check merchant trust and receipt proof when the agent needs a stronger
+   reason to recommend or unlock a review.
+4. Check purpose-bound credit eligibility from the user's Solana wallet.
+5. Preserve proof-level caveats in the response.
 ```
 
 Public review feed:
@@ -308,6 +317,12 @@ pnpm build
   adapter for future underwriting signals.
 - `GET /api/agent/recommendations`: returns Jiagon-native recommendations.
 - `POST /api/agent/rerank`: boosts external place candidates with Jiagon proof.
+- `GET /api/agent/merchants/{merchantId}/trust`: returns aggregate
+  receipt-backed merchant trust for agents.
+- `GET /api/agent/proofs/{receiptHash}`: returns a public receipt proof by
+  receipt hash.
+- `GET /api/agent/credit-eligibility?owner={solanaOwner}`: returns
+  purpose-bound dining credit eligibility from minted receipt credentials.
 - `GET /api/account/state`: private account state; requires a Privy bearer token.
 
 Mint routes return `status: "minted"` only after the API broadcasts and
