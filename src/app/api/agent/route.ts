@@ -13,6 +13,9 @@ export async function GET(request: Request) {
       "Use Google Places or another place graph to get candidates when Jiagon does not have enough coverage.",
       "Call /api/agent/rerank with those candidates to apply Jiagon receipt proof boosts.",
       "Call /api/agent/recommendations directly when you only want places already present in Jiagon taste signals.",
+      "Call /api/agent/merchants/{merchantId}/trust when you need a direct merchant trust profile.",
+      "Call /api/agent/proofs/{receiptHash} to inspect a public receipt proof without reading a private passport inbox.",
+      "Call /api/agent/credit-eligibility?owner={solanaOwner} to check purpose-bound credit eligibility from minted receipt credentials.",
       "Use proofLevel, proofBoundary, reasons, freshness, verifiedVisits, and verifiedWallets to decide whether to recommend a merchant.",
       "Do not treat user-claimed merchant identity as an official merchant fact unless a stronger proof level is present.",
     ],
@@ -28,6 +31,18 @@ export async function GET(request: Request) {
         "Prefer candidates with merchant-completed, passport-claimed, and Solana-minted receipt credentials.",
         "Read agentSignals such as bestFor, valueRating, wouldReturn, and latest review text.",
         "Return a recommendation with a proof caveat if merchant identity is still user-claimed.",
+      ],
+    },
+    trustExample: {
+      userIntent: "Can I trust Raposa Coffee enough to order through my agent?",
+      agentRequest: {
+        method: "GET",
+        url: `${origin}/api/agent/merchants/raposa-coffee/trust`,
+      },
+      agentDecisionProcess: [
+        "Read aggregate receipt and review memory for the merchant.",
+        "Use shouldBoostRecommendation as a reranking signal, not as official merchant identity proof.",
+        "Use purposeBoundCreditEligible only after minted receipt credentials exist.",
       ],
     },
     orderingExample: {

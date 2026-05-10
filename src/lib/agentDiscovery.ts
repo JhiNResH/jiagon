@@ -1,7 +1,7 @@
 const product = {
   name: "Jiagon",
-  title: "Jiagon personal agent commerce rail",
-  description: "Agent ordering, merchant fulfillment, verified receipt memory, and purpose-bound credit data.",
+  title: "Jiagon verified commerce memory for AI agents",
+  description: "Agent-readable receipt proofs, merchant trust signals, and purpose-bound credit eligibility on Solana.",
   version: "0.1.0",
 };
 
@@ -28,7 +28,7 @@ export function agentDiscovery(origin: string) {
     humanDocs: `${origin}/api/agent`,
     openapi: `${origin}/openapi.json`,
     wellKnown: `${origin}/.well-known/jiagon-agent.json`,
-    primaryUseCase: "Let a personal agent turn intent into a merchant order, external wallet approval, fulfillment receipt, credit memory, and future purpose-bound dining deposits.",
+    primaryUseCase: "Let a personal agent use verified receipts as portable commerce memory for recommendations, review unlocks, and future purpose-bound dining deposits.",
     exampleUserIntent: "Get me a coffee under $10 and use an external wallet approval if possible.",
     exampleAgentCall: {
       method: "POST",
@@ -57,6 +57,10 @@ export function agentDiscovery(origin: string) {
           },
         ],
       },
+    },
+    exampleTrustCall: {
+      method: "GET",
+      url: `${origin}/api/agent/merchants/raposa-coffee/trust`,
     },
     endpoints: {
       order: {
@@ -105,6 +109,38 @@ export function agentDiscovery(origin: string) {
           "candidate ranking with Jiagon proof boost",
           "matched receipt-backed signals when available",
           "proof caveats for candidates without Jiagon data",
+        ],
+      },
+      merchantTrust: {
+        method: "GET",
+        url: `${origin}/api/agent/merchants/{merchantId}/trust`,
+        returns: [
+          "agent-readable merchant trust score",
+          "aggregate verified receipt and review memory",
+          "whether the merchant should be boosted in an agent recommendation",
+          "purpose-bound credit eligibility caveats",
+        ],
+      },
+      receiptProof: {
+        method: "GET",
+        url: `${origin}/api/agent/proofs/{receiptHash}`,
+        returns: [
+          "public merchant receipt proof",
+          "claim and mint status",
+          "Solana credential metadata when available",
+          "proof boundary for agent decisions",
+        ],
+      },
+      creditEligibility: {
+        method: "GET",
+        url: `${origin}/api/agent/credit-eligibility`,
+        query: {
+          owner: "Solana wallet public key.",
+        },
+        returns: [
+          "purpose-bound credit eligibility",
+          "unlocked demo credit from minted receipt credentials",
+          "allowed purpose and max demo cap",
         ],
       },
       publishedReviews: {
@@ -261,6 +297,87 @@ export function openApiSpec(origin: string) {
           },
         },
       },
+      "/api/agent/merchants/{merchantId}/trust": {
+        get: {
+          tags: ["Agent"],
+          summary: "Get agent-readable merchant trust from verified commerce memory.",
+          operationId: "getMerchantTrustProfile",
+          parameters: [
+            {
+              name: "merchantId",
+              in: "path",
+              required: true,
+              schema: { type: "string", examples: ["raposa-coffee"] },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Merchant trust profile for agent recommendation and credit decisions.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/MerchantTrustResponse" },
+                },
+              },
+            },
+          },
+        },
+      },
+      "/api/agent/proofs/{receiptHash}": {
+        get: {
+          tags: ["Agent"],
+          summary: "Inspect a public receipt proof by receipt hash.",
+          operationId: "getReceiptProof",
+          parameters: [
+            {
+              name: "receiptHash",
+              in: "path",
+              required: true,
+              schema: { type: "string", pattern: "^(0x)?[a-fA-F0-9]{64}$" },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Public receipt proof with claim, mint, and credential status.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ReceiptProofResponse" },
+                },
+              },
+            },
+            "400": { description: "Invalid receipt hash." },
+            "404": { description: "Receipt proof was not found." },
+            "503": { description: "Receipt proof store unavailable." },
+          },
+        },
+      },
+      "/api/agent/credit-eligibility": {
+        get: {
+          tags: ["Agent"],
+          summary: "Get purpose-bound credit eligibility for a Solana wallet.",
+          operationId: "getPurposeBoundCreditEligibility",
+          parameters: [
+            {
+              name: "owner",
+              in: "query",
+              required: true,
+              schema: { type: "string" },
+              description: "Solana wallet public key.",
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Purpose-bound credit eligibility from minted receipt credentials.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/CreditEligibilityResponse" },
+                },
+              },
+            },
+            "400": { description: "Missing or invalid Solana owner." },
+            "503": { description: "Credit eligibility store unavailable." },
+          },
+        },
+      },
       "/api/receipts/reviews": {
         get: {
           tags: ["Agent"],
@@ -411,6 +528,73 @@ export function openApiSpec(origin: string) {
             },
           },
         },
+        MerchantTrustResponse: {
+          type: "object",
+          properties: {
+            product: { type: "string" },
+            merchant: { type: "object" },
+            agentTrust: {
+              type: "object",
+              properties: {
+                score: { type: "integer", minimum: 0, maximum: 100 },
+                label: { type: "string", enum: ["high", "medium", "early", "insufficient_data"] },
+                shouldBoostRecommendation: { type: "boolean" },
+                canUnlockReceiptGatedReview: { type: "boolean" },
+                purposeBoundCreditEligible: { type: "boolean" },
+              },
+            },
+            commerceMemory: { type: "object" },
+            proofBoundary: { type: "object" },
+            persistence: { type: "object" },
+            nextAgentActions: { type: "array", items: { type: "string" } },
+          },
+        },
+        ReceiptProofResponse: {
+          type: "object",
+          properties: {
+            product: { type: "string" },
+            usage: { type: "string" },
+            configured: { type: "boolean" },
+            proofBoundary: { type: "object" },
+            proofLevel: { type: "object" },
+            receipt: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                merchantId: { type: "string" },
+                receiptHash: { type: "string" },
+                status: { type: "string" },
+                mintStatus: { type: "string" },
+                credentialId: { type: ["string", "null"] },
+                credentialTx: { type: ["string", "null"] },
+                solanaOwner: { type: ["string", "null"] },
+                creditUnlockedCents: { type: "integer" },
+              },
+            },
+          },
+        },
+        CreditEligibilityResponse: {
+          type: "object",
+          properties: {
+            product: { type: "string" },
+            owner: { type: "string" },
+            usage: { type: "string" },
+            proofBoundary: { type: "object" },
+            purposeBoundCredit: {
+              type: "object",
+              properties: {
+                eligible: { type: "boolean" },
+                unlockedCreditCents: { type: "integer" },
+                unlockedCreditUsd: { type: "string" },
+                mintedReceiptCount: { type: "integer" },
+                receiptIds: { type: "array", items: { type: "string" } },
+                maxDemoCreditCents: { type: "integer" },
+                allowedPurpose: { type: "string" },
+              },
+            },
+            persistence: { type: "object" },
+          },
+        },
         ReceiptReviewsResponse: {
           type: "object",
           properties: {
@@ -440,7 +624,10 @@ export function openApiSpec(origin: string) {
       user: "I want coffee near Irvine. Recommend somewhere reliable.",
       call: `GET ${origin}/api/agent/recommendations?query=coffee%20irvine&limit=3`,
       rerankCall: `POST ${origin}/api/agent/rerank with Google Places candidates`,
-      decision: "Use Google or another place graph for candidates; use Jiagon agentScore and jiagonProof to boost receipt-backed places.",
+      trustCall: `GET ${origin}/api/agent/merchants/raposa-coffee/trust`,
+      receiptProofCall: `GET ${origin}/api/agent/proofs/{receiptHash}`,
+      creditEligibilityCall: `GET ${origin}/api/agent/credit-eligibility?owner={solanaOwner}`,
+      decision: "Use Google or another place graph for candidates; use Jiagon agentScore, trust profile, receipt proof, and credit eligibility as verified commerce memory.",
     },
   };
 }

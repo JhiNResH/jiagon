@@ -197,6 +197,19 @@ export type MerchantReceiptCreditProfile = {
   error?: string;
 };
 
+export type AgentMerchantReceiptStats = {
+  configured: boolean;
+  merchantId: string;
+  receiptsIssued: number;
+  receiptsClaimed: number;
+  receiptsMinted: number;
+  receiptsPrepared: number;
+  totalSpendCents: number;
+  latestReceiptAt: string | null;
+  receiptHashes: string[];
+  error?: string;
+};
+
 export type MerchantReceiptCreditReservation = {
   receiptId: string;
   amountCents: number;
@@ -679,6 +692,207 @@ export function publicMerchantReceipt(receipt: MerchantIssuedReceipt) {
     assetExplorerUrl: receipt.assetExplorerUrl || null,
     creditUnlockedCents: receipt.creditUnlockedCents || 0,
   };
+}
+
+function publicAgentReceiptProof(receipt: MerchantIssuedReceipt) {
+  return {
+    id: receipt.id,
+    merchantId: receipt.merchantId,
+    merchantName: receipt.merchantName,
+    location: receipt.location,
+    receiptNumber: receipt.receiptNumber,
+    amountUsd: receipt.amountUsd,
+    currency: receipt.currency,
+    category: receipt.category,
+    purpose: receipt.purpose,
+    status: receipt.status,
+    receiptHash: receipt.receiptHash,
+    signatureAlgorithm: receipt.signatureAlgorithm,
+    issuedAt: receipt.issuedAt,
+    claimedAt: receipt.claimedAt,
+    mintStatus: receipt.mintStatus || "none",
+    credentialId: receipt.credentialId || null,
+    credentialChain: receipt.credentialChain || null,
+    credentialStandard: receipt.credentialStandard || null,
+    credentialTx: receipt.credentialTx || null,
+    solanaOwner: receipt.solanaOwner || null,
+    dataHash: receipt.dataHash || null,
+    storageUri: receipt.storageUri || null,
+    explorerUrl: receipt.explorerUrl || null,
+    assetExplorerUrl: receipt.assetExplorerUrl || null,
+    creditUnlockedCents: receipt.creditUnlockedCents || 0,
+  };
+}
+
+function merchantReceiptStats(merchantId: string, receipts: MerchantIssuedReceipt[]): AgentMerchantReceiptStats {
+  const latest = receipts
+    .map((receipt) => receipt.claimedAt || receipt.issuedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null;
+
+  return {
+    configured: Boolean(getPool()),
+    merchantId,
+    receiptsIssued: receipts.length,
+    receiptsClaimed: receipts.filter((receipt) => receipt.status === "claimed").length,
+    receiptsMinted: receipts.filter((receipt) => receipt.mintStatus === "minted").length,
+    receiptsPrepared: receipts.filter((receipt) => receipt.mintStatus === "prepared").length,
+    totalSpendCents: receipts.reduce((total, receipt) => total + Math.max(0, receipt.amountCents || 0), 0),
+    latestReceiptAt: latest,
+    receiptHashes: receipts.map((receipt) => receipt.receiptHash).slice(0, 25),
+  };
+}
+
+export async function getAgentMerchantReceiptStats(merchantId: string): Promise<AgentMerchantReceiptStats> {
+  const cleanMerchantId = slugify(merchantId);
+  const pool = getPool();
+
+  if (!pool) {
+    const receipts = Array.from(merchantReceiptMemory().values())
+      .filter((receipt) => receipt.merchantId === cleanMerchantId)
+      .slice(0, 100);
+    return merchantReceiptStats(cleanMerchantId, receipts);
+  }
+
+  try {
+    await ensureMerchantReceiptSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          receipt_number,
+          amount_cents,
+          amount_usd,
+          currency,
+          category,
+          purpose,
+          issued_by,
+          memo,
+          status,
+          receipt_hash,
+          signature,
+          signature_algorithm,
+          claim_token_hash,
+          claim_url,
+          issued_at,
+          claimed_at,
+          claimed_by,
+          mint_status,
+          credential_id,
+          credential_chain,
+          credential_standard,
+          credential_tx,
+          solana_owner,
+          data_hash,
+          storage_uri,
+          explorer_url,
+          asset_explorer_url,
+          credit_unlocked_cents
+        from jiagon_merchant_receipts
+        where merchant_id = $1
+        order by issued_at desc
+        limit 100
+      `,
+      [cleanMerchantId],
+    );
+
+    return merchantReceiptStats(cleanMerchantId, result.rows.map(mapMerchantReceiptRow));
+  } catch {
+    return {
+      configured: true,
+      merchantId: cleanMerchantId,
+      receiptsIssued: 0,
+      receiptsClaimed: 0,
+      receiptsMinted: 0,
+      receiptsPrepared: 0,
+      totalSpendCents: 0,
+      latestReceiptAt: null,
+      receiptHashes: [],
+      error: "Merchant receipt trust query failed.",
+    };
+  }
+}
+
+export async function getMerchantIssuedReceiptByHash(receiptHash: string): Promise<{
+  configured: boolean;
+  receipt: ReturnType<typeof publicAgentReceiptProof> | null;
+  error?: string;
+}> {
+  const cleanHash = receiptHash.trim().replace(/^0x/i, "");
+  if (!/^[a-f0-9]{64}$/i.test(cleanHash)) {
+    return { configured: Boolean(getPool()), receipt: null, error: "Invalid receipt hash." };
+  }
+  const candidates = [cleanHash, `0x${cleanHash}`];
+  const pool = getPool();
+
+  if (!pool) {
+    const receipt = Array.from(merchantReceiptMemory().values())
+      .find((item) => candidates.includes(item.receiptHash));
+    return {
+      configured: false,
+      receipt: receipt ? publicAgentReceiptProof(receipt) : null,
+    };
+  }
+
+  try {
+    await ensureMerchantReceiptSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          receipt_number,
+          amount_cents,
+          amount_usd,
+          currency,
+          category,
+          purpose,
+          issued_by,
+          memo,
+          status,
+          receipt_hash,
+          signature,
+          signature_algorithm,
+          claim_token_hash,
+          claim_url,
+          issued_at,
+          claimed_at,
+          claimed_by,
+          mint_status,
+          credential_id,
+          credential_chain,
+          credential_standard,
+          credential_tx,
+          solana_owner,
+          data_hash,
+          storage_uri,
+          explorer_url,
+          asset_explorer_url,
+          credit_unlocked_cents
+        from jiagon_merchant_receipts
+        where receipt_hash = any($1::text[])
+        limit 1
+      `,
+      [candidates],
+    );
+    const row = result.rows[0];
+    return {
+      configured: true,
+      receipt: row ? publicAgentReceiptProof(mapMerchantReceiptRow(row)) : null,
+    };
+  } catch {
+    return {
+      configured: true,
+      receipt: null,
+      error: "Merchant receipt proof query failed.",
+    };
+  }
 }
 
 export async function getMerchantIssuedReceiptByToken(claimToken: string): Promise<{
@@ -1185,6 +1399,74 @@ export async function getMerchantReceiptCreditProfile(privyUserId: string): Prom
         limit 25
       `,
       [privyUserId],
+    );
+    const receiptIds = result.rows.map((row) => String(row.id));
+    const total = result.rows.reduce((sum, row) => sum + Math.max(0, Number(row.credit_unlocked_cents) || 0), 0);
+
+    return {
+      configured: true,
+      unlockedCreditCents: Math.min(2_500, total),
+      mintedReceiptCount: receiptIds.length,
+      receiptIds,
+    };
+  } catch {
+    return {
+      configured: true,
+      unlockedCreditCents: 0,
+      mintedReceiptCount: 0,
+      receiptIds: [],
+      error: "Merchant receipt credit profile query failed.",
+    };
+  }
+}
+
+export async function getMerchantReceiptCreditProfileBySolanaOwner(solanaOwner: string): Promise<MerchantReceiptCreditProfile> {
+  const owner = solanaOwner.trim();
+  const pool = getPool();
+  if (!owner) {
+    return {
+      configured: Boolean(pool),
+      unlockedCreditCents: 0,
+      mintedReceiptCount: 0,
+      receiptIds: [],
+      error: "Solana owner is required.",
+    };
+  }
+  if (!pool) {
+    const receipts = Array.from(merchantReceiptMemory().values()).filter(
+      (receipt) =>
+        receipt.solanaOwner === owner &&
+        receipt.status === "claimed" &&
+        receipt.mintStatus === "minted" &&
+        Boolean(receipt.credentialId) &&
+        (receipt.creditUnlockedCents || 0) > 0,
+    );
+    const total = receipts.reduce((sum, receipt) => sum + Math.max(0, receipt.creditUnlockedCents || 0), 0);
+    return {
+      configured: false,
+      unlockedCreditCents: Math.min(2_500, total),
+      mintedReceiptCount: receipts.length,
+      receiptIds: receipts.map((receipt) => receipt.id).slice(0, 25),
+    };
+  }
+
+  try {
+    await ensureMerchantReceiptSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          id,
+          credit_unlocked_cents
+        from jiagon_merchant_receipts
+        where solana_owner = $1
+          and status = 'claimed'
+          and mint_status = 'minted'
+          and credential_id is not null
+          and coalesce(credit_unlocked_cents, 0) > 0
+        order by updated_at desc
+        limit 25
+      `,
+      [owner],
     );
     const receiptIds = result.rows.map((row) => String(row.id));
     const total = result.rows.reduce((sum, row) => sum + Math.max(0, Number(row.credit_unlocked_cents) || 0), 0);

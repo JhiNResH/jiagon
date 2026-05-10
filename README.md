@@ -109,9 +109,41 @@ Discovery:
 
 ```txt
 GET /.well-known/jiagon-agent.json
+GET /.well-known/ai-plugin.json
 GET /api/agent
 GET /openapi.json
 ```
+
+Personal agent setup:
+
+```txt
+1. Give the agent this OpenAPI URL: https://jiagon.vercel.app/openapi.json
+2. Tell it to call createAgentMerchantOrder when the user asks to order coffee,
+   food, or a supported merchant item.
+3. The user can speak naturally. The agent sends that text as userIntent.
+4. The agent returns only the pickup code, ETA, payment approval URL, and claim
+   instructions.
+```
+
+Example natural-language agent instruction:
+
+```txt
+You are my personal commerce agent. When I ask you to order coffee from Raposa,
+call Jiagon's createAgentMerchantOrder action. Preserve my natural-language
+request as userIntent, enforce my maxSpendUsd policy, prefer crypto_pay, and
+show me the pickup code plus payment approval step. Do not say a receipt exists
+until the merchant has fulfilled the order and Jiagon returns a claim URL.
+```
+
+CLI natural-language demo:
+
+```bash
+pnpm agent "Order one iced latte at Raposa Coffee under 10 dollars with Solana Pay"
+```
+
+The CLI calls the same agent order API and prints the fields needed for the live
+demo: `order.pickupCode`, `payment.url`, `urls.nfcStation`, and
+`urls.pairPhoneForNfcClaim`.
 
 Create a merchant order from a personal agent:
 
@@ -149,14 +181,23 @@ Rerank a candidate set from Google Places, Maps, or another place graph:
 POST /api/agent/rerank
 ```
 
+Direct agent-readable trust and proof checks:
+
+```txt
+GET /api/agent/merchants/raposa-coffee/trust
+GET /api/agent/proofs/{receiptHash}
+GET /api/agent/credit-eligibility?owner={solanaOwner}
+```
+
 The intended agent pattern:
 
 ```txt
 1. Use Google Places or another place graph for broad coverage.
 2. Send candidates to Jiagon rerank.
-3. Boost candidates with verified receipts, credit repayment, and useful taste
-   signals.
-4. Preserve proof-level caveats in the response.
+3. Check merchant trust and receipt proof when the agent needs a stronger
+   reason to recommend or unlock a review.
+4. Check purpose-bound credit eligibility from the user's Solana wallet.
+5. Preserve proof-level caveats in the response.
 ```
 
 Public review feed:
@@ -276,6 +317,12 @@ pnpm build
   adapter for future underwriting signals.
 - `GET /api/agent/recommendations`: returns Jiagon-native recommendations.
 - `POST /api/agent/rerank`: boosts external place candidates with Jiagon proof.
+- `GET /api/agent/merchants/{merchantId}/trust`: returns aggregate
+  receipt-backed merchant trust for agents.
+- `GET /api/agent/proofs/{receiptHash}`: returns a public receipt proof by
+  receipt hash.
+- `GET /api/agent/credit-eligibility?owner={solanaOwner}`: returns
+  purpose-bound dining credit eligibility from minted receipt credentials.
 - `GET /api/account/state`: private account state; requires a Privy bearer token.
 
 Mint routes return `status: "minted"` only after the API broadcasts and
