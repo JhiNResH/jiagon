@@ -680,7 +680,7 @@ export async function POST(request: Request) {
           merchantId: merchant.id,
           maxSpendUsd: maxSpendCents === null ? null : (maxSpendCents / 100).toFixed(2),
           paymentMode,
-        receiptPolicy: "receipt_memory_requires_merchant_fulfillment",
+          receiptPolicy: "receipt_memory_requires_merchant_fulfillment",
         },
       },
       merchant: {
