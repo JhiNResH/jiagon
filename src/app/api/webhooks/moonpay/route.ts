@@ -109,6 +109,17 @@ export async function POST(request: Request) {
     );
   }
 
+  const amountCents = moonPayPaymentAmountCents(proof);
+  if (amountCents <= 0) {
+    return Response.json(
+      {
+        error: "MoonPay Commerce payment amount must be a parseable value greater than zero.",
+        paymentProof: proof,
+      },
+      { status: 422 },
+    );
+  }
+
   if (proof.orderId) {
     const result = await completeMerchantOrderWithReceipt({
       id: proof.orderId,
@@ -175,17 +186,6 @@ export async function POST(request: Request) {
       claimUrl: existing.receipt.claimUrl,
       receipt: publicMerchantReceipt(existing.receipt),
     });
-  }
-
-  const amountCents = moonPayPaymentAmountCents(proof);
-  if (amountCents <= 0) {
-    return Response.json(
-      {
-        error: "MoonPay Commerce payment amount must be a parseable value greater than zero.",
-        paymentProof: proof,
-      },
-      { status: 422 },
-    );
   }
 
   const receiptResult = await createMerchantIssuedReceipt({
