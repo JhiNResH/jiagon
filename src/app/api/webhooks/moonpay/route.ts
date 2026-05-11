@@ -1,4 +1,5 @@
 import {
+  moonPayDirectCurrencyError,
   moonPayDirectReceiptNumber,
   moonPayPaymentAmountCents,
   moonPayReceiptMemo,
@@ -184,6 +185,26 @@ export async function POST(request: Request) {
         { status: moonPayOrderAttachStatus(error) },
       );
     }
+
+    return Response.json(
+      {
+        error: `MoonPay Commerce payment asserted Jiagon order ${proof.orderId}, but that order was not found.`,
+        paymentProof: proof,
+        configured: result.configured,
+      },
+      { status: 404 },
+    );
+  }
+
+  const currencyError = moonPayDirectCurrencyError(proof);
+  if (currencyError) {
+    return Response.json(
+      {
+        error: currencyError,
+        paymentProof: proof,
+      },
+      { status: 422 },
+    );
   }
 
   const merchantId = moonPayDirectMerchantId(proof);

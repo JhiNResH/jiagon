@@ -16,6 +16,7 @@ export type MoonPayCommercePaymentProof = {
   recipientWallet: string | null;
   amount: string | null;
   currency: string | null;
+  amountSource: "fiat_usd" | "payment_currency";
   rawIdempotencyKey: string | null;
 };
 
@@ -80,8 +81,57 @@ function findOrderId(...values: unknown[]) {
   return null;
 }
 
-function currencySymbol(currency: UnknownRecord | null) {
-  return stringValue(currency?.symbol) || stringValue(currency?.name) || null;
+function currencySymbol(value: unknown) {
+  const currency = record(value);
+  return stringValue(value) || stringValue(currency?.symbol) || stringValue(currency?.name) || null;
+}
+
+function uppercaseCode(value: unknown) {
+  return stringValue(value)?.toUpperCase() || null;
+}
+
+function isUsdCode(value: unknown) {
+  return uppercaseCode(value) === "USD";
+}
+
+function usdAmountField(...values: unknown[]) {
+  for (const value of values) {
+    const candidate = printableValue(value);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+function fiatUsdAmount(root: UnknownRecord, meta: UnknownRecord | null, transactionObject: UnknownRecord | null) {
+  const explicitUsdAmount = usdAmountField(
+    root.amountUsd,
+    root.usdAmount,
+    root.fiatAmountUsd,
+    root.fiatUsdAmount,
+    meta?.amountUsd,
+    meta?.usdAmount,
+    meta?.fiatAmountUsd,
+    meta?.fiatUsdAmount,
+    transactionObject?.amountUsd,
+    transactionObject?.usdAmount,
+  );
+  if (explicitUsdAmount) return explicitUsdAmount;
+
+  if (isUsdCode(root.fiatCurrency) || isUsdCode(root.currencyCode) || isUsdCode(root.currency)) {
+    return usdAmountField(root.fiatAmount, root.amount);
+  }
+  if (isUsdCode(meta?.fiatCurrency) || isUsdCode(meta?.currencyCode) || isUsdCode(meta?.currency)) {
+    return usdAmountField(meta?.fiatAmount, meta?.totalAmount, meta?.amount);
+  }
+  if (
+    isUsdCode(transactionObject?.fiatCurrency) ||
+    isUsdCode(transactionObject?.currencyCode) ||
+    isUsdCode(transactionObject?.currency)
+  ) {
+    return usdAmountField(transactionObject?.fiatAmount, transactionObject?.amount);
+  }
+
+  return null;
 }
 
 export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayCommercePaymentProof | null {
@@ -115,8 +165,8 @@ export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayComme
     event === "DEPOSIT_TX_ENRICHED";
   if (!isSuccess) return null;
 
-  const currency = record(root.currency) || record(meta?.currency);
   const merchant = record(root.merchant) || record(meta?.merchant) || record(productDetails?.merchant);
+  const usdFiatAmount = fiatUsdAmount(root, meta, transactionObject);
 
   return {
     event,
@@ -138,9 +188,10 @@ export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayComme
     transactionStatus,
     senderWallet: stringValue(meta?.senderPK),
     recipientWallet: stringValue(meta?.recipientPK),
-    amount: printableValue(root.amount) || printableValue(meta?.totalAmount) || printableValue(meta?.amount),
-    currency: currencySymbol(currency),
-    rawIdempotencyKey: stringValue(root.txIdempotencyKey) || stringValue(root.webhookDeliveryIdempotencyKey),
+    amount: usdFiatAmount || printableValue(root.amount) || printableValue(meta?.totalAmount) || printableValue(meta?.amount),
+    currency: usdFiatAmount ? "USD" : currencySymbol(root.currency) || currencySymbol(meta?.currency),
+    amountSource: usdFiatAmount ? "fiat_usd" : "payment_currency",
+    rawIdempotencyKey: stringValue(root.txIdempotencyKey),
   };
 }
 
@@ -166,7 +217,15 @@ export function moonPayDirectReceiptNumber(proof: MoonPayCommercePaymentProof) {
   const stableId = (proof.transactionId !== "unknown" ? proof.transactionId : null) ||
     proof.depositId ||
     proof.transactionSignature ||
-    proof.paylinkId ||
     proof.rawIdempotencyKey;
   return stableId ? `moonpay:${stableId}` : null;
+}
+
+export function moonPayDirectCurrencyError(proof: MoonPayCommercePaymentProof) {
+  if (proof.amountSource === "fiat_usd") return null;
+
+  const normalized = (proof.currency || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (normalized === "USD" || normalized === "USDC" || normalized === "USDCOIN") return null;
+
+  return "MoonPay Commerce direct receipts require a USD/USDC payment currency or a clear fiat USD amount field.";
 }
