@@ -47,6 +47,27 @@ Jiagon is not:
 - a Yelp clone
 - a live unrestricted lending protocol
 
+## Adapter Handoff Model
+
+The Order Agent and Take-Order Agent should live inside the current Jiagon repo
+as adapter roles that feed the receipt passport.
+
+```text
+Personal Order Agent
+-> user intent, max spend, merchant preference, payment preference
+-> Jiagon order/checkout adapter
+-> Merchant Take-Order Agent
+-> merchant queue, Telegram terminal, Shopify paid-order webhook, or MoonPay Commerce webhook
+-> claimable Jiagon receipt
+-> Passport
+-> proof / trust / rerank / credit APIs
+```
+
+Implementation rule: keep shared order state in the existing merchant order and
+receipt stores. Do not create a separate Order Agent repo, a separate Take-Order
+Agent product, or a parallel receipt store. Shopify and MoonPay Commerce should
+appear as merchant-approved proof-source adapters, not as the main product.
+
 ## Primary Product Flow
 
 The product should make this path obvious:
@@ -221,6 +242,7 @@ Product copy should make the business plausible:
 - [ ] Trust API page explains fakeable ratings vs verified receipts and shows core API endpoints.
 - [ ] Credit page presents eligibility and policy, not open borrowing.
 - [ ] Agent discovery/OpenAPI prioritizes proof/trust/credit over ordering.
+- [ ] Agent discovery/OpenAPI documents Order Agent -> Take-Order Agent -> Passport as an adapter handoff.
 - [ ] README and docs match the product boundary.
 - [ ] Agent ordering remains accessible but clearly secondary.
 - [ ] No copy claims arbitrary Shopify/MoonPay monitoring without merchant integration.

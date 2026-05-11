@@ -17,6 +17,25 @@ const privacy =
 
 const sampleSolanaOwner = "11111111111111111111111111111111";
 
+const adapterHandoff = {
+  boundary: "Order execution is an adapter path that feeds Jiagon's receipt passport; the core product is verified receipt memory and agent-readable proof.",
+  orderAgent: {
+    role: "Personal Order Agent",
+    responsibility: "Captures user intent, applies spend and merchant policy, and asks Jiagon to create an order or checkout pass.",
+    entrypoints: ["/api/agent/orders", "/api/agent/shopify/orders"],
+  },
+  takeOrderAgent: {
+    role: "Merchant Take-Order Agent",
+    responsibility: "Receives the pass in the merchant queue, Telegram terminal, Shopify checkout, or MoonPay Commerce payment flow, then confirms the paid or fulfilled event.",
+    entrypoints: ["/merchant", "/api/merchant/orders/{id}/action", "/api/merchant/orders/{id}/complete", "/api/webhooks/shopify/orders-paid", "/api/webhooks/moonpay"],
+  },
+  receiptPassport: {
+    role: "Receipt Passport",
+    responsibility: "Turns paid or merchant-fulfilled events into claimable receipt memory that proof, trust, rerank, and credit APIs can read.",
+    entrypoints: ["/claim/{token}", "/passport", "/api/agent/proofs/{receiptHash}", "/api/agent/credit-eligibility"],
+  },
+};
+
 export function originFromRequest(request: Request) {
   const url = new URL(request.url);
   return `${url.protocol}//${url.host}`;
@@ -38,8 +57,9 @@ export function agentDiscovery(origin: string) {
       "/api/agent/credit-eligibility?owner={validSolanaOwner}",
       "/api/agent/rerank",
       "/api/agent/recommendations",
-      "optional adapter paths: /api/agent/orders, /api/agent/shopify/products, and /api/agent/shopify/orders",
+      "optional adapter paths: /api/agent/orders, /api/agent/shopify/products, /api/agent/shopify/orders, /api/webhooks/shopify/orders-paid, and /api/webhooks/moonpay",
     ],
+    adapterHandoff,
     exampleUserIntent: "I want coffee near Irvine. Recommend somewhere reliable and explain the proof.",
     exampleProofCall: {
       method: "GET",
@@ -154,7 +174,7 @@ export function agentDiscovery(origin: string) {
       orderAdapter: {
         method: "POST",
         url: `${origin}/api/agent/orders`,
-        capability: "optional merchant-order adapter, not the core Jiagon capability",
+        capability: "optional Personal Order Agent adapter, not the core Jiagon capability",
         body: {
           agentId: "Stable id for the user's personal agent.",
           userIntent: "Natural order request. Example: get me a coffee under $10.",
@@ -164,6 +184,7 @@ export function agentDiscovery(origin: string) {
           paymentMode: "Optional: crypto_pay for external wallet approval, or pay_at_counter for a pilot fallback.",
         },
         returns: [
+          "Personal Order Agent to Merchant Take-Order Agent handoff",
           "adapter-created order pass and pickup code",
           "pickup estimate",
           "optional external Solana wallet payment request",
@@ -174,7 +195,7 @@ export function agentDiscovery(origin: string) {
       shopifyOrderAdapter: {
         method: "POST",
         url: `${origin}/api/agent/shopify/orders`,
-        capability: "optional Shopify checkout adapter, not the core Jiagon capability",
+        capability: "optional Shopify checkout adapter for the Personal Order Agent handoff, not the core Jiagon capability",
         body: {
           agentId: "Stable id for the user's personal agent.",
           userIntent: "Natural purchase request. Example: buy a beanie under $100.",
@@ -189,6 +210,31 @@ export function agentDiscovery(origin: string) {
           "cart attributes carrying jiagon_order_id for paid-order receipt issuance after merchant integration",
         ],
       },
+      paymentReceiptAdapters: {
+        capability: "optional Merchant Take-Order Agent payment adapters, not the core Jiagon capability",
+        endpoints: [
+          {
+            method: "POST",
+            url: `${origin}/api/merchant/orders/{id}/action`,
+            requires: "Merchant dashboard key; action is accept, preparing, paid_done, reject, or cancel.",
+          },
+          {
+            method: "POST",
+            url: `${origin}/api/webhooks/shopify/orders-paid`,
+            requires: "Merchant-configured Shopify orders/paid webhook with valid HMAC.",
+          },
+          {
+            method: "POST",
+            url: `${origin}/api/webhooks/moonpay`,
+            requires: "Merchant-configured MoonPay Commerce webhook with bearer token and HMAC signature.",
+          },
+        ],
+        returns: [
+          "payment-backed receipt issuance for an existing Jiagon order pass when orderId is present",
+          "claimable receipt for a merchant-configured paid Shopify order when no Jiagon order pass is attached",
+          "receipt passport claim URL, proof hash, and payment provider/status metadata",
+        ],
+      },
     },
     proofLevels,
     architecture: {
@@ -196,7 +242,7 @@ export function agentDiscovery(origin: string) {
       credentialChain: "solana-devnet",
       storageLayer: "receipt metadata URI",
       flow: "Paid or merchant-verified commerce event -> claimable Jiagon receipt -> passport claim -> Bubblegum receipt cNFT -> agent proof/trust API -> purpose-bound dining deposit eligibility",
-      adapters: "Merchant dashboard, NFC/QR, Telegram, Shopify checkout, and agent ordering can create receipt memory but are not the primary API surface.",
+      adapters: "Personal Order Agent, Merchant Take-Order Agent, merchant dashboard, NFC/QR, Telegram, Shopify checkout, and MoonPay Commerce can create receipt memory but are not the primary API surface.",
     },
   };
 }
@@ -215,6 +261,10 @@ export function openApiSpec(origin: string) {
         name: "Agent",
         description: "Agent-readable recommendation and receipt proof data.",
       },
+      {
+        name: "Adapters",
+        description: "Optional order, checkout, and payment-event adapters that feed the receipt passport.",
+      },
     ],
     "x-capability-order": [
       "/api/agent/proofs/{receiptHash}",
@@ -222,7 +272,7 @@ export function openApiSpec(origin: string) {
       "/api/agent/credit-eligibility?owner={validSolanaOwner}",
       "/api/agent/rerank",
       "/api/agent/recommendations",
-      "optional adapters: /api/agent/orders, /api/agent/shopify/products, /api/agent/shopify/orders",
+      "optional adapters: /api/agent/orders, /api/merchant/orders/{id}/action, /api/agent/shopify/products, /api/agent/shopify/orders, /api/webhooks/shopify/orders-paid, /api/webhooks/moonpay",
     ],
     paths: {
       "/api/agent": {
@@ -279,8 +329,8 @@ export function openApiSpec(origin: string) {
       },
       "/api/agent/orders": {
         post: {
-          tags: ["Agent"],
-          summary: "Optional adapter: create an agent-mediated merchant order pass.",
+          tags: ["Adapters"],
+          summary: "Optional adapter: hand a Personal Order Agent request to a Merchant Take-Order Agent.",
           operationId: "createAgentMerchantOrder",
           requestBody: {
             required: true,
@@ -310,7 +360,7 @@ export function openApiSpec(origin: string) {
       },
       "/api/agent/shopify/products": {
         get: {
-          tags: ["Agent"],
+          tags: ["Adapters"],
           summary: "Optional adapter: search Shopify Storefront products for checkout creation.",
           operationId: "searchShopifyProductsForAgent",
           parameters: [
@@ -339,8 +389,8 @@ export function openApiSpec(origin: string) {
       },
       "/api/agent/shopify/orders": {
         post: {
-          tags: ["Agent"],
-          summary: "Optional adapter: create a Shopify checkout from a natural-language agent request.",
+          tags: ["Adapters"],
+          summary: "Optional adapter: create a Shopify checkout from a Personal Order Agent request.",
           operationId: "createShopifyAgentCheckout",
           requestBody: {
             required: true,
@@ -364,6 +414,95 @@ export function openApiSpec(origin: string) {
             },
             "503": {
               description: "Shopify Storefront API is not configured.",
+            },
+          },
+        },
+      },
+      "/api/merchant/orders/{id}/action": {
+        post: {
+          tags: ["Adapters"],
+          summary: "Optional adapter: let a Merchant Take-Order Agent accept, reject, or mark an order paid and done.",
+          operationId: "runMerchantTakeOrderAgentAction",
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "string", pattern: "^ord-[a-f0-9]{16}$" },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    action: {
+                      type: "string",
+                      enum: ["accept", "preparing", "paid_done", "reject", "cancel"],
+                    },
+                    actor: {
+                      type: "string",
+                      description: "Merchant staff or take-order agent identity.",
+                    },
+                  },
+                  required: ["action"],
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Merchant-side action recorded; paid_done returns a claimable Jiagon receipt.",
+            },
+            "401": {
+              description: "Invalid merchant dashboard key.",
+            },
+            "409": {
+              description: "Order state cannot transition through the requested action.",
+            },
+          },
+        },
+      },
+      "/api/webhooks/shopify/orders-paid": {
+        post: {
+          tags: ["Adapters"],
+          summary: "Optional adapter: attach merchant-configured Shopify paid orders to Jiagon receipt memory.",
+          operationId: "receiveShopifyPaidOrderReceiptAdapter",
+          responses: {
+            "200": {
+              description: "Authenticated paid order accepted and converted into a claimable Jiagon receipt.",
+            },
+            "202": {
+              description: "Authenticated webhook accepted but ignored because it is not a paid order Jiagon can parse.",
+            },
+            "401": {
+              description: "Invalid Shopify HMAC signature.",
+            },
+            "503": {
+              description: "Shopify webhook secret or receipt persistence is not configured.",
+            },
+          },
+        },
+      },
+      "/api/webhooks/moonpay": {
+        post: {
+          tags: ["Adapters"],
+          summary: "Optional adapter: attach merchant-configured MoonPay Commerce payments to Jiagon receipt memory.",
+          operationId: "receiveMoonPayCommerceReceiptAdapter",
+          responses: {
+            "200": {
+              description: "Authenticated successful payment accepted and attached to a Jiagon order receipt.",
+            },
+            "202": {
+              description: "Authenticated webhook accepted but ignored because it is not a successful payment with a Jiagon orderId.",
+            },
+            "401": {
+              description: "Invalid MoonPay bearer token or HMAC signature.",
+            },
+            "503": {
+              description: "MoonPay shared token or receipt persistence is not configured.",
             },
           },
         },

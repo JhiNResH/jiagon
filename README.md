@@ -69,6 +69,26 @@ Optional adapter paths:
 - **Solayer/offchain proof upload**: wallet-attested proof signals can be added
   for future underwriting experiments.
 
+## Two-Agent Handoff
+
+Jiagon can connect an Order Agent and a Take-Order Agent without splitting the
+product into another repo or becoming a POS.
+
+```txt
+Personal Order Agent
+-> captures user intent, policy, max spend, and payment preference
+-> calls a Jiagon adapter such as /api/agent/orders or /api/agent/shopify/orders
+-> Merchant Take-Order Agent receives the order pass, checkout, or payment event
+-> merchant fulfillment or verified payment issues a claimable Jiagon receipt
+-> user claims the receipt into Passport
+-> proof, trust, rerank, and credit APIs read the receipt memory later
+```
+
+The durable Jiagon object is the receipt passport entry. The Order Agent and
+Take-Order Agent are adapter roles that create or confirm commerce events; they
+do not replace merchant checkout, payments, inventory, tax, refunds, or staff
+operations.
+
 ## Current MVP
 
 - Web app: Next.js App Router.
@@ -297,6 +317,10 @@ Shopify sends `X-Shopify-Hmac-Sha256` over the raw body. Jiagon accepts
 attaches the receipt to an existing Jiagon order when the cart includes
 `jiagon_order_id`.
 
+These adapters require merchant configuration. They are not arbitrary Shopify or
+MoonPay monitoring, and they are not the core product; they are proof-source
+connectors that feed the receipt passport.
+
 Shopify checkout adapter:
 
 ```txt
@@ -313,10 +337,10 @@ merchant-configured paid-order webhook can issue the receipt.
 
 ```txt
 User tells personal agent: get me a coffee under $10
--> agent calls /api/agent/orders
--> Jiagon selects Raposa, creates the order, and prepares external wallet approval
+-> Personal Order Agent calls /api/agent/orders
+-> Jiagon creates a receipt-context order pass and prepares external wallet approval
 -> Jiagon returns pickup location, pickup code, ETA, and optional Solana payment request
--> merchant Telegram group or /merchant receives the order
+-> Merchant Take-Order Agent receives the pass in Telegram or /merchant
 -> agent/user approves payment if configured, otherwise counter payment is fallback
 -> merchant fulfills
 -> Jiagon issues a verified receipt claim token
@@ -405,10 +429,14 @@ pnpm build
 
 - `POST /api/agent/orders`: optional adapter that lets an agent create a Raposa
   order pass, enforce a max-spend policy, return pickup timing, and optionally
-  prepare an external Solana wallet payment request.
+  prepare an external Solana wallet payment request. This is the Personal Order
+  Agent side of the handoff, not the core proof API.
 - `POST /api/merchant/orders`: optional adapter that creates a merchant order
   record for receipt issuance.
 - `GET /api/merchant/orders`: returns the merchant order queue.
+- `POST /api/merchant/orders/{id}/action`: Merchant Take-Order Agent action
+  surface for `accept`, `preparing`, `paid_done`, `reject`, or `cancel`.
+  `paid_done` issues the claimable Jiagon receipt.
 - `POST /api/merchant/orders/{id}/complete`: marks an order fulfilled and
   issues a claimable verified receipt.
 - `GET /api/merchant/orders/claim`: resolves a pickup code to a claim URL.
@@ -416,14 +444,16 @@ pnpm build
 - `POST /api/webhooks/moonpay`: optional MoonPay Commerce webhook adapter. It verifies
   `Authorization: Bearer <sharedToken>` and `X-Signature`, then turns successful
   merchant-configured payment events containing a Jiagon `orderId` into
-  payment-backed receipts.
+  payment-backed receipts. This is a Merchant Take-Order Agent proof-source
+  connector.
 - `GET /api/agent/shopify/products`: optional adapter that lets an agent search
   merchant-configured Shopify Storefront products and variants.
 - `POST /api/agent/shopify/orders`: optional adapter that lets an agent create a
   Jiagon order pass and Shopify checkout cart with `jiagon_order_id` attributes.
 - `POST /api/webhooks/shopify/orders-paid`: optional adapter that verifies
   Shopify HMAC and turns merchant-configured paid Shopify orders into claimable
-  Jiagon receipts.
+  Jiagon receipts. Shopify stays the checkout system; Jiagon stores receipt
+  memory after merchant-approved payment proof.
 - `GET /api/merchant/receipts/{token}`: reads a public claimable receipt.
 - `POST /api/merchant/receipts/{token}/claim`: Privy-authenticated receipt
   claim.

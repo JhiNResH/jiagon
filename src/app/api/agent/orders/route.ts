@@ -519,7 +519,7 @@ function agentExecutionPlan(input: {
       `Ready in ${input.pickup.label}.`,
     ],
     paymentApproval,
-    merchantTerminal: "Telegram is the lightweight merchant terminal; the product surface is the agent-callable POS API.",
+    merchantTerminal: "Telegram is the lightweight merchant terminal; ordering is an adapter that feeds Jiagon receipt passport memory.",
     receiptAutomation: "After merchant fulfillment, Jiagon turns the completed order into verified receipt memory.",
     futureCreditUse: "Future agents can use that verified purchase memory to request purpose-bound dining deposits.",
   };
@@ -667,7 +667,7 @@ export async function POST(request: Request) {
 
   return Response.json(
     {
-      product: "Jiagon personal agent commerce rail",
+      product: "Jiagon Personal Order Agent adapter",
       status: "order_pass_created",
       proofLevel: "order_intent_only",
       mode: result.configured ? "database" : "local-demo-memory",
@@ -691,6 +691,20 @@ export async function POST(request: Request) {
       order,
       pickup,
       payment,
+      adapterHandoff: {
+        personalOrderAgent: {
+          status: "intent_captured",
+          handled: ["merchant selection", "menu match", "spend policy", "payment preference"],
+        },
+        merchantTakeOrderAgent: {
+          status: merchantNotify.sent ? "dispatch_sent" : merchantNotify.skipped ? "dispatch_skipped" : "dispatch_failed",
+          channels: ["merchant queue", "telegram terminal", "nfc pickup station"],
+        },
+        receiptPassport: {
+          status: "awaiting_merchant_fulfillment",
+          next: "Fulfillment or payment-backed webhook creates the claimable receipt for Passport.",
+        },
+      },
       agentExecution,
       paymentProof: {
         rail: payment.mode === "crypto_pay" ? "solana" : "external_pos",

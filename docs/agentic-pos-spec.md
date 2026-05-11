@@ -33,6 +33,17 @@ is that an agent-mediated or merchant-integrated purchase can become a
 merchant-fulfilled receipt memory object that future agents can use for trust,
 proof, and limited purpose-bound credit experiments.
 
+Current adapter wording:
+
+```text
+Personal Order Agent -> Merchant Take-Order Agent -> Jiagon Receipt Passport
+```
+
+The Personal Order Agent captures user intent and policy. The Merchant
+Take-Order Agent receives a Jiagon order pass, Shopify paid-order event, MoonPay
+Commerce payment event, Telegram message, or merchant dashboard action. The
+Passport remains the durable product output.
+
 ## Current Demo Links
 
 - Live app: https://jiagon.vercel.app
@@ -191,10 +202,10 @@ Show the product in this order:
    purpose, not open-ended cash borrowing.
 ```
 
-The personal agent API is the product surface. Telegram remains the lightweight
+The personal agent API is an adapter surface. Telegram remains the lightweight
 merchant terminal for the pilot. NFC is the physical receipt-claim surface. The
 backend primitive is agent order intent plus merchant fulfillment plus receipt
-memory.
+memory, with the receipt passport and proof APIs as the current product surface.
 
 ## Onsite Raposa Plan
 
