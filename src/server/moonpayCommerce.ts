@@ -24,6 +24,30 @@ export function moonPayWebhookSharedToken() {
   return (process.env.MOONPAY_COMMERCE_WEBHOOK_SHARED_TOKEN || "").trim();
 }
 
+function splitConfiguredIds(value: string | undefined) {
+  return (value || "")
+    .split(/[,\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function normalizePaylinkId(value: string | null) {
+  return (value || "").trim().toLowerCase();
+}
+
+export function moonPayDirectPaylinkAllowlist() {
+  const configured = [
+    ...splitConfiguredIds(process.env.MOONPAY_DIRECT_PAYLINK_ID),
+    ...splitConfiguredIds(process.env.MOONPAY_DIRECT_PAYLINK_IDS),
+    ...splitConfiguredIds(process.env.MOONPAY_COMMERCE_PAYLINK_ID),
+    ...splitConfiguredIds(process.env.MOONPAY_COMMERCE_PAYLINK_IDS),
+    ...splitConfiguredIds(process.env.NEXT_PUBLIC_MOONPAY_DIRECT_PAYLINK_ID),
+    ...splitConfiguredIds(process.env.NEXT_PUBLIC_MOONPAY_COMMERCE_PAYLINK_ID),
+  ];
+
+  return Array.from(new Set(configured.map(normalizePaylinkId).filter(Boolean)));
+}
+
 export function verifyMoonPayWebhookSignature(input: {
   rawBody: string;
   signature: string;
@@ -167,6 +191,16 @@ export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayComme
 
   const merchant = record(root.merchant) || record(meta?.merchant) || record(productDetails?.merchant);
   const usdFiatAmount = fiatUsdAmount(root, meta, transactionObject);
+  const paylinkId = stringValue(transactionObject?.paylinkId) ||
+    stringValue(transactionObject?.paymentLinkId) ||
+    stringValue(meta?.paylinkId) ||
+    stringValue(meta?.paymentLinkId) ||
+    stringValue(productDetails?.paylinkId) ||
+    stringValue(productDetails?.paymentLinkId) ||
+    stringValue(additionalJson?.paylinkId) ||
+    stringValue(additionalJson?.paymentLinkId) ||
+    stringValue(root.paylinkId) ||
+    stringValue(root.paymentLinkId);
 
   return {
     event,
@@ -182,7 +216,7 @@ export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayComme
       stringValue(additionalJson?.merchantName) ||
       stringValue(merchant?.name),
     transactionId: stringValue(transactionObject?.id) || stringValue(root.transactionId) || stringValue(root.txIdempotencyKey) || "unknown",
-    paylinkId: stringValue(transactionObject?.paylinkId) || stringValue(root.paylinkId),
+    paylinkId,
     depositId: stringValue(root.depositId),
     transactionSignature: stringValue(meta?.transactionSignature) || stringValue(root.transactionSignature),
     transactionStatus,
@@ -221,11 +255,28 @@ export function moonPayDirectReceiptNumber(proof: MoonPayCommercePaymentProof) {
   return stableId ? `moonpay:${stableId}` : null;
 }
 
-export function moonPayDirectCurrencyError(proof: MoonPayCommercePaymentProof) {
+export function moonPayPaymentCurrencyError(proof: MoonPayCommercePaymentProof) {
   if (proof.amountSource === "fiat_usd") return null;
 
   const normalized = (proof.currency || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (normalized === "USD" || normalized === "USDC" || normalized === "USDCOIN") return null;
 
-  return "MoonPay Commerce direct receipts require a USD/USDC payment currency or a clear fiat USD amount field.";
+  return "MoonPay Commerce receipts require a USD/USDC payment currency or a clear fiat USD amount field.";
+}
+
+export function moonPayDirectPaylinkError(proof: MoonPayCommercePaymentProof) {
+  const allowedPaylinks = moonPayDirectPaylinkAllowlist();
+  if (allowedPaylinks.length === 0) {
+    return "MoonPay Commerce direct receipts require MOONPAY_DIRECT_PAYLINK_ID or MOONPAY_COMMERCE_PAYLINK_ID.";
+  }
+
+  const paylinkId = normalizePaylinkId(proof.paylinkId);
+  if (!paylinkId) {
+    return "MoonPay Commerce direct receipt proof must include paylinkId or paymentLinkId.";
+  }
+  if (!allowedPaylinks.includes(paylinkId)) {
+    return "MoonPay Commerce direct receipt paylink is not approved for direct fallback.";
+  }
+
+  return null;
 }

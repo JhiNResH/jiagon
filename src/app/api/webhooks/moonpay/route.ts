@@ -1,6 +1,7 @@
 import {
-  moonPayDirectCurrencyError,
+  moonPayDirectPaylinkError,
   moonPayDirectReceiptNumber,
+  moonPayPaymentCurrencyError,
   moonPayPaymentAmountCents,
   moonPayReceiptMemo,
   moonPayWebhookSharedToken,
@@ -122,6 +123,17 @@ export async function POST(request: Request) {
     );
   }
 
+  const currencyError = moonPayPaymentCurrencyError(proof);
+  if (currencyError) {
+    return Response.json(
+      {
+        error: currencyError,
+        paymentProof: proof,
+      },
+      { status: 422 },
+    );
+  }
+
   const amountCents = moonPayPaymentAmountCents(proof);
   if (amountCents <= 0) {
     return Response.json(
@@ -196,14 +208,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const currencyError = moonPayDirectCurrencyError(proof);
-  if (currencyError) {
+  const paylinkError = moonPayDirectPaylinkError(proof);
+  if (paylinkError) {
     return Response.json(
       {
-        error: currencyError,
+        error: paylinkError,
         paymentProof: proof,
       },
-      { status: 422 },
+      { status: paylinkError.includes("require") ? 503 : 422 },
     );
   }
 
