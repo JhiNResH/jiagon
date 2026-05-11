@@ -38,7 +38,7 @@ export function agentDiscovery(origin: string) {
       "/api/agent/credit-eligibility?owner={validSolanaOwner}",
       "/api/agent/rerank",
       "/api/agent/recommendations",
-      "optional adapter paths: /api/agent/orders and /api/agent/shopify/orders",
+      "optional adapter paths: /api/agent/orders, /api/agent/shopify/products, and /api/agent/shopify/orders",
     ],
     exampleUserIntent: "I want coffee near Irvine. Recommend somewhere reliable and explain the proof.",
     exampleProofCall: {

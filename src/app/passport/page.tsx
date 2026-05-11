@@ -253,7 +253,7 @@ export default function PassportPage() {
           </div>
         </section>
 
-        {loaded && receipts.length === 0 ? (
+        {!loaded ? null : receipts.length === 0 ? (
           <section className="passport-empty">
             <strong>No claimed receipts are cached on this device yet.</strong>
             <span>

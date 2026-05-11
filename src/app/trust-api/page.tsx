@@ -15,7 +15,7 @@ const endpoints = [
   },
   {
     method: "GET",
-    path: "/api/agent/credit-eligibility?owner=...",
+    path: "/api/agent/credit-eligibility?owner={validSolanaOwner}",
     title: "Credit eligibility",
     body: "Checks purpose-bound dining-deposit eligibility from minted receipt credentials.",
   },

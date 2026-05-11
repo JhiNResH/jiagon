@@ -451,7 +451,7 @@ export default function AgentOrderDemoPage() {
               prepare an external wallet payment request, and create receipt context after
               merchant fulfillment. The core product remains the receipt passport and proof API.
             </p>
-            <div className="agent-order-script" aria-label="Personal agent commerce conversation">
+            <div className="agent-order-script" aria-label="Agent ordering adapter receipt flow">
               <div className="agent-order-bubble">Get me a coffee under $10.</div>
               <div className="agent-order-bubble agent">
                 I created a Raposa order, prepared wallet approval, and will track pickup and receipt memory.
