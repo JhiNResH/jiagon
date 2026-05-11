@@ -235,10 +235,16 @@ POST /api/agent/orders/{id}/verify-solana-pay
 ```
 
 When `JIAGON_SOLANA_PAY_RECIPIENT`, `JIAGON_SOLANA_PAY_SPL_TOKEN`,
-`SOLANA_CLUSTER=devnet`, and `SOLANA_RPC_URL` are configured, this route checks
-the deterministic Solana Pay reference, recipient, SPL token, memo, and exact
-order subtotal before issuing the claimable receipt. SOL-only intents remain
-nominal demo payments and return a setup response instead of a USD receipt.
+`JIAGON_SOLANA_PAY_VERIFY_SECRET`, `SOLANA_CLUSTER=devnet`, and the default
+devnet `SOLANA_RPC_URL` are configured, order creation returns a private
+`payment.verifyToken` to the creating agent/user. Send that token as
+`verifyToken`, `Authorization: Bearer <token>`, or
+`x-jiagon-solana-pay-verify-token` when calling the verify route. The route
+checks the deterministic Solana Pay reference, recipient, SPL token, memo, and
+exact order subtotal before issuing the claimable receipt. SOL-only intents
+remain nominal demo payments and return a setup response instead of a USD
+receipt. Custom non-mainnet test RPCs require
+`JIAGON_ALLOW_CUSTOM_TESTNET_RPC=true`; mainnet cluster/RPC remains blocked.
 
 Recommendation from Jiagon's proof graph:
 

@@ -674,7 +674,7 @@ export async function POST(request: Request) {
           ? "Add Helio webhook verification for L4 payment-backed receipts."
           : payment.provider === "solana_pay"
             ? "splToken" in payment && payment.splToken
-              ? `POST /api/agent/orders/${encodeURIComponent(order.id)}/verify-solana-pay after the SPL token transaction confirms.`
+              ? `POST /api/agent/orders/${encodeURIComponent(order.id)}/verify-solana-pay with the private payment.verifyToken after the SPL token transaction confirms.`
               : "Configure JIAGON_SOLANA_PAY_SPL_TOKEN before using Solana Pay as exact USD receipt proof."
             : "Use merchant fulfillment for L2 receipt proof in the pilot.",
       },

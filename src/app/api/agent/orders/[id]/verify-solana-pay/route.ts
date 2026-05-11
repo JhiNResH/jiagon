@@ -6,11 +6,20 @@ import {
 import {
   solanaPayMemo,
   solanaPayReference,
+  verifySolanaPayVerifyToken,
   verifySolanaPayOrderPayment,
 } from "@/server/solanaPay";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type VerifySolanaPayRouteGlobal = typeof globalThis & {
+  jiagonSolanaPayVerifyRateLimit?: Map<string, { count: number; resetAt: number }>;
+};
+
+const VERIFY_RATE_LIMIT_WINDOW_MS = 60_000;
+const VERIFY_RATE_LIMIT_DEFAULT_MAX = 12;
+const VERIFY_RATE_LIMIT_MAX_KEYS = 2_000;
 
 function cleanText(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 180) : fallback;
@@ -57,6 +66,74 @@ async function parseBody(request: Request) {
   }
 }
 
+function requestIp(request: Request) {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip")?.trim() ||
+    "local";
+}
+
+function rateLimitMax() {
+  const configured = Number.parseInt(process.env.JIAGON_SOLANA_PAY_VERIFY_RATE_LIMIT || "", 10);
+  return Number.isFinite(configured) && configured >= 0 ? configured : VERIFY_RATE_LIMIT_DEFAULT_MAX;
+}
+
+function rateLimitStore() {
+  const globalStore = globalThis as VerifySolanaPayRouteGlobal;
+  if (!globalStore.jiagonSolanaPayVerifyRateLimit) {
+    globalStore.jiagonSolanaPayVerifyRateLimit = new Map();
+  }
+  return globalStore.jiagonSolanaPayVerifyRateLimit;
+}
+
+function checkRateLimit(request: Request, orderId: string) {
+  const max = rateLimitMax();
+  if (max === 0) return { ok: true as const };
+
+  const now = Date.now();
+  const key = `${requestIp(request)}:${orderId}`;
+  const store = rateLimitStore();
+  const current = store.get(key);
+  if (!current || current.resetAt <= now) {
+    store.set(key, { count: 1, resetAt: now + VERIFY_RATE_LIMIT_WINDOW_MS });
+    return { ok: true as const };
+  }
+
+  current.count += 1;
+  if (current.count <= max) return { ok: true as const };
+
+  if (store.size > VERIFY_RATE_LIMIT_MAX_KEYS) {
+    for (const [storedKey, entry] of store.entries()) {
+      if (entry.resetAt <= now) store.delete(storedKey);
+      if (store.size <= VERIFY_RATE_LIMIT_MAX_KEYS) break;
+    }
+  }
+
+  return {
+    ok: false as const,
+    retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
+  };
+}
+
+function bearerToken(request: Request) {
+  const authorization = request.headers.get("authorization")?.trim() || "";
+  const match = /^bearer\s+(.+)$/i.exec(authorization);
+  return match?.[1]?.trim() || "";
+}
+
+function verifierToken(request: Request, body: Record<string, unknown>) {
+  for (const value of [
+    body.verifyToken,
+    body.verifierToken,
+    body.token,
+    request.headers.get("x-jiagon-solana-pay-verify-token"),
+    bearerToken(request),
+  ]) {
+    const token = cleanText(value);
+    if (token) return token;
+  }
+  return "";
+}
+
 export async function POST(request: Request, context: { params: Promise<{ id?: string }> }) {
   const { id } = await context.params;
   const orderId = typeof id === "string" ? id.trim() : "";
@@ -69,6 +146,32 @@ export async function POST(request: Request, context: { params: Promise<{ id?: s
     return Response.json({ error: parsed.error }, { status: parsed.status });
   }
 
+  const verifyToken = verifierToken(request, parsed.body);
+  if (!verifyToken) {
+    return Response.json({ error: "Solana Pay verification token is required." }, { status: 401 });
+  }
+  const tokenCheck = verifySolanaPayVerifyToken({ orderId, token: verifyToken });
+  if (!tokenCheck.configured) {
+    return Response.json(
+      { error: "JIAGON_SOLANA_PAY_VERIFY_SECRET or another server auth secret is required before Solana Pay verification can run." },
+      { status: 503 },
+    );
+  }
+  if (!tokenCheck.valid) {
+    return Response.json({ error: "Solana Pay verification token is invalid." }, { status: 403 });
+  }
+
+  const rateLimit = checkRateLimit(request, orderId);
+  if (!rateLimit.ok) {
+    return Response.json(
+      {
+        error: "Too many Solana Pay verification attempts. Please retry shortly.",
+        retryAfterSeconds: rateLimit.retryAfter,
+      },
+      { status: 429, headers: { "retry-after": String(rateLimit.retryAfter) } },
+    );
+  }
+
   const lookup = await getMerchantOrderById(orderId);
   if (lookup.error) {
     return Response.json({ error: lookup.error, configured: lookup.configured }, { status: 503 });
@@ -78,16 +181,20 @@ export async function POST(request: Request, context: { params: Promise<{ id?: s
   }
 
   if (lookup.order.receiptClaimUrl) {
+    const solanaPayVerified = lookup.order.paymentProvider === "solana_pay" &&
+      lookup.order.paymentStatus === "solana_pay_verified_paid";
     return Response.json({
-      accepted: true,
+      accepted: solanaPayVerified,
       idempotent: true,
+      status: solanaPayVerified ? "solana_pay_verified_paid" : "already_receipted",
       product: "Jiagon Solana Pay order receipt adapter",
       paymentProof: {
-        provider: "solana_pay",
+        provider: lookup.order.paymentProvider,
         status: lookup.order.paymentStatus,
-        reference: solanaPayReference(lookup.order.id),
-        memo: solanaPayMemo(lookup.order.id),
+        reference: solanaPayVerified ? solanaPayReference(lookup.order.id) : null,
+        memo: solanaPayVerified ? solanaPayMemo(lookup.order.id) : null,
         alreadyReceipted: true,
+        solanaPayAccepted: solanaPayVerified,
       },
       claimUrl: lookup.order.receiptClaimUrl,
       receipt: null,

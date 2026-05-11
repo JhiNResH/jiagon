@@ -416,6 +416,12 @@ export function openApiSpec(origin: string) {
             "404": {
               description: "Order or confirmed reference transaction was not found.",
             },
+            "401": {
+              description: "Verifier token is required before Solana Pay verification or claim data access.",
+            },
+            "403": {
+              description: "Verifier token is invalid.",
+            },
             "422": {
               description: "SPL token setup is missing or referenced transaction does not match the order total.",
             },
@@ -847,6 +853,10 @@ export function openApiSpec(origin: string) {
             signature: {
               type: "string",
               description: "Optional transaction signature. The server still scans the deterministic order reference.",
+            },
+            verifyToken: {
+              type: "string",
+              description: "Private verifier token returned only in the order creator's Solana Pay payment intent.",
             },
           },
         },

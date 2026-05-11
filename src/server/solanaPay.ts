@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
   address,
   createSolanaRpc,
@@ -14,6 +14,7 @@ import type { MerchantProfile } from "@/lib/merchantCatalog";
 import type { MerchantOrder } from "@/server/merchantOrderStore";
 
 const SOLANA_PAY_SIGNATURE_SCAN_LIMIT = 20;
+const SOLANA_PAY_VERIFY_TOKEN_VERSION = "spv1";
 
 type SolanaPayVerificationSetup =
   | {
@@ -51,6 +52,45 @@ export function solanaPayMemo(orderId: string) {
   return `jiagon:${orderId}`;
 }
 
+function solanaPayVerifierSecret() {
+  return (
+    process.env.JIAGON_SOLANA_PAY_VERIFY_SECRET ||
+    process.env.JIAGON_MERCHANT_RECEIPT_SIGNING_SECRET ||
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    ""
+  ).trim();
+}
+
+export function solanaPayVerifyToken(orderId: string) {
+  const secret = solanaPayVerifierSecret();
+  if (!secret) return null;
+  const digest = createHmac("sha256", secret)
+    .update(`jiagon-solana-pay-verify:${orderId}`)
+    .digest("base64url");
+  return `${SOLANA_PAY_VERIFY_TOKEN_VERSION}_${digest}`;
+}
+
+export function verifySolanaPayVerifyToken(input: {
+  orderId: string;
+  token: string;
+}) {
+  const expected = solanaPayVerifyToken(input.orderId);
+  if (!expected) return { configured: false as const, valid: false as const };
+
+  const provided = input.token.trim();
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  if (expectedBuffer.length !== providedBuffer.length) {
+    return { configured: true as const, valid: false as const };
+  }
+
+  return {
+    configured: true as const,
+    valid: timingSafeEqual(expectedBuffer, providedBuffer),
+  };
+}
+
 export function solanaPayVerificationSetupFromEnv(): SolanaPayVerificationSetup {
   const recipient = solanaPayRecipient();
   if (!recipient) {
@@ -69,6 +109,15 @@ export function solanaPayVerificationSetupFromEnv(): SolanaPayVerificationSetup 
       status: 422,
       error: "Exact USD-denominated receipt proof requires JIAGON_SOLANA_PAY_SPL_TOKEN. Nominal devnet SOL transfers can create payment intents, but Jiagon will not issue a USD receipt from SOL-only payment proof.",
       missing: ["JIAGON_SOLANA_PAY_SPL_TOKEN"],
+    };
+  }
+
+  if (!solanaPayVerifierSecret()) {
+    return {
+      ok: false,
+      status: 503,
+      error: "JIAGON_SOLANA_PAY_VERIFY_SECRET is required before Jiagon can verify Solana Pay order payments.",
+      missing: ["JIAGON_SOLANA_PAY_VERIFY_SECRET"],
     };
   }
 
@@ -110,6 +159,10 @@ export function buildSolanaPayIntent(input: {
   const amount = splToken ? input.amountUsd : solanaPayNativeSolAmount();
   const memo = solanaPayMemo(input.orderId);
   const reference = solanaPayReference(input.orderId);
+  const verifyToken = solanaPayVerifyToken(input.orderId);
+  if (!verifyToken) {
+    throw new Error("JIAGON_SOLANA_PAY_VERIFY_SECRET is required before Jiagon can create a verifiable Solana Pay request.");
+  }
   const url = encodeURL({
     recipient: address(recipient),
     amount: Number(amount),
@@ -135,6 +188,7 @@ export function buildSolanaPayIntent(input: {
     memo,
     reference,
     verifyUrl: `/api/agent/orders/${encodeURIComponent(input.orderId)}/verify-solana-pay`,
+    verifyToken,
     note: splToken
       ? "This is a devnet SPL token Solana Pay request. Once the transaction confirms, Jiagon can verify the reference and upgrade the order into a claimable receipt."
       : "This is a nominal devnet SOL Solana Pay request for the demo. Configure JIAGON_SOLANA_PAY_SPL_TOKEN before using Solana Pay as exact USD-denominated receipt proof.",
