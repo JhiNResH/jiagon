@@ -215,13 +215,14 @@ export async function POST(request: Request) {
 
   return Response.json({
     accepted: true,
+    duplicate: receiptResult.duplicate || undefined,
     product: "Jiagon MoonPay Commerce direct receipt adapter",
     paymentProof: proof,
     receiptPersistence: {
       configured: receiptResult.configured,
       persisted: receiptResult.persisted,
     },
-    claimToken: receiptResult.claimToken,
+    claimToken: receiptResult.duplicate ? null : receiptResult.claimToken,
     claimUrl: receiptResult.receipt.claimUrl,
     receipt: publicMerchantReceipt(receiptResult.receipt),
   });
