@@ -73,7 +73,7 @@ function cleanItems(value: unknown): MerchantOrderItem[] {
 }
 
 function orderStatus(value: string | null): MerchantOrderStatus | null {
-  return value === "pending" || value === "accepted" || value === "completed" || value === "cancelled" ? value : null;
+  return value === "pending" || value === "accepted" || value === "preparing" || value === "completed" || value === "cancelled" ? value : null;
 }
 
 function orderIntakeRateLimitKey(request: Request) {

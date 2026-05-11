@@ -1,8 +1,10 @@
 import { authorizeMerchantDashboard } from "@/server/merchantAuth";
 import {
+  DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE,
   completeMerchantOrderWithReceipt,
   publicMerchantOrder,
   updateMerchantOrderStatus,
+  type MerchantOrderStatus,
 } from "@/server/merchantOrderStore";
 
 export const runtime = "nodejs";
@@ -53,6 +55,12 @@ function takeOrderAction(value: unknown): TakeOrderAction | null {
     return value;
   }
   return null;
+}
+
+function nextStatusForAction(action: Exclude<TakeOrderAction, "paid_done">): MerchantOrderStatus {
+  if (action === "reject" || action === "cancel") return "cancelled";
+  if (action === "preparing") return "preparing";
+  return "accepted";
 }
 
 async function parseBody(request: Request) {
@@ -109,7 +117,7 @@ export async function POST(request: Request, context: { params: Promise<{ id?: s
       id: orderId,
       origin,
       issuedBy: cleanText(parsed.body.actor, cleanText(parsed.body.issuedBy, "Jiagon take-order agent")),
-      receiptPurpose: cleanText(parsed.body.receiptPurpose, "agentic_take_order_receipt"),
+      receiptPurpose: cleanText(parsed.body.receiptPurpose, DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE),
       receiptMemo: cleanLongText(parsed.body.receiptMemo),
     });
 
@@ -146,7 +154,7 @@ export async function POST(request: Request, context: { params: Promise<{ id?: s
 
   const result = await updateMerchantOrderStatus({
     id: orderId,
-    nextStatus: action === "reject" || action === "cancel" ? "cancelled" : "accepted",
+    nextStatus: nextStatusForAction(action),
   });
 
   if (!result.updated || !result.order) {
@@ -169,7 +177,7 @@ export async function POST(request: Request, context: { params: Promise<{ id?: s
     updated: result.updated,
     order: publicMerchantOrder(result.order),
     next: action === "preparing"
-      ? "Order is accepted and represented as preparing for the merchant pilot."
+      ? "Order is now preparing for the merchant pilot."
       : "Merchant action recorded. Fulfillment plus receipt claim upgrades this order into passport memory.",
   });
 }
