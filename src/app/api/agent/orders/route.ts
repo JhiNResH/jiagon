@@ -1,7 +1,4 @@
 import { createHash } from "node:crypto";
-import { address } from "@solana/kit";
-import { encodeURL } from "@solana/pay";
-import bs58 from "bs58";
 import { Pool } from "pg";
 import {
   createMerchantOrder,
@@ -10,6 +7,7 @@ import {
   type MerchantOrderItem,
 } from "@/server/merchantOrderStore";
 import { knownMerchantProfileForId, type MenuItem, type MerchantProfile } from "@/lib/merchantCatalog";
+import { buildSolanaPayIntent } from "@/server/solanaPay";
 import { nfcStationUrl, notifyMerchantGroup } from "@/server/telegramMerchantNotify";
 
 export const runtime = "nodejs";
@@ -326,66 +324,24 @@ function requestedPaymentMode(body: Record<string, unknown>): AgentPaymentMode {
   return "pay_at_counter";
 }
 
-function solanaPayRecipient() {
-  return (process.env.JIAGON_SOLANA_PAY_RECIPIENT || process.env.NEXT_PUBLIC_JIAGON_SOLANA_PAY_RECIPIENT || "").trim();
-}
-
-function solanaPaySplToken() {
-  return (process.env.JIAGON_SOLANA_PAY_SPL_TOKEN || process.env.NEXT_PUBLIC_JIAGON_SOLANA_PAY_SPL_TOKEN || "").trim();
-}
-
-function solanaPayNativeSolAmount() {
-  const configured = (process.env.JIAGON_SOLANA_PAY_SOL_AMOUNT || process.env.NEXT_PUBLIC_JIAGON_SOLANA_PAY_SOL_AMOUNT || "0.001").trim();
-  return /^\d+(\.\d+)?$/.test(configured) ? configured : "0.001";
-}
-
-function solanaPayReference(orderId: string) {
-  return bs58.encode(createHash("sha256").update(`jiagon-solana-pay:${orderId}`).digest());
-}
-
 function solanaPayIntent(input: {
   merchant: MerchantProfile;
   orderId: string;
   pickupCode: string;
   amountUsd: string;
 }) {
-  const recipient = solanaPayRecipient();
-  if (!recipient) {
-    return null;
+  try {
+    return buildSolanaPayIntent(input);
+  } catch (error) {
+    return {
+      mode: "crypto_pay",
+      status: "blocked",
+      provider: "solana_pay",
+      rail: "solana",
+      network: "blocked-main",
+      note: error instanceof Error ? error.message : "Solana Pay testnet configuration is invalid.",
+    };
   }
-
-  const splToken = solanaPaySplToken();
-  const amount = splToken ? input.amountUsd : solanaPayNativeSolAmount();
-  const memo = `jiagon:${input.orderId}`;
-  const reference = solanaPayReference(input.orderId);
-  const url = encodeURL({
-    recipient: address(recipient),
-    amount: Number(amount),
-    reference: address(reference),
-    label: input.merchant.name,
-    message: `Jiagon Order Pass ${input.pickupCode}`,
-    memo,
-    ...(splToken ? { splToken: address(splToken) } : {}),
-  });
-
-  return {
-    mode: "crypto_pay",
-    status: "payment_request_created",
-    provider: "solana_pay",
-    rail: "solana",
-    recipient,
-    amountUsd: input.amountUsd,
-    amount,
-    network: "solana-devnet",
-    currency: splToken ? "devnet SPL token" : "devnet SOL",
-    splToken: splToken || null,
-    url: url.toString(),
-    memo,
-    reference,
-    note: splToken
-      ? "This is a devnet SPL token Solana Pay request for the demo. Receipt issuance still requires merchant fulfillment confirmation unless a Solana Pay verification webhook is added."
-      : "This is a nominal devnet SOL Solana Pay request for the demo. The receipt keeps the USD order total; use a devnet SPL token mint for exact USD-denominated transfer amounts.",
-  };
 }
 
 function helioPaylinkId() {
@@ -717,7 +673,9 @@ export async function POST(request: Request) {
         nextUpgrade: payment.provider === "helio_solana_checkout"
           ? "Add Helio webhook verification for L4 payment-backed receipts."
           : payment.provider === "solana_pay"
-            ? "Add Solana transaction confirmation query for L4 payment-backed receipts."
+            ? "splToken" in payment && payment.splToken
+              ? `POST /api/agent/orders/${encodeURIComponent(order.id)}/verify-solana-pay with the private payment.verifyToken after the SPL token transaction confirms.`
+              : "Configure JIAGON_SOLANA_PAY_SPL_TOKEN before using Solana Pay as exact USD receipt proof."
             : "Use merchant fulfillment for L2 receipt proof in the pilot.",
       },
       staffDispatch: merchantNotify.sent ? "sent" : merchantNotify.skipped ? "skipped" : "failed",

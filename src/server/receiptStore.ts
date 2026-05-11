@@ -173,6 +173,7 @@ export type MerchantReceiptIssueResult = {
   persisted: boolean;
   receipt: MerchantIssuedReceipt;
   claimToken: string;
+  duplicate?: boolean;
   error?: string;
 };
 
@@ -390,6 +391,7 @@ async function ensureMerchantReceiptSchema(pool: Pool) {
         explorer_url text,
         asset_explorer_url text,
         credit_unlocked_cents integer not null default 0,
+        dedupe_version integer not null default 0,
         payload jsonb not null
       );
 
@@ -404,7 +406,8 @@ async function ensureMerchantReceiptSchema(pool: Pool) {
         add column if not exists storage_uri text,
         add column if not exists explorer_url text,
         add column if not exists asset_explorer_url text,
-        add column if not exists credit_unlocked_cents integer not null default 0;
+        add column if not exists credit_unlocked_cents integer not null default 0,
+        add column if not exists dedupe_version integer not null default 0;
 
       create index if not exists jiagon_merchant_receipts_merchant_idx
         on jiagon_merchant_receipts (merchant_id, issued_at desc);
@@ -415,6 +418,10 @@ async function ensureMerchantReceiptSchema(pool: Pool) {
       create index if not exists jiagon_merchant_receipts_claimed_credit_idx
         on jiagon_merchant_receipts (claimed_by, mint_status)
         where claimed_by is not null;
+
+      create unique index if not exists jiagon_merchant_receipts_merchant_receipt_number_dedupe_idx
+        on jiagon_merchant_receipts (merchant_id, receipt_number)
+        where dedupe_version = 1;
     `)
       .then(() => undefined)
       .catch((error) => {
@@ -533,6 +540,18 @@ export async function createMerchantIssuedReceipt(input: MerchantReceiptIssueInp
 
   const pool = getPool();
   if (!pool) {
+    const existing = Array.from(merchantReceiptMemory().values())
+      .find((item) => item.merchantId === receipt.merchantId && item.receiptNumber === receipt.receiptNumber);
+    if (existing) {
+      return {
+        configured: false,
+        persisted: false,
+        receipt: existing,
+        claimToken: "",
+        duplicate: true,
+      };
+    }
+
     merchantReceiptMemory().set(tokenHash, receipt);
     return {
       configured: false,
@@ -544,7 +563,21 @@ export async function createMerchantIssuedReceipt(input: MerchantReceiptIssueInp
 
   try {
     await ensureMerchantReceiptSchema(pool);
-    await pool.query(
+    const existingBeforeInsert = await getMerchantIssuedReceiptByMerchantReceiptNumber({
+      merchantId: receipt.merchantId,
+      receiptNumber: receipt.receiptNumber,
+    });
+    if (existingBeforeInsert.receipt) {
+      return {
+        configured: true,
+        persisted: true,
+        receipt: existingBeforeInsert.receipt,
+        claimToken: "",
+        duplicate: true,
+      };
+    }
+
+    const result = await pool.query(
       `
         insert into jiagon_merchant_receipts (
           id,
@@ -568,13 +601,18 @@ export async function createMerchantIssuedReceipt(input: MerchantReceiptIssueInp
           issued_at,
           claimed_at,
           claimed_by,
+          dedupe_version,
           payload
         )
         values (
           $1, $2, $3, $4, $5, $6, $7, $8,
           $9, $10, $11, $12, $13, $14, $15,
-          $16, $17, $18, $19, $20, $21, $22::jsonb
+          $16, $17, $18, $19, $20, $21, $22, $23::jsonb
         )
+        on conflict (merchant_id, receipt_number)
+          where dedupe_version = 1
+        do nothing
+        returning *
       `,
       [
         receipt.id,
@@ -598,15 +636,40 @@ export async function createMerchantIssuedReceipt(input: MerchantReceiptIssueInp
         receipt.issuedAt,
         receipt.claimedAt,
         receipt.claimedBy,
+        1,
         JSON.stringify(payload),
       ],
     );
 
+    if (result.rows[0]) {
+      return {
+        configured: true,
+        persisted: true,
+        receipt: mapMerchantReceiptRow(result.rows[0]),
+        claimToken: token,
+      };
+    }
+
+    const existing = await getMerchantIssuedReceiptByMerchantReceiptNumber({
+      merchantId: receipt.merchantId,
+      receiptNumber: receipt.receiptNumber,
+    });
+    if (existing.receipt) {
+      return {
+        configured: true,
+        persisted: true,
+        receipt: existing.receipt,
+        claimToken: "",
+        duplicate: true,
+      };
+    }
+
     return {
       configured: true,
-      persisted: true,
+      persisted: false,
       receipt,
-      claimToken: token,
+      claimToken: "",
+      error: existing.error || "Merchant receipt conflict could not be resolved.",
     };
   } catch {
     return {

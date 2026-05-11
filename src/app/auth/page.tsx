@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
-import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
+import { jiagonPrivyConfig } from "@/lib/privyConfig";
 
 type StoredSession = {
   userLabel?: string;
@@ -146,30 +146,7 @@ export default function AuthPage() {
   return (
     <PrivyProvider
       appId={appId}
-      config={{
-        loginMethods: ["wallet", "email", "google"],
-        appearance: {
-          theme: "light",
-          accentColor: "#A9573D",
-          showWalletLoginFirst: true,
-          walletChainType: "solana-only",
-          walletList: [
-            "phantom",
-            "solflare",
-            "backpack",
-            "jupiter",
-            "detected_solana_wallets",
-            "wallet_connect_qr_solana",
-          ],
-        },
-        embeddedWallets: {
-          solana: { createOnLogin: "off" },
-          showWalletUIs: false,
-        },
-        externalWallets: {
-          solana: { connectors: toSolanaWalletConnectors({ shouldAutoConnect: false }) },
-        },
-      }}
+      config={jiagonPrivyConfig}
     >
       <AuthFlow />
     </PrivyProvider>

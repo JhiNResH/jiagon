@@ -219,10 +219,11 @@ export default function CreditPage() {
       `}</style>
       <div className="credit-shell">
         <nav className="credit-nav" aria-label="Credit">
-          <Link href="/">Home</Link>
           <Link href="/passport">Passport</Link>
           <Link href="/trust-api">Trust API</Link>
-          <Link href="/merchant">Merchant Demo</Link>
+          <Link href="/credit">Credit</Link>
+          <Link href="/passport#receipt-sources">Receipt Sources</Link>
+          <Link href="/merchant">Merchant Tools</Link>
         </nav>
         <section className="credit-grid">
           <div className="credit-card dark">
@@ -251,7 +252,7 @@ export default function CreditPage() {
             </div>
             <div className="credit-cta">
               <Link href="/passport">Open Passport</Link>
-              <Link className="secondary" href="/merchant">Claim or mint receipt</Link>
+              <Link className="secondary" href="/merchant">Open Merchant Tools</Link>
               <Link className="secondary" href="/trust-api">Open Trust API</Link>
             </div>
           </div>

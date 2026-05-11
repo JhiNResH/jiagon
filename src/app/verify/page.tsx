@@ -8,7 +8,7 @@ const currentSurfaces = [
   },
   {
     href: "/merchant",
-    title: "Merchant Dashboard",
+    title: "Merchant Tools",
     body: "Issue receipts, claim orders, and create the proof source behind Passport entries.",
   },
   {
@@ -54,11 +54,11 @@ export default function VerifyPage() {
       `}</style>
       <div className="verify-shell">
         <nav className="verify-nav" aria-label="Verify">
-          <Link href="/">Home</Link>
           <Link href="/passport">Passport</Link>
-          <Link href="/merchant">Merchant Demo</Link>
           <Link href="/trust-api">Trust API</Link>
           <Link href="/credit">Credit</Link>
+          <Link href="/passport#receipt-sources">Receipt Sources</Link>
+          <Link href="/merchant">Merchant Tools</Link>
         </nav>
         <section className="verify-grid">
           <div className="verify-card dark">

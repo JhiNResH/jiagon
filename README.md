@@ -133,7 +133,7 @@ Jiagon separates facts from claims so agents can reason safely.
 | Layer | MVP proof | Caveat |
 | --- | --- | --- |
 | Order intent | Agent, Telegram, or tile order | Intent alone is not a receipt |
-| Payment request | Solana Pay / Helio external wallet approval | Payment intent is not fulfillment proof until verified |
+| Payment request | Solana Pay / Helio external wallet approval | Solana Pay devnet SPL transfers can be verified; Helio still needs webhook proof |
 | Merchant completion | Staff marks fulfilled | Manual merchant attestation in the MVP |
 | Passport claim | Privy-authenticated claim | Identity binding is separate from payment |
 | Receipt credential | Solana Bubblegum cNFT or prepared payload | Live mint requires Bubblegum tree and minter env |
@@ -227,6 +227,25 @@ Use this page to simulate a personal agent call, then open the returned external
 wallet approval request. Jiagon prefers Helio Solana checkout when
 `HELIO_PAYLINK_ID` is configured, with official Solana Pay transfer URLs as the
 fallback.
+
+Solana Pay receipt upgrade:
+
+```txt
+POST /api/agent/orders/{id}/verify-solana-pay
+```
+
+When `JIAGON_SOLANA_PAY_RECIPIENT`, `JIAGON_SOLANA_PAY_SPL_TOKEN`,
+`JIAGON_SOLANA_PAY_VERIFY_SECRET`, `SOLANA_CLUSTER=devnet`, and the default
+devnet `SOLANA_RPC_URL` are configured, order creation returns a private
+`payment.verifyToken` to the creating agent/user. Send that token as
+`verifyToken`, `Authorization: Bearer <token>`, or
+`x-jiagon-solana-pay-verify-token` when calling the verify route. The route
+checks the deterministic Solana Pay reference, recipient, SPL token, memo, and
+exact order subtotal before issuing the claimable receipt. SOL-only intents
+remain nominal demo payments and return a setup response instead of a USD
+receipt. Custom testnet RPCs require
+`JIAGON_ALLOWED_TESTNET_RPC_ORIGINS` with a comma-separated origin or full URL
+match for this deployment; mainnet cluster/RPC remains blocked.
 
 Recommendation from Jiagon's proof graph:
 
@@ -390,6 +409,8 @@ TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 TELEGRAM_MERCHANT_GROUP_CHAT_ID=your-staff-group-chat-id
 HELIO_PAYLINK_ID=your-dev-helio-paylink-id
 HELIO_NETWORK=test
+JIAGON_SOLANA_PAY_RECIPIENT=devnet-recipient-public-key
+JIAGON_SOLANA_PAY_SPL_TOKEN=devnet-usdc-or-demo-stable-token-mint
 MOONPAY_COMMERCE_WEBHOOK_SHARED_TOKEN=use-a-random-shared-webhook-token
 SHOPIFY_SHOP_DOMAIN=your-store.myshopify.com
 SHOPIFY_STOREFRONT_ACCESS_TOKEN=your-storefront-access-token
@@ -399,7 +420,9 @@ SOLANA_BUBBLEGUM_MINTER_SECRET_KEY=never-commit-real-private-keys
 ```
 
 Jiagon is testnet-only for the current demo. Server routes reject mainnet
-cluster values and obvious mainnet RPC URLs.
+cluster values and mainnet RPC URLs. Custom testnet RPCs must match a
+comma-separated origin or full URL in `JIAGON_ALLOWED_TESTNET_RPC_ORIGINS`;
+the default devnet/testnet/localnet RPC URLs are allowed without extra config.
 
 Run the dev server:
 
