@@ -44,6 +44,7 @@ type MerchantOrderPaymentStatus =
   "merchant_attested_paid" |
   "moonpay_verified_paid" |
   "shopify_verified_paid" |
+  "solana_pay_verified_paid" |
   "cancelled";
 
 type MerchantOrder = {
@@ -58,7 +59,7 @@ type MerchantOrder = {
   items: MerchantOrderItem[];
   subtotalCents: number;
   subtotalUsd: string;
-  paymentProvider: "external_pos" | "moonpay_commerce" | "shopify";
+  paymentProvider: "external_pos" | "moonpay_commerce" | "shopify" | "solana_pay";
   paymentStatus: MerchantOrderPaymentStatus;
   notes: string | null;
   proofLevel: string;
@@ -167,6 +168,7 @@ function paymentStatusLabel(status: MerchantOrderPaymentStatus) {
   if (status === "merchant_attested_paid") return "Paid via counter POS";
   if (status === "moonpay_verified_paid") return "MoonPay verified paid";
   if (status === "shopify_verified_paid") return "Shopify verified paid";
+  if (status === "solana_pay_verified_paid") return "Solana Pay verified paid";
   if (status === "cancelled") return "Cancelled";
   return "Waiting counter payment";
 }

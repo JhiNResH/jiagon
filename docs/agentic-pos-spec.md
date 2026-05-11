@@ -61,13 +61,14 @@ In scope:
 - Merchant-facing order queue.
 - Agent-readable pickup result returned to the agent: merchant, pickup code, ETA, and user-facing instructions.
 - Optional external Solana wallet payment request for the agent/user wallet. Helio is the hosted checkout path; official Solana Pay transfer URLs are the fallback.
+- Solana Pay devnet SPL-token verification for an existing order reference.
 - Merchant completion creates a claimable receipt.
 - NFC/QR receipt claim after fulfillment.
 - Claimed receipt can be minted and used for credit unlock.
 
 Out of scope for the first pass:
 
-- Automated payment verification.
+- Production payment settlement, refunds, and non-Solana Pay webhook adapters.
 - Inventory management.
 - Tax, tips, refunds, tables, kitchen display, printer integrations.
 - Payment settlement inside Telegram.
@@ -128,9 +129,9 @@ Early event pilots can use L2/L3. Credit scoring should weight L4/L5 higher when
   payment request details.
 - The response also returns `agentExecution`, which separates what the agent
   returns from what it handled.
-- Payment requests are not yet payment-proof oracles; until a webhook or
-  transaction query verifies payment, merchant fulfillment remains the source of
-  receipt proof.
+- SOL-only payment requests are not payment-proof oracles for USD receipts.
+  Configured Solana Pay SPL-token requests can be verified by transaction
+  reference and exact order subtotal before issuing a receipt.
 
 ### PR 5: Credit Connection Polish
 

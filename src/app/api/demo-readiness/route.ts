@@ -2,6 +2,7 @@ import type { DemoReadinessCheck, DemoReadinessResponse, DemoReadinessStatus } f
 import { solanaBubblegumReadinessSmoke } from "@/server/solanaBubblegum";
 import { solanaCreditDepositConfig } from "@/server/solanaCreditDeposit";
 import { authorizeMerchantDashboard } from "@/server/merchantAuth";
+import { solanaPayVerificationReadiness } from "@/server/solanaPay";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
   const creditMissing = missing(CREDIT_REQUIRED_ENV);
   const helioConfigured = configured(process.env.HELIO_PAYLINK_ID);
   const solanaPayConfigured = configured(process.env.JIAGON_SOLANA_PAY_RECIPIENT);
+  const solanaPayVerification = solanaPayVerificationReadiness();
   const cryptoPayMissing = helioConfigured || solanaPayConfigured ? [] : ["HELIO_PAYLINK_ID or JIAGON_SOLANA_PAY_RECIPIENT"];
   const helioNetwork = (process.env.HELIO_NETWORK || process.env.NEXT_PUBLIC_HELIO_NETWORK || "test").trim().toLowerCase();
   const helioBlocked = helioConfigured && helioNetwork === "main";
@@ -111,15 +113,25 @@ export async function GET(request: Request) {
         : helioConfigured
           ? "Helio Solana checkout ready"
           : solanaPayConfigured
-            ? "direct Solana Pay ready"
+            ? solanaPayVerification.enabled
+              ? "direct Solana Pay verification ready"
+              : "direct Solana Pay intent ready"
             : "optional setup",
       missingCount: cryptoPayMissing.length,
-      detail: "Agent orders can return one external Solana payment request: Helio checkout first, official Solana Pay fallback. Receipt issuance still requires merchant fulfillment until payment verification is added.",
+      detail: solanaPayVerification.enabled
+        ? "Agent orders can return official Solana Pay devnet SPL-token requests and POST /api/agent/orders/{id}/verify-solana-pay can upgrade confirmed exact payments into claimable receipts."
+        : "Agent orders can return one external Solana payment request: Helio checkout first, official Solana Pay fallback. Exact Solana Pay receipt verification requires JIAGON_SOLANA_PAY_SPL_TOKEN.",
       diagnostics: [
         {
           label: "network",
           value: helioNetwork === "main" ? "blocked-main" : "test",
         },
+        ...(solanaPayVerification.error
+          ? [{
+              label: "solanaPayVerification",
+              value: solanaPayVerification.error,
+            }]
+          : []),
       ],
     },
   ];

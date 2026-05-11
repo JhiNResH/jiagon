@@ -22,7 +22,7 @@ const adapterHandoff = {
   orderAgent: {
     role: "Personal Order Agent",
     responsibility: "Captures user intent, applies spend and merchant policy, and asks Jiagon to create an order or checkout pass.",
-    entrypoints: ["/api/agent/orders", "/api/agent/shopify/orders"],
+    entrypoints: ["/api/agent/orders", "/api/agent/orders/{id}/verify-solana-pay", "/api/agent/shopify/orders"],
   },
   takeOrderAgent: {
     role: "Merchant Take-Order Agent",
@@ -58,6 +58,7 @@ export function agentDiscovery(origin: string) {
       "/api/agent/rerank",
       "/api/agent/recommendations",
       "/api/agent/orders",
+      "/api/agent/orders/{id}/verify-solana-pay",
       "/api/merchant/orders/{id}/action",
       "/api/agent/shopify/products",
       "/api/agent/shopify/orders",
@@ -378,6 +379,48 @@ export function openApiSpec(origin: string) {
             },
             "422": {
               description: "Agent request needs clarification before an order can be created.",
+            },
+          },
+        },
+      },
+      "/api/agent/orders/{id}/verify-solana-pay": {
+        post: {
+          tags: ["Adapters"],
+          summary: "Verify a configured Solana Pay SPL-token transaction and upgrade an existing agent order into a receipt.",
+          operationId: "verifyAgentOrderSolanaPay",
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "string", pattern: "^ord-[a-f0-9]{16}$" },
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SolanaPayVerificationRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Solana Pay transaction verified or order was already receipted.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/SolanaPayVerificationResponse" },
+                },
+              },
+            },
+            "404": {
+              description: "Order or confirmed reference transaction was not found.",
+            },
+            "422": {
+              description: "SPL token setup is missing or referenced transaction does not match the order total.",
+            },
+            "503": {
+              description: "Solana Pay testnet RPC or receipt issuance is not configured.",
             },
           },
         },
@@ -796,6 +839,27 @@ export function openApiSpec(origin: string) {
             agentExecution: { type: "object" },
             staffDispatch: { type: "string", enum: ["sent", "skipped", "failed"] },
             urls: { type: "object" },
+          },
+        },
+        SolanaPayVerificationRequest: {
+          type: "object",
+          properties: {
+            signature: {
+              type: "string",
+              description: "Optional transaction signature. The server still scans the deterministic order reference.",
+            },
+          },
+        },
+        SolanaPayVerificationResponse: {
+          type: "object",
+          properties: {
+            accepted: { type: "boolean" },
+            idempotent: { type: "boolean" },
+            paymentProof: { type: "object" },
+            claimToken: { type: ["string", "null"] },
+            claimUrl: { type: ["string", "null"] },
+            receipt: { type: ["object", "null"] },
+            order: { type: "object" },
           },
         },
         ShopifyAgentOrderRequest: {

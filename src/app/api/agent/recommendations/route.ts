@@ -81,7 +81,7 @@ export async function GET(request: Request) {
       source: "Jiagon agentic POS receipt",
       credentialChain: "Solana devnet Bubblegum",
       storageLayer: "receipt metadata URI",
-      caveat: "Merchant completion and passport claim are verified by Jiagon; payment proof is optional until Solana Pay verification is configured.",
+      caveat: "Merchant completion and passport claim are verified by Jiagon; Solana Pay SPL-token orders can add payment proof when verification is configured.",
     },
     reasons: (() => {
       const signals = buildAgentSignals(merchant.latestAttributes);

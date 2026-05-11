@@ -12,8 +12,8 @@ export type MerchantOrderItem = {
 
 export type MerchantOrderStatus = "pending" | "accepted" | "preparing" | "completed" | "cancelled";
 export type MerchantOrderProofLevel = "order_intent_only" | "merchant_accepted" | "merchant_completed" | "customer_claimed" | "cancelled";
-export type MerchantOrderPaymentProvider = "external_pos" | "moonpay_commerce" | "shopify";
-export type MerchantOrderPaymentStatus = "waiting_counter_payment" | "merchant_attested_paid" | "moonpay_verified_paid" | "shopify_verified_paid" | "cancelled";
+export type MerchantOrderPaymentProvider = "external_pos" | "moonpay_commerce" | "shopify" | "solana_pay";
+export type MerchantOrderPaymentStatus = "waiting_counter_payment" | "merchant_attested_paid" | "moonpay_verified_paid" | "shopify_verified_paid" | "solana_pay_verified_paid" | "cancelled";
 
 export type MerchantOrder = {
   id: string;
@@ -273,7 +273,7 @@ function isMerchantOrderProofLevel(value: unknown): value is MerchantOrderProofL
 }
 
 function isMerchantOrderPaymentProvider(value: unknown): value is MerchantOrderPaymentProvider {
-  return value === "external_pos" || value === "moonpay_commerce" || value === "shopify";
+  return value === "external_pos" || value === "moonpay_commerce" || value === "shopify" || value === "solana_pay";
 }
 
 function isMerchantOrderPaymentStatus(value: unknown): value is MerchantOrderPaymentStatus {
@@ -281,6 +281,7 @@ function isMerchantOrderPaymentStatus(value: unknown): value is MerchantOrderPay
     value === "merchant_attested_paid" ||
     value === "moonpay_verified_paid" ||
     value === "shopify_verified_paid" ||
+    value === "solana_pay_verified_paid" ||
     value === "cancelled";
 }
 
@@ -665,7 +666,7 @@ export async function findMerchantOrderByPickupCode(input: {
   }
 }
 
-async function getMerchantOrderById(id: string): Promise<{
+export async function getMerchantOrderById(id: string): Promise<{
   configured: boolean;
   order: MerchantOrder | null;
   error?: string;
