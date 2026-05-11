@@ -11,7 +11,8 @@ export type MerchantOrderItem = {
 
 export type MerchantOrderStatus = "pending" | "accepted" | "completed" | "cancelled";
 export type MerchantOrderProofLevel = "order_intent_only" | "merchant_accepted" | "merchant_completed" | "customer_claimed" | "cancelled";
-export type MerchantOrderPaymentStatus = "waiting_counter_payment" | "merchant_attested_paid" | "cancelled";
+export type MerchantOrderPaymentProvider = "external_pos" | "moonpay_commerce" | "shopify";
+export type MerchantOrderPaymentStatus = "waiting_counter_payment" | "merchant_attested_paid" | "moonpay_verified_paid" | "shopify_verified_paid" | "cancelled";
 
 export type MerchantOrder = {
   id: string;
@@ -26,7 +27,7 @@ export type MerchantOrder = {
   items: MerchantOrderItem[];
   subtotalCents: number;
   subtotalUsd: string;
-  paymentProvider: "external_pos";
+  paymentProvider: MerchantOrderPaymentProvider;
   paymentStatus: MerchantOrderPaymentStatus;
   notes: string | null;
   proofLevel: MerchantOrderProofLevel;
@@ -270,8 +271,16 @@ function isMerchantOrderProofLevel(value: unknown): value is MerchantOrderProofL
   return value === "order_intent_only" || value === "merchant_accepted" || value === "merchant_completed" || value === "customer_claimed" || value === "cancelled";
 }
 
+function isMerchantOrderPaymentProvider(value: unknown): value is MerchantOrderPaymentProvider {
+  return value === "external_pos" || value === "moonpay_commerce" || value === "shopify";
+}
+
 function isMerchantOrderPaymentStatus(value: unknown): value is MerchantOrderPaymentStatus {
-  return value === "waiting_counter_payment" || value === "merchant_attested_paid" || value === "cancelled";
+  return value === "waiting_counter_payment" ||
+    value === "merchant_attested_paid" ||
+    value === "moonpay_verified_paid" ||
+    value === "shopify_verified_paid" ||
+    value === "cancelled";
 }
 
 function canTransitionOrderStatus(current: MerchantOrderStatus, next: MerchantOrderStatus) {
@@ -299,7 +308,7 @@ function mapMerchantOrderRow(row: Record<string, unknown>): MerchantOrder {
     items: items as MerchantOrderItem[],
     subtotalCents: Number(row.subtotal_cents),
     subtotalUsd: String(row.subtotal_usd),
-    paymentProvider: "external_pos",
+    paymentProvider: isMerchantOrderPaymentProvider(row.payment_provider) ? row.payment_provider : "external_pos",
     paymentStatus: isMerchantOrderPaymentStatus(row.payment_status) ? row.payment_status : status === "cancelled" ? "cancelled" : "waiting_counter_payment",
     notes: typeof row.notes === "string" ? row.notes : null,
     proofLevel: isMerchantOrderProofLevel(row.proof_level) ? row.proof_level : proofLevelForStatus(status),
@@ -849,6 +858,10 @@ export async function completeMerchantOrderWithReceipt(input: {
   id: string;
   origin: string;
   issuedBy?: string | null;
+  paymentProvider?: MerchantOrderPaymentProvider;
+  paymentStatus?: Exclude<MerchantOrderPaymentStatus, "waiting_counter_payment" | "cancelled">;
+  receiptPurpose?: string | null;
+  receiptMemo?: string | null;
 }): Promise<{
   configured: boolean;
   updated: boolean;
@@ -860,6 +873,10 @@ export async function completeMerchantOrderWithReceipt(input: {
   error?: string;
 }> {
   const pool = getPool();
+  const completedPaymentProvider = input.paymentProvider || "external_pos";
+  const completedPaymentStatus = input.paymentStatus || "merchant_attested_paid";
+  const receiptPurpose = input.receiptPurpose?.trim() || "agentic_pos_order_receipt";
+  const receiptMemo = input.receiptMemo?.trim() || null;
   if (!pool) {
     const current = merchantOrderMemory().get(input.id) || null;
     if (!current) {
@@ -900,16 +917,17 @@ export async function completeMerchantOrderWithReceipt(input: {
       amountCents: current.subtotalCents,
       currency: "USD",
       category: current.items[0]?.name || "Merchant order",
-      purpose: "agentic_pos_order_receipt",
+      purpose: receiptPurpose,
       issuedBy: input.issuedBy || "Jiagon merchant dashboard",
-      memo: orderMemo(current),
+      memo: receiptMemo || orderMemo(current),
       origin: input.origin,
     });
     const nextOrder: MerchantOrder = {
       ...current,
       status: "completed",
       proofLevel: proofLevelForStatus("completed"),
-      paymentStatus: "merchant_attested_paid",
+      paymentProvider: completedPaymentProvider,
+      paymentStatus: completedPaymentStatus,
       receiptId: receiptResult.receipt.id,
       receiptClaimUrl: receiptResult.receipt.claimUrl,
       receiptHash: receiptResult.receipt.receiptHash,
@@ -1009,9 +1027,9 @@ export async function completeMerchantOrderWithReceipt(input: {
       amountCents: current.subtotalCents,
       currency: "USD",
       category: current.items[0]?.name || "Merchant order",
-      purpose: "agentic_pos_order_receipt",
+      purpose: receiptPurpose,
       issuedBy: input.issuedBy || "Jiagon merchant dashboard",
-      memo: orderMemo(current),
+      memo: receiptMemo || orderMemo(current),
       origin: input.origin,
     });
     if (receiptResult.configured && !receiptResult.persisted) {
@@ -1032,7 +1050,8 @@ export async function completeMerchantOrderWithReceipt(input: {
       ...current,
       status: "completed",
       proofLevel: proofLevelForStatus("completed"),
-      paymentStatus: "merchant_attested_paid",
+      paymentProvider: completedPaymentProvider,
+      paymentStatus: completedPaymentStatus,
       receiptId: receiptResult.receipt.id,
       receiptClaimUrl: receiptResult.receipt.claimUrl,
       receiptHash: receiptResult.receipt.receiptHash,
@@ -1045,7 +1064,8 @@ export async function completeMerchantOrderWithReceipt(input: {
         set
           status = $2,
           proof_level = $3,
-          payment_status = 'merchant_attested_paid',
+          payment_provider = $10,
+          payment_status = $11,
           receipt_id = $4,
           receipt_claim_url = $5,
           receipt_hash = $6,
@@ -1091,6 +1111,8 @@ export async function completeMerchantOrderWithReceipt(input: {
         nextOrder.receiptIssuedAt,
         JSON.stringify(nextOrder),
         current.status,
+        nextOrder.paymentProvider,
+        nextOrder.paymentStatus,
       ],
     );
 

@@ -83,6 +83,23 @@ export function agentDiscovery(origin: string) {
           "NFC receipt station URL for claim after merchant fulfillment",
         ],
       },
+      shopifyAgentOrder: {
+        method: "POST",
+        url: `${origin}/api/agent/shopify/orders`,
+        body: {
+          agentId: "Stable id for the user's personal agent.",
+          userIntent: "Natural purchase request. Example: buy a beanie under $100.",
+          query: "Optional Shopify product search query.",
+          variantId: "Optional exact Shopify Storefront variant id.",
+          maxSpendUsd: "Optional user spending policy enforced before checkout creation.",
+        },
+        returns: [
+          "selected Shopify product variant",
+          "Jiagon order pass",
+          "Shopify checkout URL",
+          "cart attributes carrying jiagon_order_id for paid-order receipt issuance",
+        ],
+      },
       recommendations: {
         method: "GET",
         url: `${origin}/api/agent/recommendations`,
@@ -262,6 +279,66 @@ export function openApiSpec(origin: string) {
             },
             "422": {
               description: "Agent request needs clarification before an order can be created.",
+            },
+          },
+        },
+      },
+      "/api/agent/shopify/products": {
+        get: {
+          tags: ["Agent"],
+          summary: "Search Shopify Storefront products for agent ordering.",
+          operationId: "searchShopifyProductsForAgent",
+          parameters: [
+            {
+              name: "query",
+              in: "query",
+              required: true,
+              schema: { type: "string", examples: ["beanie"] },
+            },
+            {
+              name: "limit",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 1, maximum: 10, default: 5 },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Shopify product variants available for agent checkout.",
+            },
+            "503": {
+              description: "Shopify Storefront API is not configured.",
+            },
+          },
+        },
+      },
+      "/api/agent/shopify/orders": {
+        post: {
+          tags: ["Agent"],
+          summary: "Create a Shopify checkout from a natural-language agent request.",
+          operationId: "createShopifyAgentCheckout",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ShopifyAgentOrderRequest" },
+              },
+            },
+          },
+          responses: {
+            "201": {
+              description: "Jiagon order pass and Shopify checkout created.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ShopifyAgentOrderResponse" },
+                },
+              },
+            },
+            "422": {
+              description: "No available Shopify variant matched the request and spending policy.",
+            },
+            "503": {
+              description: "Shopify Storefront API is not configured.",
             },
           },
         },
@@ -503,6 +580,28 @@ export function openApiSpec(origin: string) {
             agentExecution: { type: "object" },
             staffDispatch: { type: "string", enum: ["sent", "skipped", "failed"] },
             urls: { type: "object" },
+          },
+        },
+        ShopifyAgentOrderRequest: {
+          type: "object",
+          properties: {
+            agentId: { type: "string", examples: ["shopify-demo-agent"] },
+            userIntent: { type: "string", examples: ["Buy a beanie under $100 with Solana Pay."] },
+            query: { type: "string", examples: ["beanie"] },
+            variantId: { type: "string", description: "Optional Shopify Storefront variant id." },
+            quantity: { type: "integer", minimum: 1, maximum: 20, default: 1 },
+            maxSpendUsd: { type: "string", examples: ["100.00"] },
+          },
+        },
+        ShopifyAgentOrderResponse: {
+          type: "object",
+          properties: {
+            product: { type: "string" },
+            status: { type: "string", examples: ["shopify_checkout_created"] },
+            agent: { type: "object" },
+            shopify: { type: "object" },
+            order: { type: "object" },
+            next: { type: "array", items: { type: "string" } },
           },
         },
         RerankResponse: {
