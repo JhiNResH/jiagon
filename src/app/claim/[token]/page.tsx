@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { PrivyProvider, usePrivy, type PrivyClientConfig } from "@privy-io/react-auth";
-import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
+import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
+import { jiagonPrivyConfig } from "@/lib/privyConfig";
 
 type ClaimReceipt = {
   id: string;
@@ -51,32 +51,6 @@ type MintReceiptResponse = {
   assetExplorerUrl?: string | null;
   note?: string;
   creditImpact?: ClaimReceipt["creditImpact"];
-};
-
-const privyConfig: PrivyClientConfig = {
-  loginMethods: ["wallet", "email", "google"],
-  appearance: {
-    theme: "light" as const,
-          accentColor: "#A9573D" as const,
-          showWalletLoginFirst: true,
-          walletChainType: "solana-only" as const,
-          // The final two entries are desktop fallbacks; mobile uses the native app path.
-          walletList: [
-            "phantom",
-            "solflare",
-            "backpack",
-            "jupiter",
-            "detected_solana_wallets",
-            "wallet_connect_qr_solana",
-          ],
-  },
-  embeddedWallets: {
-    solana: { createOnLogin: "off" as const },
-    showWalletUIs: false,
-  },
-  externalWallets: {
-    solana: { connectors: toSolanaWalletConnectors({ shouldAutoConnect: false }) },
-  },
 };
 
 function shortHash(value?: string | null) {
@@ -458,7 +432,7 @@ export default function ClaimReceiptPage() {
   }
 
   return (
-    <PrivyProvider appId={appId} config={privyConfig}>
+    <PrivyProvider appId={appId} config={jiagonPrivyConfig}>
       <ClaimContent token={token} />
     </PrivyProvider>
   );

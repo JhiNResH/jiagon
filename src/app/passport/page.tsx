@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { PrivyProvider, usePrivy, type PrivyClientConfig } from "@privy-io/react-auth";
-import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
+import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
+import { jiagonPrivyConfig } from "@/lib/privyConfig";
 
 type CachedReceipt = {
   id?: string;
@@ -48,31 +48,6 @@ type AccountStateResponse = {
   error?: string;
 };
 
-const privyConfig: PrivyClientConfig = {
-  loginMethods: ["wallet", "email", "google"],
-  appearance: {
-    theme: "light" as const,
-    accentColor: "#A9573D" as const,
-    showWalletLoginFirst: true,
-    walletChainType: "solana-only" as const,
-    walletList: [
-      "phantom",
-      "solflare",
-      "backpack",
-      "jupiter",
-      "detected_solana_wallets",
-      "wallet_connect_qr_solana",
-    ],
-  },
-  embeddedWallets: {
-    solana: { createOnLogin: "off" as const },
-    showWalletUIs: false,
-  },
-  externalWallets: {
-    solana: { connectors: toSolanaWalletConnectors({ shouldAutoConnect: false }) },
-  },
-};
-
 const proofLabels: Record<string, string> = {
   minted: "L5 Bubblegum minted",
   prepared: "L4 claim prepared",
@@ -108,11 +83,12 @@ function shortHash(value?: string | null) {
   return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-6)}` : value;
 }
 
-function getProofLevel(receipt: CachedReceipt) {
+function getProofLevel(receipt: CachedReceipt, source: ReceiptSourceStatus["source"]) {
   if (receipt.mintStatus === "minted") return proofLabels.minted;
   if (receipt.mintStatus === "prepared") return proofLabels.prepared;
   if (receipt.status === "claimed" || receipt.mintStatus === "ready") return proofLabels.ready;
   if (receipt.status === "issued") return proofLabels.issued;
+  if (source === "account") return "L1 account receipt";
   return "L1 local cache";
 }
 
@@ -212,14 +188,28 @@ function PassportContent({
         }
 
         if (!cancelled) {
-          setReceipts(cleanCachedReceipts(payload.state?.merchantReceipts));
-          setStatus({
-            label: "Synced account state",
-            caveat: payload.updatedAt
-              ? `Showing receipts from your private account state, updated ${formatDate(payload.updatedAt)}.`
-              : "Showing receipts from your private account state.",
-            source: "account",
-          });
+          const accountReceipts = cleanCachedReceipts(payload.state?.merchantReceipts);
+          const localReceipts = readCachedReceipts();
+          if (accountReceipts.length > 0 || localReceipts.length === 0) {
+            setReceipts(accountReceipts);
+            setStatus({
+              label: "Synced account state",
+              caveat: accountReceipts.length > 0
+                ? payload.updatedAt
+                  ? `Showing receipts from your private account state, updated ${formatDate(payload.updatedAt)}.`
+                  : "Showing receipts from your private account state."
+                : "Your authenticated account state has no receipts yet.",
+              source: "account",
+            });
+          } else {
+            setReceipts(localReceipts);
+            setStatus({
+              label: "Local device fallback",
+              caveat:
+                "Your authenticated account state has no receipts yet, so Passport is showing receipts saved on this device.",
+              source: "local",
+            });
+          }
           setLoaded(true);
         }
       } catch (error) {
@@ -234,6 +224,17 @@ function PassportContent({
       cancelled = true;
     };
   }, [authConfigured, ready, authenticated, getAccessToken]);
+
+  const sourceLabel = status.source === "account" ? "account state" : "local device";
+  const dataSourceLabel = status.source === "account" ? "account state" : "local device fallback";
+  const emptyTitle =
+    status.source === "account"
+      ? "No receipts are saved in this account state yet."
+      : "No claimed receipts are saved on this device yet.";
+  const emptyBody =
+    status.source === "account"
+      ? "Claim a merchant-issued receipt while logged in. After claim, this account dashboard will show the receipt hash, proof level, mint or prepared status, and any purpose-bound credit unlocked by a minted credential."
+      : "Claim a merchant-issued receipt first. After claim, this local device fallback will show the receipt hash, proof level, mint or prepared status, and any purpose-bound credit unlocked by a minted credential.";
 
   const metrics = useMemo(() => {
     const claimed = receipts.filter((receipt) => receipt.status === "claimed").length;
@@ -417,18 +418,15 @@ function PassportContent({
 
         {!loaded ? null : receipts.length === 0 ? (
           <section className="passport-empty">
-            <strong>No claimed receipts are cached on this device yet.</strong>
-            <span>
-              Claim a merchant-issued receipt first. After claim, this dashboard will show the receipt hash, proof
-              level, mint or prepared status, and any purpose-bound credit unlocked by a minted credential.
-            </span>
+            <strong>{emptyTitle}</strong>
+            <span>{emptyBody}</span>
             <div className="passport-cta">
               <Link href="/merchant">Open Merchant Demo</Link>
               <Link className="secondary" href="/trust-api">View Agent Trust API</Link>
             </div>
           </section>
         ) : (
-          <section className="passport-list" aria-label="Cached receipt passport entries">
+          <section className="passport-list" aria-label={`${sourceLabel} receipt passport entries`}>
             {receipts.map((receipt, index) => (
               <article className="passport-receipt" key={receipt.id || receipt.receiptHash || index}>
                 <div className="passport-receipt-head">
@@ -444,7 +442,7 @@ function PassportContent({
                 <div className="passport-fields">
                   <div className="passport-field">
                     <span>Proof level</span>
-                    <strong>{getProofLevel(receipt)}</strong>
+                    <strong>{getProofLevel(receipt, status.source)}</strong>
                   </div>
                   <div className="passport-field">
                     <span>Receipt hash</span>
@@ -467,8 +465,8 @@ function PassportContent({
                     <strong>{shortHash(receipt.solanaOwner)}</strong>
                   </div>
                   <div className="passport-field">
-                    <span>Source</span>
-                    <strong>{receipt.source || "merchant-issued"}</strong>
+                    <span>Data source</span>
+                    <strong>{dataSourceLabel}</strong>
                   </div>
                 </div>
                 <div className="passport-links">
@@ -509,7 +507,7 @@ export default function PassportPage() {
   }
 
   return (
-    <PrivyProvider appId={appId} config={privyConfig}>
+    <PrivyProvider appId={appId} config={jiagonPrivyConfig}>
       <AuthenticatedPassportContent />
     </PrivyProvider>
   );
