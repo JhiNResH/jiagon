@@ -4,7 +4,9 @@ type UnknownRecord = Record<string, unknown>;
 
 export type MoonPayCommercePaymentProof = {
   event: string;
-  orderId: string;
+  orderId: string | null;
+  merchantId: string | null;
+  merchantName: string | null;
   transactionId: string;
   paylinkId: string | null;
   depositId: string | null;
@@ -45,6 +47,18 @@ function record(value: unknown): UnknownRecord | null {
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function printableValue(value: unknown) {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function centsFromAmount(value: string | null) {
+  const normalized = (value || "").trim().replace(/[$,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return 0;
+  return Math.round(Number(normalized) * 100);
 }
 
 function parseJsonObject(value: unknown): UnknownRecord | null {
@@ -93,7 +107,6 @@ export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayComme
     additionalJson?.orderId,
     additionalJson?.merchantOrderId,
   );
-  if (!orderId) return null;
 
   const event = stringValue(root.event) || "UNKNOWN";
   const transactionStatus = stringValue(meta?.transactionStatus) || stringValue(root.transactionStatus);
@@ -103,10 +116,21 @@ export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayComme
   if (!isSuccess) return null;
 
   const currency = record(root.currency) || record(meta?.currency);
+  const merchant = record(root.merchant) || record(meta?.merchant) || record(productDetails?.merchant);
 
   return {
     event,
     orderId,
+    merchantId: stringValue(root.merchantId) ||
+      stringValue(meta?.merchantId) ||
+      stringValue(productDetails?.merchantId) ||
+      stringValue(additionalJson?.merchantId) ||
+      stringValue(merchant?.id),
+    merchantName: stringValue(root.merchantName) ||
+      stringValue(meta?.merchantName) ||
+      stringValue(productDetails?.merchantName) ||
+      stringValue(additionalJson?.merchantName) ||
+      stringValue(merchant?.name),
     transactionId: stringValue(transactionObject?.id) || stringValue(root.transactionId) || stringValue(root.txIdempotencyKey) || "unknown",
     paylinkId: stringValue(transactionObject?.paylinkId) || stringValue(root.paylinkId),
     depositId: stringValue(root.depositId),
@@ -114,7 +138,7 @@ export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayComme
     transactionStatus,
     senderWallet: stringValue(meta?.senderPK),
     recipientWallet: stringValue(meta?.recipientPK),
-    amount: stringValue(root.amount) || stringValue(meta?.totalAmount) || stringValue(meta?.amount),
+    amount: printableValue(root.amount) || printableValue(meta?.totalAmount) || printableValue(meta?.amount),
     currency: currencySymbol(currency),
     rawIdempotencyKey: stringValue(root.webhookDeliveryIdempotencyKey) || stringValue(root.txIdempotencyKey),
   };
@@ -122,7 +146,9 @@ export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayComme
 
 export function moonPayReceiptMemo(proof: MoonPayCommercePaymentProof) {
   const parts = [
-    `MoonPay Commerce verified payment for order ${proof.orderId}.`,
+    proof.orderId
+      ? `MoonPay Commerce verified payment for order ${proof.orderId}.`
+      : "MoonPay Commerce verified direct payment.",
     proof.transactionId !== "unknown" ? `Transaction: ${proof.transactionId}.` : null,
     proof.transactionSignature ? `Signature: ${proof.transactionSignature}.` : null,
     proof.senderWallet ? `Payer wallet: ${proof.senderWallet}.` : null,
@@ -130,4 +156,17 @@ export function moonPayReceiptMemo(proof: MoonPayCommercePaymentProof) {
   ].filter((part): part is string => Boolean(part));
 
   return parts.join(" ").slice(0, 500);
+}
+
+export function moonPayPaymentAmountCents(proof: MoonPayCommercePaymentProof) {
+  return centsFromAmount(proof.amount);
+}
+
+export function moonPayDirectReceiptNumber(proof: MoonPayCommercePaymentProof) {
+  const stableId = proof.rawIdempotencyKey ||
+    (proof.transactionId !== "unknown" ? proof.transactionId : null) ||
+    proof.depositId ||
+    proof.transactionSignature ||
+    proof.paylinkId;
+  return stableId ? `moonpay:${stableId}` : null;
 }

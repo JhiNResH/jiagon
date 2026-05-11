@@ -1,10 +1,17 @@
 import {
+  moonPayDirectReceiptNumber,
+  moonPayPaymentAmountCents,
   moonPayReceiptMemo,
   moonPayWebhookSharedToken,
   parseMoonPayCommercePaymentProof,
   verifyMoonPayWebhookSignature,
 } from "@/server/moonpayCommerce";
 import { completeMerchantOrderWithReceipt, publicMerchantOrder } from "@/server/merchantOrderStore";
+import {
+  createMerchantIssuedReceipt,
+  getMerchantIssuedReceiptByMerchantReceiptNumber,
+  publicMerchantReceipt,
+} from "@/server/receiptStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +38,24 @@ function requestOrigin(request: Request) {
   if (vercelHost) return cleanConfiguredOrigin(`https://${vercelHost}`);
 
   return process.env.NODE_ENV !== "production" ? new URL(request.url).origin : "";
+}
+
+function moonPayDirectMerchantId(proof: { merchantId: string | null; merchantName: string | null }) {
+  return (
+    proof.merchantId ||
+    process.env.MOONPAY_COMMERCE_MERCHANT_ID ||
+    process.env.JIAGON_MOONPAY_MERCHANT_ID ||
+    "moonpay-commerce"
+  ).trim();
+}
+
+function moonPayDirectMerchantName(proof: { merchantName: string | null }) {
+  return (
+    proof.merchantName ||
+    process.env.MOONPAY_COMMERCE_MERCHANT_NAME ||
+    process.env.JIAGON_MOONPAY_MERCHANT_NAME ||
+    "MoonPay Commerce"
+  ).trim();
 }
 
 export async function POST(request: Request) {
@@ -70,7 +95,7 @@ export async function POST(request: Request) {
       {
         accepted: true,
         ignored: true,
-        reason: "Webhook is authenticated, but it is not a successful payment event with a Jiagon orderId.",
+        reason: "Webhook is authenticated, but it is not a successful MoonPay Commerce payment event.",
       },
       { status: 202 },
     );
@@ -84,38 +109,120 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await completeMerchantOrderWithReceipt({
-    id: proof.orderId,
-    origin,
-    issuedBy: "MoonPay Commerce webhook",
-    paymentProvider: "moonpay_commerce",
-    paymentStatus: "moonpay_verified_paid",
-    receiptPurpose: "moonpay_commerce_payment_receipt",
-    receiptMemo: moonPayReceiptMemo(proof),
-  });
+  if (proof.orderId) {
+    const result = await completeMerchantOrderWithReceipt({
+      id: proof.orderId,
+      origin,
+      issuedBy: "MoonPay Commerce webhook",
+      paymentProvider: "moonpay_commerce",
+      paymentStatus: "moonpay_verified_paid",
+      receiptPurpose: "moonpay_commerce_payment_receipt",
+      receiptMemo: moonPayReceiptMemo(proof),
+    });
 
-  if (!result.updated || !result.order) {
+    if (result.order && result.updated) {
+      return Response.json({
+        accepted: true,
+        product: "Jiagon MoonPay Commerce receipt adapter",
+        paymentProof: proof,
+        receiptPersistence: {
+          configured: result.receiptConfigured,
+          persisted: result.receiptPersisted,
+        },
+        claimToken: result.claimToken || null,
+        claimUrl: result.order.receiptClaimUrl,
+        receipt: result.receipt || null,
+        order: publicMerchantOrder(result.order),
+      });
+    }
+
+    if (result.order) {
+      return Response.json(
+        {
+          error: result.error || "MoonPay Commerce payment could not attach a Jiagon receipt.",
+          paymentProof: proof,
+          configured: result.configured,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  const merchantId = moonPayDirectMerchantId(proof);
+  const merchantName = moonPayDirectMerchantName(proof);
+  const receiptNumber = moonPayDirectReceiptNumber(proof);
+  if (!receiptNumber) {
     return Response.json(
       {
-        error: result.error || "MoonPay Commerce payment could not attach a Jiagon receipt.",
+        error: "MoonPay Commerce payment proof must include a stable transaction or idempotency identifier.",
         paymentProof: proof,
-        configured: result.configured,
       },
-      { status: result.order ? 409 : 404 },
+      { status: 422 },
+    );
+  }
+
+  const existing = await getMerchantIssuedReceiptByMerchantReceiptNumber({ merchantId, receiptNumber });
+  if (existing.error) {
+    return Response.json({ error: existing.error, configured: existing.configured }, { status: 503 });
+  }
+  if (existing.receipt) {
+    return Response.json({
+      accepted: true,
+      duplicate: true,
+      product: "Jiagon MoonPay Commerce direct receipt adapter",
+      paymentProof: proof,
+      claimToken: null,
+      claimUrl: existing.receipt.claimUrl,
+      receipt: publicMerchantReceipt(existing.receipt),
+    });
+  }
+
+  const amountCents = moonPayPaymentAmountCents(proof);
+  if (amountCents <= 0) {
+    return Response.json(
+      {
+        error: "MoonPay Commerce payment amount must be a parseable value greater than zero.",
+        paymentProof: proof,
+      },
+      { status: 422 },
+    );
+  }
+
+  const receiptResult = await createMerchantIssuedReceipt({
+    merchantId,
+    merchantName,
+    location: merchantName,
+    receiptNumber,
+    amountCents,
+    currency: proof.currency || "USD",
+    category: "MoonPay Commerce payment",
+    purpose: "moonpay_commerce_payment_receipt",
+    issuedBy: "MoonPay Commerce webhook",
+    memo: moonPayReceiptMemo(proof),
+    origin,
+  });
+
+  if (receiptResult.configured && !receiptResult.persisted) {
+    return Response.json(
+      {
+        error: receiptResult.error || "MoonPay Commerce direct receipt persistence failed.",
+        paymentProof: proof,
+        receipt: publicMerchantReceipt(receiptResult.receipt),
+      },
+      { status: 503 },
     );
   }
 
   return Response.json({
     accepted: true,
-    product: "Jiagon MoonPay Commerce receipt adapter",
+    product: "Jiagon MoonPay Commerce direct receipt adapter",
     paymentProof: proof,
     receiptPersistence: {
-      configured: result.receiptConfigured,
-      persisted: result.receiptPersisted,
+      configured: receiptResult.configured,
+      persisted: receiptResult.persisted,
     },
-    claimToken: result.claimToken || null,
-    claimUrl: result.order.receiptClaimUrl,
-    receipt: result.receipt || null,
-    order: publicMerchantOrder(result.order),
+    claimToken: receiptResult.claimToken,
+    claimUrl: receiptResult.receipt.claimUrl,
+    receipt: publicMerchantReceipt(receiptResult.receipt),
   });
 }
