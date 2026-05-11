@@ -208,6 +208,17 @@ GET /api/receipts/reviews?limit=20
 
 Private receipt passport data is not returned by public agent APIs.
 
+Payment-backed receipt adapter:
+
+```txt
+POST /api/webhooks/moonpay
+```
+
+MoonPay Commerce sends `Authorization: Bearer <sharedToken>` and an
+`X-Signature` HMAC over the raw request body. Jiagon accepts successful Pay Link
+or Deposit payment events that include a Jiagon `orderId` in custom JSON, then
+issues a claimable receipt with `paymentProvider: moonpay_commerce`.
+
 ## Demo Flow
 
 ```txt
@@ -264,6 +275,7 @@ TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 TELEGRAM_MERCHANT_GROUP_CHAT_ID=your-staff-group-chat-id
 HELIO_PAYLINK_ID=your-dev-helio-paylink-id
 HELIO_NETWORK=test
+MOONPAY_COMMERCE_WEBHOOK_SHARED_TOKEN=use-a-random-shared-webhook-token
 SOLANA_BUBBLEGUM_TREE=your-devnet-tree
 SOLANA_BUBBLEGUM_MINTER_SECRET_KEY=never-commit-real-private-keys
 ```
@@ -307,6 +319,9 @@ pnpm build
   issues a claimable verified receipt.
 - `GET /api/merchant/orders/claim`: resolves a pickup code to a claim URL.
 - `POST /api/telegram/webhook`: Telegram order and merchant action webhook.
+- `POST /api/webhooks/moonpay`: MoonPay Commerce webhook adapter. It verifies
+  `Authorization: Bearer <sharedToken>` and `X-Signature`, then turns successful
+  payment events containing a Jiagon `orderId` into payment-backed receipts.
 - `GET /api/merchant/receipts/{token}`: reads a public claimable receipt.
 - `POST /api/merchant/receipts/{token}/claim`: Privy-authenticated receipt
   claim.
