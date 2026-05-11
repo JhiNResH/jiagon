@@ -9,10 +9,10 @@ curl https://jiagon.vercel.app/api/agent/proofs/{receiptHash}
 curl "https://jiagon.vercel.app/api/agent/credit-eligibility?owner={validSolanaOwner}"`;
 
 const pillars = [
-  ["01", "Receipt passport", "Users claim merchant-verified receipts into a portable Jiagon Passport."],
-  ["02", "Agent Trust API", "Agents read proof, trust, rerank, and credit eligibility signals without seeing a private inbox."],
-  ["03", "Purpose-bound credit", "Minted receipt credentials can unlock bounded dining deposit eligibility, not open cash."],
-  ["04", "Proof-source adapters", "Merchant dashboard, NFC/QR, Shopify, MoonPay, Telegram, and agent order flows feed receipts into the same layer."],
+  ["01", "Passport first", "Users claim merchant-verified receipts into a portable Jiagon Passport."],
+  ["02", "Receipt sources", "Merchant tools, NFC/QR, Telegram, Shopify, MoonPay, and Solana Pay can feed the same Passport."],
+  ["03", "Agent Trust API", "Agents read proof, trust, rerank, and credit eligibility signals without seeing a private inbox."],
+  ["04", "Purpose-bound credit", "Minted receipt credentials can unlock bounded dining deposit eligibility, not open cash."],
 ];
 
 function JiagonMark() {
@@ -259,24 +259,22 @@ export default function Home() {
             <Link href="/passport">Passport</Link>
             <Link href="/trust-api">Trust API</Link>
             <Link href="/credit">Credit</Link>
-            <Link href="/merchant">Claim</Link>
-            <Link href="/merchant">Merchant Demo</Link>
-            <Link href="/agent-order">Adapters</Link>
+            <Link href="/passport#receipt-sources">Receipt Sources</Link>
+            <Link href="/merchant">Merchant Tools</Link>
           </nav>
         </header>
 
         <section className="home-hero">
           <div>
-            <div className="home-kicker">Verified commerce receipts &rarr; agent-readable trust &rarr; bounded credit eligibility</div>
-            <h1 className="home-title">Verified receipts for AI agents.</h1>
+            <div className="home-kicker">Receipt sources &rarr; Passport &rarr; agent-readable trust &rarr; bounded credit eligibility</div>
+            <h1 className="home-title">The receipt passport for AI agents.</h1>
             <p className="home-copy">
-              Jiagon is a user-owned receipt passport and API layer. It turns paid or merchant-verified commerce
-              events into claimable receipts, optional Bubblegum credentials, trust signals, and purpose-bound dining
-              credit eligibility.
+              Jiagon turns paid or merchant-verified commerce events into a user-owned Passport: claimable receipts,
+              optional Bubblegum credentials, trust signals, and purpose-bound dining credit eligibility.
             </p>
             <div className="home-actions">
               <Link className="home-button" href="/passport">Open Receipt Passport</Link>
-              <Link className="home-button" href="/trust-api">Inspect Trust API</Link>
+              <Link className="home-button secondary" href="/passport#receipt-sources">View Receipt Sources</Link>
               <Link className="home-button secondary" href="/credit">View Credit Policy</Link>
             </div>
           </div>
@@ -306,20 +304,19 @@ export default function Home() {
             <div className="home-label">Adapter boundary</div>
             <h2 className="home-panel-title">Receipts are the product. Ordering is only one receipt source.</h2>
             <p className="home-copy">
-              Merchant dashboards, claim links, NFC/QR stations, Shopify and MoonPay webhooks, Telegram, and agent
-              order demos can all feed the same passport. Jiagon does not replace a POS, shopping graph, or production
-              lending stack.
+              Merchant tools, claim links, NFC/QR stations, Telegram orders, merchant-configured Shopify and MoonPay
+              webhooks, and SPL-verified Solana Pay flows can all feed Passport. Jiagon does not replace a POS, shopping
+              graph, or production lending stack.
             </p>
             <div className="home-pill-row">
               <StatusPill>Receipt Passport</StatusPill>
+              <StatusPill>Receipt Sources</StatusPill>
               <StatusPill>Trust API</StatusPill>
-              <StatusPill>Proof Rerank</StatusPill>
-              <StatusPill>Bubblegum cNFT</StatusPill>
               <StatusPill>Dining Deposit</StatusPill>
             </div>
             <div className="home-note">
-              Optional adapter: <Link href="/agent-order">agent order demo</Link>. It can create receipt memory, but it
-              is not the primary Jiagon product surface.
+              Optional adapter: <Link href="/agent-order">agent order source</Link>. It can create receipt memory after
+              merchant fulfillment, but Passport remains the primary Jiagon product surface.
             </div>
           </section>
         </section>

@@ -66,10 +66,11 @@ export default function TrustApiPage() {
       `}</style>
       <div className="trust-api-shell">
         <nav className="trust-api-nav" aria-label="Trust API">
-          <Link href="/">Home</Link>
           <Link href="/passport">Passport</Link>
+          <Link href="/trust-api">Trust API</Link>
           <Link href="/credit">Credit</Link>
-          <Link href="/merchant">Merchant Demo</Link>
+          <Link href="/passport#receipt-sources">Receipt Sources</Link>
+          <Link href="/merchant">Merchant Tools</Link>
         </nav>
         <section className="trust-api-grid">
           <div className="trust-api-card dark">

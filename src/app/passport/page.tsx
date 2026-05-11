@@ -56,6 +56,45 @@ const proofLabels: Record<string, string> = {
   issued: "L2 merchant issued",
 };
 
+const receiptSources = [
+  {
+    title: "Merchant dashboard + NFC/QR claim",
+    status: "Primary source",
+    body: "Merchant staff issue or complete an order, then the customer claims the receipt through a QR link or NFC station.",
+    caveat: "Merchant attestation creates the receipt memory that Passport can show.",
+  },
+  {
+    title: "Agentic POS / Telegram order source",
+    status: "Demo adapter",
+    body: "Agent and Telegram order flows can create a merchant queue item that becomes a receipt after fulfillment.",
+    caveat: "This is an ingestion path into Passport, not the standalone Jiagon product.",
+  },
+  {
+    title: "Shopify checkout adapter",
+    status: "Merchant config required",
+    body: "A configured Shopify cart and orders/paid webhook can turn a paid order into a claimable Jiagon receipt.",
+    caveat: "Requires merchant Shopify credentials and webhook setup before it is live.",
+  },
+  {
+    title: "MoonPay Commerce webhook",
+    status: "Merchant config required",
+    body: "MoonPay Commerce payment webhooks can attach payment proof to an order or issue a direct receipt.",
+    caveat: "Requires merchant MoonPay shared-token/webhook configuration.",
+  },
+  {
+    title: "Solana Pay verified payment",
+    status: "SPL verification required",
+    body: "External Solana payment requests can upgrade receipt confidence after transaction verification.",
+    caveat: "Receipt upgrade requires SPL-token verification, not just a payment URL.",
+  },
+  {
+    title: "Helio",
+    status: "Future webhook",
+    body: "The demo can surface a Helio checkout when configured, but Helio webhook-backed receipt issuance is not implemented.",
+    caveat: "Keep Helio framed as optional until webhook verification lands.",
+  },
+];
+
 function readCachedReceipts() {
   try {
     const stored = window.localStorage.getItem("jiagon:merchant-receipts");
@@ -233,8 +272,8 @@ function PassportContent({
       : "No claimed receipts are saved on this device yet.";
   const emptyBody =
     status.source === "account"
-      ? "Claim a merchant-issued receipt while logged in. After claim, this account dashboard will show the receipt hash, proof level, mint or prepared status, and any purpose-bound credit unlocked by a minted credential."
-      : "Claim a merchant-issued receipt first. After claim, this local device fallback will show the receipt hash, proof level, mint or prepared status, and any purpose-bound credit unlocked by a minted credential.";
+      ? "Claim a merchant-issued receipt while logged in. After claim, Passport will show the receipt hash, proof level, mint or prepared status, and any purpose-bound credit unlocked by a minted credential."
+      : "Claim a merchant-issued receipt first. After claim, this local Passport fallback will show the receipt hash, proof level, mint or prepared status, and any purpose-bound credit unlocked by a minted credential.";
 
   const metrics = useMemo(() => {
     const claimed = receipts.filter((receipt) => receipt.status === "claimed").length;
@@ -347,8 +386,34 @@ function PassportContent({
         }
         .passport-empty strong { color:var(--ink); }
         .passport-empty span { color:var(--ink-muted); font-size:14px; line-height:1.5; }
+        .passport-source-section {
+          margin-top:18px; border:.5px solid var(--rule); border-radius:8px; background:var(--receipt);
+          padding:18px; box-shadow:0 8px 24px rgba(24,24,24,.045);
+        }
+        .passport-section-head {
+          display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,.46fr); gap:16px; align-items:end;
+        }
+        .passport-section-head h2 {
+          margin:8px 0 0; font-family:var(--display); font-style:italic; font-weight:400;
+          font-size:clamp(34px,5vw,56px); line-height:.96; color:var(--ink);
+        }
+        .passport-section-head p { margin:0; color:var(--ink-muted); font-size:14px; line-height:1.5; }
+        .passport-source-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:16px; }
+        .passport-source-card {
+          min-width:0; display:grid; gap:10px; align-content:start; border:.5px solid var(--rule);
+          border-radius:8px; background:oklch(0.985 0.005 95 / .68); padding:13px;
+          color:inherit; text-decoration:none;
+        }
+        .passport-source-card strong { color:var(--ink); font-size:15px; line-height:1.25; }
+        .passport-source-card p { margin:0; color:var(--ink-muted); font-size:13px; line-height:1.45; }
+        .passport-source-card small { color:var(--ink-muted); font-family:var(--mono); font-size:10.5px; line-height:1.45; }
+        .passport-source-status {
+          width:max-content; max-width:100%; border:.5px solid color-mix(in oklch,var(--verified) 34%,var(--rule));
+          border-radius:6px; background:var(--verified-soft); color:var(--verified); padding:4px 7px;
+          font-family:var(--mono); font-size:9px; font-weight:900; letter-spacing:.35px; text-transform:uppercase;
+        }
         @media(max-width:860px){
-          .passport-hero,.passport-metrics{grid-template-columns:1fr}
+          .passport-hero,.passport-metrics,.passport-section-head,.passport-source-grid{grid-template-columns:1fr}
           .passport-fields{grid-template-columns:1fr}
           .passport-field,.passport-field:nth-child(3n),.passport-field:nth-last-child(-n+3){border-right:none;border-bottom:.5px solid var(--rule)}
           .passport-field:last-child{border-bottom:none}
@@ -356,25 +421,24 @@ function PassportContent({
       `}</style>
       <div className="passport-shell">
         <nav className="passport-nav" aria-label="Passport">
-          <Link href="/">Home</Link>
+          <Link href="/passport">Passport</Link>
           <Link href="/trust-api">Trust API</Link>
           <Link href="/credit">Credit</Link>
-          <Link href="/merchant">Claim</Link>
-          <Link href="/merchant">Merchant Demo</Link>
-          <Link href="/agent-order">Adapters</Link>
+          <Link href="#receipt-sources">Receipt Sources</Link>
+          <Link href="/merchant">Merchant Tools</Link>
         </nav>
         <section className="passport-hero">
           <div className="passport-card">
             <div className="passport-kicker">Receipt Passport</div>
-            <h1 className="passport-title">Your verified receipt memory.</h1>
+            <h1 className="passport-title">Jiagon starts with your receipt passport.</h1>
             <p className="passport-copy">
-              Passport shows authenticated merchant receipts from your Jiagon account when available, with this device's
-              local cache kept as the unauthenticated demo fallback.
+              Passport is the main Jiagon experience: a user-owned record of merchant-verified receipts that agents can
+              use for trust, reranking, review unlocks, and purpose-bound credit eligibility.
             </p>
             <div className="passport-cta">
-              <Link href="/merchant">Claim a receipt</Link>
+              <Link href="/merchant">Use Merchant Tools</Link>
+              <Link className="secondary" href="#receipt-sources">View Receipt Sources</Link>
               <Link className="secondary" href="/trust-api">Open Trust API</Link>
-              <Link className="secondary" href="/credit">Check Credit</Link>
               {authConfigured && !authenticated && login && (
                 <button type="button" onClick={() => void login()} disabled={!ready}>
                   Log in to sync
@@ -416,12 +480,35 @@ function PassportContent({
           </div>
         </section>
 
+        <section className="passport-source-section" id="receipt-sources" aria-labelledby="receipt-sources-title">
+          <div className="passport-section-head">
+            <div>
+              <div className="passport-kicker">Receipt Sources</div>
+              <h2 id="receipt-sources-title">Source adapters feed Passport.</h2>
+            </div>
+            <p>
+              Jiagon does not need every merchant to replace its POS. Each source below creates or upgrades receipt
+              memory that lands in Passport and powers the Trust API and credit checks.
+            </p>
+          </div>
+          <div className="passport-source-grid">
+            {receiptSources.map((source) => (
+              <article className="passport-source-card" key={source.title}>
+                <span className="passport-source-status">{source.status}</span>
+                <strong>{source.title}</strong>
+                <p>{source.body}</p>
+                <small>{source.caveat}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+
         {!loaded ? null : receipts.length === 0 ? (
           <section className="passport-empty">
             <strong>{emptyTitle}</strong>
             <span>{emptyBody}</span>
             <div className="passport-cta">
-              <Link href="/merchant">Open Merchant Demo</Link>
+              <Link href="/merchant">Open Merchant Tools</Link>
               <Link className="secondary" href="/trust-api">View Agent Trust API</Link>
             </div>
           </section>

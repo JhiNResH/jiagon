@@ -434,22 +434,22 @@ export default function AgentOrderDemoPage() {
             </div>
           </div>
           <nav className="agent-order-nav" aria-label="Agent order demo">
-            <Link href="/">Home</Link>
-            <Link href="/merchant">Merchant</Link>
-            <Link href="/tile/raposa-coffee">NFC Station</Link>
             <Link href="/passport">Passport</Link>
+            <Link href="/trust-api">Trust API</Link>
             <Link href="/credit">Credit</Link>
+            <Link href="/passport#receipt-sources">Receipt Sources</Link>
+            <Link href="/merchant">Merchant Tools</Link>
           </nav>
         </header>
 
         <section className="agent-order-hero">
           <div className="agent-order-card">
             <div className="agent-order-kicker">Adapter path &rarr; merchant fulfillment &rarr; receipt memory</div>
-            <h1 className="agent-order-title">Agent ordering can feed the receipt passport.</h1>
+            <h1 className="agent-order-title">Agent orders are a receipt source.</h1>
             <p className="agent-order-copy">
               This optional adapter lets an agent call Jiagon, create a Raposa order,
               prepare an external wallet payment request, and create receipt context after
-              merchant fulfillment. The core product remains the receipt passport and proof API.
+              merchant fulfillment. The core product remains Passport and the proof API.
             </p>
             <div className="agent-order-script" aria-label="Agent ordering adapter receipt flow">
               <div className="agent-order-bubble">Get me a coffee under $10.</div>
