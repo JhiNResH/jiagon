@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Pool } from "pg";
+import { DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE } from "@/lib/merchantOrderPurpose";
 import { createMerchantIssuedReceipt, publicMerchantReceipt } from "@/server/receiptStore";
 
 export type MerchantOrderItem = {
@@ -13,8 +14,6 @@ export type MerchantOrderStatus = "pending" | "accepted" | "preparing" | "comple
 export type MerchantOrderProofLevel = "order_intent_only" | "merchant_accepted" | "merchant_completed" | "customer_claimed" | "cancelled";
 export type MerchantOrderPaymentProvider = "external_pos" | "moonpay_commerce" | "shopify";
 export type MerchantOrderPaymentStatus = "waiting_counter_payment" | "merchant_attested_paid" | "moonpay_verified_paid" | "shopify_verified_paid" | "cancelled";
-
-export const DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE = "agentic_order_receipt";
 
 export type MerchantOrder = {
   id: string;

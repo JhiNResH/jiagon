@@ -3,6 +3,7 @@
 import QRCode from "qrcode";
 import { useEffect, useMemo, useState } from "react";
 import type { DemoReadinessResponse } from "@/lib/demoReadiness";
+import { DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE } from "@/lib/merchantOrderPurpose";
 
 type IssuedReceiptResponse = {
   mode: string;
@@ -379,7 +380,7 @@ export default function MerchantPage() {
         body: JSON.stringify({
           action: "paid_done",
           actor: form.issuedBy || "Jiagon take-order agent",
-          receiptPurpose: "agentic_order_receipt",
+          receiptPurpose: DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE,
         }),
       });
       const payload = await response.json() as MerchantOrdersResponse;

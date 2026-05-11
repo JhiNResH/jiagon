@@ -1,6 +1,6 @@
+import { DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE } from "@/lib/merchantOrderPurpose";
 import { authorizeMerchantDashboard } from "@/server/merchantAuth";
 import {
-  DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE,
   completeMerchantOrderWithReceipt,
   publicMerchantOrder,
   updateMerchantOrderStatus,
