@@ -1,63 +1,81 @@
 # Jiagon
 
-Personal agent commerce rail for real-world purchases.
+Jiagon is a Solana receipt passport and API layer for AI-agent commerce memory.
 
-Jiagon lets personal agents order from real-world merchants, prepare external
-wallet payment approval, track merchant fulfillment, and turn verified receipts
-into credit memory. The first MVP starts with Raposa Coffee and ends with future
-purpose-bound dining deposits.
+Jiagon turns AI-agent purchase activity into verified receipt memory: a merchant
+fulfills an order, the user claims the receipt into a passport, and the receipt
+can become a Solana Bubblegum credential for future agent reasoning and
+purpose-bound credit experiments.
 
 Live app: [jiagon.vercel.app](https://jiagon.vercel.app)
 
-## Why
+## Product Boundary
 
-Real-world purchases are still hard for AI agents to complete and remember.
-Jiagon adds a commerce and proof layer without asking a merchant to replace its
-POS:
+Jiagon is not a POS replacement, payment processor, or production lending
+platform. It sits beside merchant operations and records receipt proof that
+agents can read later.
 
-- the personal agent created an order intent;
-- the agent or user approved an external wallet payment request;
-- the merchant fulfilled the order;
-- Jiagon issued a verified receipt;
-- the receipt can become a Solana Bubblegum cNFT;
-- future agents can use the receipt as credit memory for purpose-bound deposits.
+In scope for the current product:
 
-The product is not trying to replace Square, Toast, or a full POS. Jiagon is the
-agent-callable commerce rail plus receipt-credit memory layer that sits beside
-normal merchant operations.
+- agent-readable receipt passport and proof APIs;
+- merchant-issued, claimable receipts;
+- NFC / pickup-code receipt claim flow;
+- optional Bubblegum receipt credential minting on Solana devnet;
+- optional adapters for ordering, checkout creation, payment-backed receipts,
+  and offchain proof uploads.
 
-## Product Flow
+Out of scope for the current product:
+
+- arbitrary Shopify, MoonPay, or merchant monitoring without merchant
+  integration;
+- production unrestricted lending or open-ended cash borrowing;
+- inventory, tax, tips, refunds, kitchen display, printers, tables, or a full
+  POS workflow;
+- mainnet receipt minting in the default demo.
+
+## Primary Product Flow
 
 ```txt
-Personal agent receives intent
--> Agent calls /api/agent/orders
--> Agent/user approves external wallet payment request
+AI agent or merchant creates purchase context
 -> Merchant queue receives order
--> Merchant fulfills
+-> Merchant fulfills the order or payment adapter confirms a paid order
 -> Jiagon issues verified receipt
 -> NFC / pickup-code claim binds receipt to passport identity
--> Bubblegum receipt cNFT is minted or prepared
--> Receipt becomes credit memory
--> Future agent can request purpose-bound dining deposit credit
+-> Bubblegum receipt credential is minted or prepared
+-> Receipt becomes Solana-readable commerce memory
+-> Future agent can check trust, proof, or purpose-bound credit eligibility
 ```
 
 Primary app surfaces:
 
-- **Agent API**: personal agent commerce intake at `/api/agent/orders`.
-- **Tile**: NFC pickup station and manual fallback, e.g. `/tile/raposa-coffee`.
-- **Merchant**: agent order queue, fulfillment, receipt issuing, demo readiness,
-  pilot metrics, and credit memo.
 - **Passport**: verified purchase memory for future agents.
+- **Trust API**: agent-readable merchant trust, receipt proof, review, and
+  credit-eligibility endpoints.
+- **Merchant**: order queue, fulfillment, receipt issuing, demo readiness, pilot
+  metrics, and credit memo.
+- **Tile**: NFC pickup station and manual fallback, e.g. `/tile/raposa-coffee`.
 - **Credit**: purpose-bound dining deposit policy and draw/repay demo surface.
 - **Mobile**: Android receipt passport with Privy Expo auth, Solana Mobile
   Wallet Adapter, and Bubblegum mint wiring.
+
+Optional adapter paths:
+
+- **Agent ordering**: `/api/agent/orders` can create a Raposa order pass and
+  prepare an external wallet approval request.
+- **Shopify checkout creation**: Shopify product search and cart creation can
+  attach `jiagon_order_id` so a paid-order webhook can issue a receipt.
+- **MoonPay Commerce webhook**: merchant-configured payment events can create
+  payment-backed claimable receipts.
+- **Solayer/offchain proof upload**: wallet-attested proof signals can be added
+  for future underwriting experiments.
 
 ## Current MVP
 
 - Web app: Next.js App Router.
 - Mobile app: Expo Android under `apps/mobile`.
 - Auth: Privy on web and Privy Expo on mobile.
-- Order entry: personal agent API first, with Telegram bot and `/tile/{merchant}` as pilot terminals.
+- Order entry: optional agent-ordering adapter, with Telegram bot and
+  `/tile/{merchant}` as pilot terminals.
 - Pilot merchant: Raposa Coffee.
 - Receipt pickup: static NFC station plus pickup code.
 - Receipt credential: Solana Bubblegum cNFT when Bubblegum env is configured;
@@ -76,6 +94,17 @@ Status labels matter:
   transaction was confirmed.
 - `minted`: a real Solana Bubblegum receipt cNFT was minted.
 
+## Business Model
+
+Jiagon can charge for the API layer around receipt memory rather than trying to
+own the merchant POS:
+
+- merchant pilot setup and monthly receipt-passport tooling;
+- per-receipt API usage for agent-readable trust and proof checks;
+- adapter fees for merchant-approved payment, checkout, and proof integrations;
+- future underwriting or credit-decision tooling for purpose-bound commerce
+  partners, after stronger payment proof and repayment history exist.
+
 ## Proof Model
 
 Jiagon separates facts from claims so agents can reason safely.
@@ -87,7 +116,7 @@ Jiagon separates facts from claims so agents can reason safely.
 | Merchant completion | Staff marks fulfilled | Manual merchant attestation in the MVP |
 | Passport claim | Privy-authenticated claim | Identity binding is separate from payment |
 | Receipt credential | Solana Bubblegum cNFT or prepared payload | Live mint requires Bubblegum tree and minter env |
-| Credit memory | Receipt-indexed credit preview | Stronger payment proof can raise confidence later |
+| Credit memory | Receipt-indexed eligibility preview | Not production unrestricted lending |
 
 Jiagon preserves a proof ladder:
 
@@ -103,7 +132,15 @@ L5 payment_fulfillment_claim
 Early coffee pilots can use L2/L3. Credit scoring should weight L4/L5 higher
 when Stripe, card, USDC, or zkTLS-backed payment proof is added.
 
-## Agent API
+## Colosseum Frontier Positioning
+
+For Colosseum Frontier, Jiagon is best framed as receipt memory infrastructure
+for AI-agent commerce on Solana: agents can ask for trust, proof, and eligibility
+from a user's verified purchase history instead of relying on screenshots or
+unstructured chat memory. The Frontier wedge is the receipt passport and API
+layer; ordering and checkout adapters are demo paths that feed the passport.
+
+## Agent-Readable APIs
 
 Discovery:
 
@@ -114,7 +151,7 @@ GET /api/agent
 GET /openapi.json
 ```
 
-Personal agent setup:
+Optional agent ordering setup:
 
 ```txt
 1. Give the agent this OpenAPI URL: https://jiagon.vercel.app/openapi.json
@@ -145,18 +182,19 @@ The CLI calls the same agent order API and prints the fields needed for the live
 demo: `order.pickupCode`, `payment.url`, `urls.nfcStation`, and
 `urls.pairPhoneForNfcClaim`.
 
-Create a merchant order from a personal agent:
+Create a merchant order through the optional agent-ordering adapter:
 
 ```txt
 POST /api/agent/orders
 ```
 
 The request can be as loose as "I want a coffee" or structured with menu items.
-The response returns the agent's commerce handoff: pickup result, order pass,
-pickup code, pickup estimate, merchant dispatch status, receipt-memory path, and
-optional external Solana wallet payment request. Supported demo payment modes
-are `crypto_pay` and `pay_at_counter`. Legacy `helio_pay` and `solana_pay`
-aliases are accepted as `crypto_pay`.
+This is an adapter path that creates receipt context for the passport; it is not
+the core product boundary. The response returns the agent's commerce handoff:
+pickup result, order pass, pickup code, pickup estimate, merchant dispatch
+status, receipt-memory path, and optional external Solana wallet payment
+request. Supported demo payment modes are `crypto_pay` and `pay_at_counter`.
+Legacy `helio_pay` and `solana_pay` aliases are accepted as `crypto_pay`.
 
 Browser demo:
 
@@ -177,8 +215,22 @@ GET /api/agent/recommendations?query=coffee%20irvine&limit=3
 
 Rerank a candidate set from Google Places, Maps, or another place graph:
 
-```txt
-POST /api/agent/rerank
+```bash
+curl -X POST https://jiagon.vercel.app/api/agent/rerank \
+  -H "content-type: application/json" \
+  -d '{
+    "query": "coffee irvine",
+    "candidates": [
+      {
+        "provider": "google",
+        "name": "Raposa Coffee",
+        "branch": "Irvine",
+        "category": "Cafe",
+        "rating": 4.6,
+        "openNow": true
+      }
+    ]
+  }'
 ```
 
 Direct agent-readable trust and proof checks:
@@ -186,7 +238,7 @@ Direct agent-readable trust and proof checks:
 ```txt
 GET /api/agent/merchants/raposa-coffee/trust
 GET /api/agent/proofs/{receiptHash}
-GET /api/agent/credit-eligibility?owner={solanaOwner}
+GET /api/agent/credit-eligibility?owner={validSolanaOwner}
 ```
 
 The intended agent pattern:
@@ -208,7 +260,27 @@ GET /api/receipts/reviews?limit=20
 
 Private receipt passport data is not returned by public agent APIs.
 
-Payment-backed receipt adapter:
+## Adapter List
+
+Core receipt passport and proof APIs:
+
+- `GET /api/agent/merchants/{merchantId}/trust`
+- `GET /api/agent/proofs/{receiptHash}`
+- `GET /api/agent/credit-eligibility?owner={validSolanaOwner}`
+- `GET /api/receipts/reviews?limit=20`
+- `GET /api/account/state`
+- `POST /api/solana/merchant-receipts/mint`
+
+Optional order and checkout adapters:
+
+- `POST /api/agent/orders`
+- `GET /api/agent/shopify/products`
+- `POST /api/agent/shopify/orders`
+- `POST /api/webhooks/shopify/orders-paid`
+- `POST /api/webhooks/moonpay`
+- `POST /api/solayer/proofs`
+
+Payment-backed receipt adapters:
 
 ```txt
 POST /api/webhooks/moonpay
@@ -225,16 +297,17 @@ Shopify sends `X-Shopify-Hmac-Sha256` over the raw body. Jiagon accepts
 attaches the receipt to an existing Jiagon order when the cart includes
 `jiagon_order_id`.
 
-Shopify agent order tool:
+Shopify checkout adapter:
 
 ```txt
 GET /api/agent/shopify/products?query=beanie
 POST /api/agent/shopify/orders
 ```
 
-The order endpoint lets an agent search Shopify products, enforce a max-spend
-policy, create a Jiagon order pass, create a Shopify cart, and attach
-`jiagon_order_id` to the cart so the paid-order webhook can issue the receipt.
+The Shopify endpoints are optional merchant-integration paths. They let an agent
+search Shopify products, enforce a max-spend policy, create a Jiagon order pass,
+create a Shopify cart, and attach `jiagon_order_id` to the cart so the
+merchant-configured paid-order webhook can issue the receipt.
 
 ## Demo Flow
 
@@ -330,24 +403,27 @@ pnpm build
 
 ## API Surface
 
-- `POST /api/agent/orders`: lets a personal agent create a Raposa order pass,
-  enforce a max-spend policy, return pickup timing, and optionally prepare an
-  external Solana wallet payment request.
-- `POST /api/merchant/orders`: creates an agentic merchant order.
+- `POST /api/agent/orders`: optional adapter that lets an agent create a Raposa
+  order pass, enforce a max-spend policy, return pickup timing, and optionally
+  prepare an external Solana wallet payment request.
+- `POST /api/merchant/orders`: optional adapter that creates a merchant order
+  record for receipt issuance.
 - `GET /api/merchant/orders`: returns the merchant order queue.
 - `POST /api/merchant/orders/{id}/complete`: marks an order fulfilled and
   issues a claimable verified receipt.
 - `GET /api/merchant/orders/claim`: resolves a pickup code to a claim URL.
 - `POST /api/telegram/webhook`: Telegram order and merchant action webhook.
-- `POST /api/webhooks/moonpay`: MoonPay Commerce webhook adapter. It verifies
+- `POST /api/webhooks/moonpay`: optional MoonPay Commerce webhook adapter. It verifies
   `Authorization: Bearer <sharedToken>` and `X-Signature`, then turns successful
-  payment events containing a Jiagon `orderId` into payment-backed receipts.
-- `GET /api/agent/shopify/products`: lets an agent search Shopify Storefront
-  products and variants.
-- `POST /api/agent/shopify/orders`: lets an agent create a Jiagon order pass and
-  Shopify checkout cart with `jiagon_order_id` attributes.
-- `POST /api/webhooks/shopify/orders-paid`: verifies Shopify HMAC and turns
-  paid Shopify orders into claimable Jiagon receipts.
+  merchant-configured payment events containing a Jiagon `orderId` into
+  payment-backed receipts.
+- `GET /api/agent/shopify/products`: optional adapter that lets an agent search
+  merchant-configured Shopify Storefront products and variants.
+- `POST /api/agent/shopify/orders`: optional adapter that lets an agent create a
+  Jiagon order pass and Shopify checkout cart with `jiagon_order_id` attributes.
+- `POST /api/webhooks/shopify/orders-paid`: optional adapter that verifies
+  Shopify HMAC and turns merchant-configured paid Shopify orders into claimable
+  Jiagon receipts.
 - `GET /api/merchant/receipts/{token}`: reads a public claimable receipt.
 - `POST /api/merchant/receipts/{token}/claim`: Privy-authenticated receipt
   claim.
@@ -362,7 +438,7 @@ pnpm build
   receipt-backed merchant trust for agents.
 - `GET /api/agent/proofs/{receiptHash}`: returns a public receipt proof by
   receipt hash.
-- `GET /api/agent/credit-eligibility?owner={solanaOwner}`: returns
+- `GET /api/agent/credit-eligibility?owner={validSolanaOwner}`: returns
   purpose-bound dining credit eligibility from minted receipt credentials.
 - `GET /api/account/state`: private account state; requires a Privy bearer token.
 

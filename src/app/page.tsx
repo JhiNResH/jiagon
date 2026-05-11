@@ -1,20 +1,18 @@
 import Link from "next/link";
 
-const demoCurl = `curl -X POST https://jiagon.vercel.app/api/agent/orders \\
+const demoCurl = `curl https://jiagon.vercel.app/api/agent/merchants/raposa-coffee/trust
+curl "https://jiagon.vercel.app/api/agent/recommendations?query=coffee%20irvine&limit=3"
+curl -X POST https://jiagon.vercel.app/api/agent/rerank \\
   -H "content-type: application/json" \\
-  -d '{
-    "agentId": "seeker-demo-agent",
-    "userIntent": "I want a coffee. Keep it under $10 and use crypto pay if possible.",
-    "maxSpendUsd": "10.00",
-    "paymentMode": "crypto_pay"
-  }'`;
+  -d '{"query":"coffee irvine","candidates":[{"provider":"google","name":"Raposa Coffee","branch":"Irvine","category":"Cafe","rating":4.6,"openNow":true}]}'
+curl https://jiagon.vercel.app/api/agent/proofs/{receiptHash}
+curl "https://jiagon.vercel.app/api/agent/credit-eligibility?owner={validSolanaOwner}"`;
 
-const flow = [
-  ["01", "Agent orders", "A personal agent turns intent into a merchant order pass."],
-  ["02", "Payment approval", "Agent or user approves an external wallet payment request."],
-  ["03", "Merchant fulfills", "The merchant confirms the real-world order was completed."],
-  ["04", "Verified receipt", "Jiagon issues a claimable receipt and optional Solana credential."],
-  ["05", "Credit memory", "Receipt history becomes agent-readable underwriting memory."],
+const pillars = [
+  ["01", "Receipt passport", "Users claim merchant-verified receipts into a portable Jiagon Passport."],
+  ["02", "Agent Trust API", "Agents read proof, trust, rerank, and credit eligibility signals without seeing a private inbox."],
+  ["03", "Purpose-bound credit", "Minted receipt credentials can unlock bounded dining deposit eligibility, not open cash."],
+  ["04", "Proof-source adapters", "Merchant dashboard, NFC/QR, Shopify, MoonPay, Telegram, and agent order flows feed receipts into the same layer."],
 ];
 
 function JiagonMark() {
@@ -193,6 +191,17 @@ export default function Home() {
           letter-spacing: .3px;
           text-transform: uppercase;
         }
+        .home-note {
+          margin-top: 18px;
+          padding: 12px;
+          border-radius: 8px;
+          border: .5px solid var(--rule);
+          background: oklch(0.985 0.005 95 / .64);
+          color: var(--ink-muted);
+          font-size: 13px;
+          line-height: 1.45;
+        }
+        .home-note a { color: var(--verified); font-weight: 900; text-decoration: none; }
         .home-mark {
           width: 56px;
           height: 56px;
@@ -243,38 +252,38 @@ export default function Home() {
             <JiagonMark />
             <div>
               <div className="home-wordmark">Jiagon</div>
-              <div className="home-sub">Personal agent commerce rail</div>
+              <div className="home-sub">Receipt Passport + Agent Trust API + Purpose-bound Credit.</div>
             </div>
           </div>
           <nav className="home-nav" aria-label="Primary">
-            <Link href="/agent-order">Agent Order</Link>
-            <Link href="/merchant">Merchant</Link>
-            <Link href="/tile/raposa-coffee">NFC Station</Link>
             <Link href="/passport">Passport</Link>
+            <Link href="/trust-api">Trust API</Link>
             <Link href="/credit">Credit</Link>
-            <Link href="/api/agent">Agent API</Link>
+            <Link href="/merchant">Claim</Link>
+            <Link href="/merchant">Merchant Demo</Link>
+            <Link href="/agent-order">Adapters</Link>
           </nav>
         </header>
 
         <section className="home-hero">
           <div>
-            <div className="home-kicker">Agent order &rarr; payment approval &rarr; fulfillment &rarr; receipt memory &rarr; credit</div>
-            <h1 className="home-title">Your agent can buy from real merchants.</h1>
+            <div className="home-kicker">Verified commerce receipts &rarr; agent-readable trust &rarr; bounded credit eligibility</div>
+            <h1 className="home-title">Verified receipts for AI agents.</h1>
             <p className="home-copy">
-              Jiagon is a personal agent commerce rail: agents create merchant orders,
-              prepare external wallet payment approval, track fulfillment, and turn verified
-              receipts into credit memory for future purpose-bound dining deposits.
+              Jiagon is a user-owned receipt passport and API layer. It turns paid or merchant-verified commerce
+              events into claimable receipts, optional Bubblegum credentials, trust signals, and purpose-bound dining
+              credit eligibility.
             </p>
             <div className="home-actions">
-              <Link className="home-button" href="/agent-order">Try agent order demo</Link>
-              <Link className="home-button" href="/merchant">Open staff queue</Link>
-              <Link className="home-button secondary" href="/tile/raposa-coffee">Open Raposa NFC station</Link>
+              <Link className="home-button" href="/passport">Open Receipt Passport</Link>
+              <Link className="home-button" href="/trust-api">Inspect Trust API</Link>
+              <Link className="home-button secondary" href="/credit">View Credit Policy</Link>
             </div>
           </div>
           <section className="home-card">
-            <div className="home-label">Live demo spine</div>
+            <div className="home-label">Product pillars</div>
             <div className="home-flow">
-              {flow.map(([id, title, body]) => (
+              {pillars.map(([id, title, body]) => (
                 <div className="home-step" key={id}>
                   <code>{id}</code>
                   <div>
@@ -289,23 +298,28 @@ export default function Home() {
 
         <section className="home-grid">
           <section className="home-card dark">
-            <div className="home-label">Agent-callable order API</div>
-            <h2 className="home-panel-title">The agent calls commerce infrastructure. Payment stays approval-bound.</h2>
+            <div className="home-label">Core agent API</div>
+            <h2 className="home-panel-title">Agents consume proof and policy signals before they act.</h2>
             <pre className="home-code">{demoCurl}</pre>
           </section>
           <section className="home-card">
-            <div className="home-label">Credit memory boundary</div>
-            <h2 className="home-panel-title">Receipts become memory. Credit stays purpose-bound.</h2>
+            <div className="home-label">Adapter boundary</div>
+            <h2 className="home-panel-title">Receipts are the product. Ordering is only one receipt source.</h2>
             <p className="home-copy">
-              Future agents can use verified purchase memory to request dining deposits that
-              are amount-capped, recipient-bound, category-bound, expiring, and never open cash.
+              Merchant dashboards, claim links, NFC/QR stations, Shopify and MoonPay webhooks, Telegram, and agent
+              order demos can all feed the same passport. Jiagon does not replace a POS, shopping graph, or production
+              lending stack.
             </p>
             <div className="home-pill-row">
-              <StatusPill>Solana-first</StatusPill>
-              <StatusPill>Bubblegum cNFT</StatusPill>
               <StatusPill>Receipt Passport</StatusPill>
-              <StatusPill>Credit PDA</StatusPill>
-              <StatusPill>Devnet USDC</StatusPill>
+              <StatusPill>Trust API</StatusPill>
+              <StatusPill>Proof Rerank</StatusPill>
+              <StatusPill>Bubblegum cNFT</StatusPill>
+              <StatusPill>Dining Deposit</StatusPill>
+            </div>
+            <div className="home-note">
+              Optional adapter: <Link href="/agent-order">agent order demo</Link>. It can create receipt memory, but it
+              is not the primary Jiagon product surface.
             </div>
           </section>
         </section>

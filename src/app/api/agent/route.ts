@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       "Call /api/agent/recommendations directly when you only want places already present in Jiagon taste signals.",
       "Call /api/agent/merchants/{merchantId}/trust when you need a direct merchant trust profile.",
       "Call /api/agent/proofs/{receiptHash} to inspect a public receipt proof without reading a private passport inbox.",
-      "Call /api/agent/credit-eligibility?owner={solanaOwner} to check purpose-bound credit eligibility from minted receipt credentials.",
+      "Call /api/agent/credit-eligibility?owner={validSolanaOwner} to check purpose-bound credit eligibility from minted receipt credentials.",
       "Use proofLevel, proofBoundary, reasons, freshness, verifiedVisits, and verifiedWallets to decide whether to recommend a merchant.",
       "Do not treat user-claimed merchant identity as an official merchant fact unless a stronger proof level is present.",
     ],
