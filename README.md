@@ -243,8 +243,9 @@ devnet `SOLANA_RPC_URL` are configured, order creation returns a private
 checks the deterministic Solana Pay reference, recipient, SPL token, memo, and
 exact order subtotal before issuing the claimable receipt. SOL-only intents
 remain nominal demo payments and return a setup response instead of a USD
-receipt. Custom non-mainnet test RPCs require
-`JIAGON_ALLOW_CUSTOM_TESTNET_RPC=true`; mainnet cluster/RPC remains blocked.
+receipt. Custom testnet RPCs require
+`JIAGON_ALLOWED_TESTNET_RPC_ORIGINS` with a comma-separated origin or full URL
+match for this deployment; mainnet cluster/RPC remains blocked.
 
 Recommendation from Jiagon's proof graph:
 
@@ -419,7 +420,9 @@ SOLANA_BUBBLEGUM_MINTER_SECRET_KEY=never-commit-real-private-keys
 ```
 
 Jiagon is testnet-only for the current demo. Server routes reject mainnet
-cluster values and obvious mainnet RPC URLs.
+cluster values and mainnet RPC URLs. Custom testnet RPCs must match a
+comma-separated origin or full URL in `JIAGON_ALLOWED_TESTNET_RPC_ORIGINS`;
+the default devnet/testnet/localnet RPC URLs are allowed without extra config.
 
 Run the dev server:
 
