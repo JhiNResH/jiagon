@@ -895,6 +895,85 @@ export async function getMerchantIssuedReceiptByHash(receiptHash: string): Promi
   }
 }
 
+export async function getMerchantIssuedReceiptByMerchantReceiptNumber(input: {
+  merchantId: string;
+  receiptNumber: string;
+}): Promise<{
+  configured: boolean;
+  receipt: MerchantIssuedReceipt | null;
+  error?: string;
+}> {
+  const merchantId = slugify(input.merchantId);
+  const receiptNumber = input.receiptNumber.trim();
+  if (!merchantId || !receiptNumber) {
+    return { configured: Boolean(getPool()), receipt: null, error: "Merchant id and receipt number are required." };
+  }
+
+  const pool = getPool();
+  if (!pool) {
+    const receipt = Array.from(merchantReceiptMemory().values())
+      .find((item) => item.merchantId === merchantId && item.receiptNumber === receiptNumber) || null;
+    return { configured: false, receipt };
+  }
+
+  try {
+    await ensureMerchantReceiptSchema(pool);
+    const result = await pool.query(
+      `
+        select
+          id,
+          merchant_id,
+          merchant_name,
+          location,
+          receipt_number,
+          amount_cents,
+          amount_usd,
+          currency,
+          category,
+          purpose,
+          issued_by,
+          memo,
+          status,
+          receipt_hash,
+          signature,
+          signature_algorithm,
+          claim_token_hash,
+          claim_url,
+          issued_at,
+          claimed_at,
+          claimed_by,
+          mint_status,
+          credential_id,
+          credential_chain,
+          credential_standard,
+          credential_tx,
+          solana_owner,
+          data_hash,
+          storage_uri,
+          explorer_url,
+          asset_explorer_url,
+          credit_unlocked_cents
+        from jiagon_merchant_receipts
+        where merchant_id = $1
+          and receipt_number = $2
+        order by issued_at desc
+        limit 1
+      `,
+      [merchantId, receiptNumber],
+    );
+    return {
+      configured: true,
+      receipt: result.rows[0] ? mapMerchantReceiptRow(result.rows[0]) : null,
+    };
+  } catch {
+    return {
+      configured: true,
+      receipt: null,
+      error: "Merchant receipt number query failed.",
+    };
+  }
+}
+
 export async function getMerchantIssuedReceiptByToken(claimToken: string): Promise<{
   configured: boolean;
   receipt: MerchantIssuedReceipt | null;
