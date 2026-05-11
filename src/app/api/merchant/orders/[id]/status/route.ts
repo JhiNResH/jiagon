@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function orderStatus(value: unknown): MerchantOrderStatus | null {
-  return value === "accepted" || value === "completed" || value === "cancelled" ? value : null;
+  return value === "accepted" || value === "preparing" || value === "completed" || value === "cancelled" ? value : null;
 }
 
 async function updateStatus(request: Request, context: { params: Promise<{ id?: string }> }) {
@@ -41,7 +41,7 @@ async function updateStatus(request: Request, context: { params: Promise<{ id?: 
 
   const nextStatus = orderStatus(body.status);
   if (!nextStatus) {
-    return Response.json({ error: "Status must be accepted, completed, or cancelled." }, { status: 400 });
+    return Response.json({ error: "Status must be accepted, preparing, completed, or cancelled." }, { status: 400 });
   }
   if (nextStatus === "completed") {
     return Response.json(

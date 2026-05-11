@@ -54,7 +54,8 @@ Primary app surfaces:
 - **Merchant**: order queue, fulfillment, receipt issuing, demo readiness, pilot
   metrics, and credit memo.
 - **Tile**: NFC pickup station and manual fallback, e.g. `/tile/raposa-coffee`.
-- **Credit**: purpose-bound dining deposit policy and draw/repay demo surface.
+- **Credit**: purpose-bound dining deposit eligibility and devnet route
+  readiness, with current product caveats.
 - **Mobile**: Android receipt passport with Privy Expo auth, Solana Mobile
   Wallet Adapter, and Bubblegum mint wiring.
 
@@ -100,8 +101,8 @@ operations.
 - Receipt pickup: static NFC station plus pickup code.
 - Receipt credential: Solana Bubblegum cNFT when Bubblegum env is configured;
   otherwise the API returns `prepared`.
-- Credit state: receipt-memory-backed, purpose-bound credit preview and devnet draw
-  surfaces.
+- Credit state: receipt-memory-backed, purpose-bound credit eligibility and
+  devnet draw-route readiness preview.
 - Persistence: Postgres when `DATABASE_URL` is configured; local demo memory
   fallback for development.
 - Private receipt state: `/api/account/state` behind Privy token verification.

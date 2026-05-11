@@ -98,7 +98,7 @@ export async function GET(request: Request) {
       enabled: credit.enabled,
       mode: credit.configured && credit.enabled ? "draw-repay ready" : credit.enabled ? "setup required" : "disabled",
       missingCount: creditMissing.length,
-      detail: "Credit page can send real devnet draw and repay transactions.",
+      detail: "Devnet credit route can send draw and repay transactions when configured; the Credit page reports readiness.",
     },
     {
       id: "helio-pay",

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Pool } from "pg";
+import { DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE } from "@/lib/merchantOrderPurpose";
 import { createMerchantIssuedReceipt, publicMerchantReceipt } from "@/server/receiptStore";
 
 export type MerchantOrderItem = {
@@ -9,7 +10,7 @@ export type MerchantOrderItem = {
   unitAmountCents: number;
 };
 
-export type MerchantOrderStatus = "pending" | "accepted" | "completed" | "cancelled";
+export type MerchantOrderStatus = "pending" | "accepted" | "preparing" | "completed" | "cancelled";
 export type MerchantOrderProofLevel = "order_intent_only" | "merchant_accepted" | "merchant_completed" | "customer_claimed" | "cancelled";
 export type MerchantOrderPaymentProvider = "external_pos" | "moonpay_commerce" | "shopify";
 export type MerchantOrderPaymentStatus = "waiting_counter_payment" | "merchant_attested_paid" | "moonpay_verified_paid" | "shopify_verified_paid" | "cancelled";
@@ -257,14 +258,14 @@ function orderMemo(order: MerchantOrder) {
 }
 
 function proofLevelForStatus(status: MerchantOrderStatus): MerchantOrderProofLevel {
-  if (status === "accepted") return "merchant_accepted";
+  if (status === "accepted" || status === "preparing") return "merchant_accepted";
   if (status === "completed") return "merchant_completed";
   if (status === "cancelled") return "cancelled";
   return "order_intent_only";
 }
 
 function isMerchantOrderStatus(value: unknown): value is MerchantOrderStatus {
-  return value === "pending" || value === "accepted" || value === "completed" || value === "cancelled";
+  return value === "pending" || value === "accepted" || value === "preparing" || value === "completed" || value === "cancelled";
 }
 
 function isMerchantOrderProofLevel(value: unknown): value is MerchantOrderProofLevel {
@@ -285,8 +286,9 @@ function isMerchantOrderPaymentStatus(value: unknown): value is MerchantOrderPay
 
 function canTransitionOrderStatus(current: MerchantOrderStatus, next: MerchantOrderStatus) {
   if (current === next) return true;
-  if (current === "pending") return next === "accepted" || next === "completed" || next === "cancelled";
-  if (current === "accepted") return next === "completed" || next === "cancelled";
+  if (current === "pending") return next === "accepted" || next === "preparing" || next === "completed" || next === "cancelled";
+  if (current === "accepted") return next === "preparing" || next === "completed" || next === "cancelled";
+  if (current === "preparing") return next === "completed" || next === "cancelled";
   return false;
 }
 
@@ -875,7 +877,7 @@ export async function completeMerchantOrderWithReceipt(input: {
   const pool = getPool();
   const completedPaymentProvider = input.paymentProvider || "external_pos";
   const completedPaymentStatus = input.paymentStatus || "merchant_attested_paid";
-  const receiptPurpose = input.receiptPurpose?.trim() || "agentic_pos_order_receipt";
+  const receiptPurpose = input.receiptPurpose?.trim() || DEFAULT_AGENTIC_ORDER_RECEIPT_PURPOSE;
   const receiptMemo = input.receiptMemo?.trim() || null;
   if (!pool) {
     const current = merchantOrderMemory().get(input.id) || null;
