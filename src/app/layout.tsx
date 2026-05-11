@@ -22,8 +22,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Jiagon — Solana credit passport",
-  description: "Solana-first credit reputation for purpose-bound undercollateralized lending.",
+  title: "Jiagon — Receipt Passport for AI Agents",
+  description: "Solana receipt passport and agent trust API for verified commerce memory and purpose-bound credit eligibility.",
 };
 
 export default function RootLayout({

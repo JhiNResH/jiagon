@@ -15,6 +15,27 @@ const proofLevels = {
 const privacy =
   "Recommendations use published or aggregate receipt-backed review signals. Private receipt inbox data stays user-scoped.";
 
+const sampleSolanaOwner = "11111111111111111111111111111111";
+
+const adapterHandoff = {
+  boundary: "Order execution is an adapter path that feeds Jiagon's receipt passport; the core product is verified receipt memory and agent-readable proof.",
+  orderAgent: {
+    role: "Personal Order Agent",
+    responsibility: "Captures user intent, applies spend and merchant policy, and asks Jiagon to create an order or checkout pass.",
+    entrypoints: ["/api/agent/orders", "/api/agent/shopify/orders"],
+  },
+  takeOrderAgent: {
+    role: "Merchant Take-Order Agent",
+    responsibility: "Receives the pass in the merchant queue, Telegram terminal, Shopify checkout, or MoonPay Commerce payment flow, then confirms the paid or fulfilled event.",
+    entrypoints: ["/merchant", "/api/merchant/orders/{id}/action", "/api/merchant/orders/{id}/complete", "/api/webhooks/shopify/orders-paid", "/api/webhooks/moonpay"],
+  },
+  receiptPassport: {
+    role: "Receipt Passport",
+    responsibility: "Turns paid or merchant-fulfilled events into claimable receipt memory that proof, trust, rerank, and credit APIs can read.",
+    entrypoints: ["/claim/{token}", "/passport", "/api/agent/proofs/{receiptHash}", "/api/agent/credit-eligibility"],
+  },
+};
+
 export function originFromRequest(request: Request) {
   const url = new URL(request.url);
   return `${url.protocol}//${url.host}`;
@@ -28,17 +49,34 @@ export function agentDiscovery(origin: string) {
     humanDocs: `${origin}/api/agent`,
     openapi: `${origin}/openapi.json`,
     wellKnown: `${origin}/.well-known/jiagon-agent.json`,
-    primaryUseCase: "Let a personal agent use verified receipts as portable commerce memory for recommendations, review unlocks, and future purpose-bound dining deposits.",
-    exampleUserIntent: "Get me a coffee under $10 and use an external wallet approval if possible.",
-    exampleAgentCall: {
-      method: "POST",
-      url: `${origin}/api/agent/orders`,
-      body: {
-        agentId: "seeker-demo-agent",
-        userIntent: "Get me a coffee under $10 and use an external wallet approval if possible.",
-        maxSpendUsd: "10.00",
-        paymentMode: "crypto_pay",
-      },
+    primaryUseCase:
+      "Let a personal agent use verified receipts as portable commerce memory for proof checks, merchant trust, recommendations, review unlocks, and future purpose-bound dining deposits.",
+    capabilityOrder: [
+      "/api/agent/proofs/{receiptHash}",
+      "/api/agent/merchants/{merchantId}/trust",
+      "/api/agent/credit-eligibility",
+      "/api/agent/rerank",
+      "/api/agent/recommendations",
+      "/api/agent/orders",
+      "/api/merchant/orders/{id}/action",
+      "/api/agent/shopify/products",
+      "/api/agent/shopify/orders",
+      "/api/webhooks/shopify/orders-paid",
+      "/api/webhooks/moonpay",
+    ],
+    adapterHandoff,
+    exampleUserIntent: "I want coffee near Irvine. Recommend somewhere reliable and explain the proof.",
+    exampleProofCall: {
+      method: "GET",
+      url: `${origin}/api/agent/proofs/{receiptHash}`,
+    },
+    exampleTrustCall: {
+      method: "GET",
+      url: `${origin}/api/agent/merchants/raposa-coffee/trust`,
+    },
+    exampleCreditEligibilityCall: {
+      method: "GET",
+      url: `${origin}/api/agent/credit-eligibility?owner=${sampleSolanaOwner}`,
     },
     exampleRerankCall: {
       method: "POST",
@@ -58,66 +96,47 @@ export function agentDiscovery(origin: string) {
         ],
       },
     },
-    exampleTrustCall: {
-      method: "GET",
-      url: `${origin}/api/agent/merchants/raposa-coffee/trust`,
-    },
     endpoints: {
-      order: {
-        method: "POST",
-        url: `${origin}/api/agent/orders`,
-        body: {
-          agentId: "Stable id for the user's personal agent.",
-          userIntent: "Natural order request. Example: get me a coffee under $10.",
-          merchantId: "Optional known Jiagon merchant id. Defaults to raposa-coffee in the demo.",
-          items: "Optional structured menu items instead of natural language.",
-          maxSpendUsd: "Optional user spending policy enforced before the order pass is created.",
-          paymentMode: "Optional: crypto_pay for external wallet approval, or pay_at_counter for a pilot fallback.",
-        },
-        returns: [
-          "agent execution handoff: agent-returned result and agent-handled steps",
-          "order pass and pickup code",
-          "pickup estimate",
-          "optional external Solana wallet payment request",
-          "merchant staff dispatch status",
-          "NFC receipt station URL for claim after merchant fulfillment",
-        ],
-      },
-      shopifyAgentOrder: {
-        method: "POST",
-        url: `${origin}/api/agent/shopify/orders`,
-        body: {
-          agentId: "Stable id for the user's personal agent.",
-          userIntent: "Natural purchase request. Example: buy a beanie under $100.",
-          query: "Optional Shopify product search query.",
-          variantId: "Optional exact Shopify Storefront variant id.",
-          maxSpendUsd: "Optional user spending policy enforced before checkout creation.",
-        },
-        returns: [
-          "selected Shopify product variant",
-          "Jiagon order pass",
-          "Shopify checkout URL",
-          "cart attributes carrying jiagon_order_id for paid-order receipt issuance",
-        ],
-      },
-      recommendations: {
+      receiptProof: {
         method: "GET",
-        url: `${origin}/api/agent/recommendations`,
+        url: `${origin}/api/agent/proofs/{receiptHash}`,
+        capability: "core proof API",
+        returns: [
+          "public merchant receipt proof",
+          "claim and mint status",
+          "Solana credential metadata when available",
+          "proof boundary for agent decisions",
+        ],
+      },
+      merchantTrust: {
+        method: "GET",
+        url: `${origin}/api/agent/merchants/{merchantId}/trust`,
+        capability: "core merchant trust API",
+        returns: [
+          "agent-readable merchant trust score",
+          "aggregate verified receipt and review memory",
+          "whether the merchant should be boosted in an agent recommendation",
+          "purpose-bound credit eligibility caveats",
+        ],
+      },
+      creditEligibility: {
+        method: "GET",
+        url: `${origin}/api/agent/credit-eligibility`,
+        capability: "core purpose-bound credit eligibility API",
         query: {
-          query: "Free text need, category, merchant, or location. Example: coffee irvine.",
-          limit: "Optional integer from 1 to 5.",
+          owner: "Solana wallet public key.",
         },
         returns: [
-          "ranked merchant recommendations",
-          "proof level boundaries",
-          "agent-readable reasons",
-          "aggregate verified visits and wallets",
-          "credential and proof-level context",
+          "eligible or not eligible state",
+          "unlocked demo credit from minted receipt credentials",
+          "allowed purpose: dining deposit",
+          "bounded recipient and max demo cap",
         ],
       },
       rerank: {
         method: "POST",
         url: `${origin}/api/agent/rerank`,
+        capability: "core rerank and recommendation API",
         body: {
           query: "Free text user intent. Example: coffee irvine.",
           candidates: "Candidate places from Google Places or another place graph. Jiagon does not need to own the full place graph.",
@@ -128,36 +147,20 @@ export function agentDiscovery(origin: string) {
           "proof caveats for candidates without Jiagon data",
         ],
       },
-      merchantTrust: {
+      recommendations: {
         method: "GET",
-        url: `${origin}/api/agent/merchants/{merchantId}/trust`,
-        returns: [
-          "agent-readable merchant trust score",
-          "aggregate verified receipt and review memory",
-          "whether the merchant should be boosted in an agent recommendation",
-          "purpose-bound credit eligibility caveats",
-        ],
-      },
-      receiptProof: {
-        method: "GET",
-        url: `${origin}/api/agent/proofs/{receiptHash}`,
-        returns: [
-          "public merchant receipt proof",
-          "claim and mint status",
-          "Solana credential metadata when available",
-          "proof boundary for agent decisions",
-        ],
-      },
-      creditEligibility: {
-        method: "GET",
-        url: `${origin}/api/agent/credit-eligibility`,
+        url: `${origin}/api/agent/recommendations`,
+        capability: "core rerank and recommendation API",
         query: {
-          owner: "Solana wallet public key.",
+          query: "Free text need, category, merchant, or location. Example: coffee irvine.",
+          limit: "Optional integer from 1 to 5.",
         },
         returns: [
-          "purpose-bound credit eligibility",
-          "unlocked demo credit from minted receipt credentials",
-          "allowed purpose and max demo cap",
+          "ranked merchant recommendations",
+          "proof level boundaries",
+          "agent-readable reasons",
+          "aggregate verified visits and wallets",
+          "credential and proof-level context",
         ],
       },
       publishedReviews: {
@@ -173,13 +176,92 @@ export function agentDiscovery(origin: string) {
           "storage URI and data hash",
         ],
       },
+      orderAdapter: {
+        method: "POST",
+        url: `${origin}/api/agent/orders`,
+        capability: "optional Personal Order Agent adapter, not the core Jiagon capability",
+        body: {
+          agentId: "Stable id for the user's personal agent.",
+          userIntent: "Natural order request. Example: get me a coffee under $10.",
+          merchantId: "Optional known Jiagon merchant id. Defaults to raposa-coffee in the demo.",
+          items: "Optional structured menu items instead of natural language.",
+          maxSpendUsd: "Optional user spending policy enforced before the order pass is created.",
+          paymentMode: "Optional: crypto_pay for external wallet approval, or pay_at_counter for a pilot fallback.",
+        },
+        returns: [
+          "Personal Order Agent to Merchant Take-Order Agent handoff",
+          "adapter-created order pass and pickup code",
+          "pickup estimate",
+          "optional external Solana wallet payment request",
+          "merchant staff dispatch status",
+          "NFC receipt station URL for claim after merchant fulfillment",
+        ],
+      },
+      shopifyProducts: {
+        method: "GET",
+        url: `${origin}/api/agent/shopify/products`,
+        capability: "optional Shopify product search adapter for checkout creation, not the core Jiagon capability",
+        query: {
+          query: "Required Shopify product search query. Example: beanie.",
+          limit: "Optional integer from 1 to 10.",
+        },
+        returns: [
+          "Shopify product variants available for agent checkout",
+          "variant ids usable by the Shopify order adapter",
+          "price and availability metadata when Shopify is configured",
+        ],
+      },
+      shopifyOrderAdapter: {
+        method: "POST",
+        url: `${origin}/api/agent/shopify/orders`,
+        capability: "optional Shopify checkout adapter for the Personal Order Agent handoff, not the core Jiagon capability",
+        body: {
+          agentId: "Stable id for the user's personal agent.",
+          userIntent: "Natural purchase request. Example: buy a beanie under $100.",
+          query: "Optional Shopify product search query.",
+          variantId: "Optional exact Shopify Storefront variant id.",
+          maxSpendUsd: "Optional user spending policy enforced before checkout creation.",
+        },
+        returns: [
+          "selected Shopify product variant",
+          "Jiagon order pass",
+          "Shopify checkout URL",
+          "cart attributes carrying jiagon_order_id for paid-order receipt issuance after merchant integration",
+        ],
+      },
+      paymentReceiptAdapters: {
+        capability: "optional Merchant Take-Order Agent payment adapters, not the core Jiagon capability",
+        endpoints: [
+          {
+            method: "POST",
+            url: `${origin}/api/merchant/orders/{id}/action`,
+            requires: "Merchant dashboard key; action is accept, preparing, paid_done, reject, or cancel.",
+          },
+          {
+            method: "POST",
+            url: `${origin}/api/webhooks/shopify/orders-paid`,
+            requires: "Merchant-configured Shopify orders/paid webhook with valid HMAC.",
+          },
+          {
+            method: "POST",
+            url: `${origin}/api/webhooks/moonpay`,
+            requires: "Merchant-configured MoonPay Commerce webhook with bearer token and HMAC signature.",
+          },
+        ],
+        returns: [
+          "payment-backed receipt issuance for an existing Jiagon order pass when orderId is present",
+          "claimable receipt for a merchant-configured paid Shopify order when no Jiagon order pass is attached",
+          "receipt passport claim URL, proof hash, and payment provider/status metadata",
+        ],
+      },
     },
     proofLevels,
     architecture: {
-      source: "agentic-pos-order",
+      source: "receipt-passport-api",
       credentialChain: "solana-devnet",
       storageLayer: "receipt metadata URI",
-      flow: "Agent order -> payment approval -> merchant fulfillment -> passport claim -> Bubblegum receipt cNFT -> credit memory -> purpose-bound dining deposit",
+      flow: "Paid or merchant-verified commerce event -> claimable Jiagon receipt -> passport claim -> Bubblegum receipt cNFT -> agent proof/trust API -> purpose-bound dining deposit eligibility",
+      adapters: "Personal Order Agent, Merchant Take-Order Agent, merchant dashboard, NFC/QR, Telegram, Shopify checkout, and MoonPay Commerce can create receipt memory but are not the primary API surface.",
     },
   };
 }
@@ -198,6 +280,23 @@ export function openApiSpec(origin: string) {
         name: "Agent",
         description: "Agent-readable recommendation and receipt proof data.",
       },
+      {
+        name: "Adapters",
+        description: "Optional order, checkout, and payment-event adapters that feed the receipt passport.",
+      },
+    ],
+    "x-capability-order": [
+      "/api/agent/proofs/{receiptHash}",
+      "/api/agent/merchants/{merchantId}/trust",
+      "/api/agent/credit-eligibility",
+      "/api/agent/rerank",
+      "/api/agent/recommendations",
+      "/api/agent/orders",
+      "/api/merchant/orders/{id}/action",
+      "/api/agent/shopify/products",
+      "/api/agent/shopify/orders",
+      "/api/webhooks/shopify/orders-paid",
+      "/api/webhooks/moonpay",
     ],
     paths: {
       "/api/agent": {
@@ -254,8 +353,8 @@ export function openApiSpec(origin: string) {
       },
       "/api/agent/orders": {
         post: {
-          tags: ["Agent"],
-          summary: "Create an agent-mediated merchant order pass.",
+          tags: ["Adapters"],
+          summary: "Optional adapter: hand a Personal Order Agent request to a Merchant Take-Order Agent.",
           operationId: "createAgentMerchantOrder",
           requestBody: {
             required: true,
@@ -267,7 +366,7 @@ export function openApiSpec(origin: string) {
           },
           responses: {
             "201": {
-              description: "Order pass created for merchant fulfillment.",
+              description: "Adapter order pass created for merchant fulfillment.",
               content: {
                 "application/json": {
                   schema: { $ref: "#/components/schemas/AgentOrderResponse" },
@@ -285,8 +384,8 @@ export function openApiSpec(origin: string) {
       },
       "/api/agent/shopify/products": {
         get: {
-          tags: ["Agent"],
-          summary: "Search Shopify Storefront products for agent ordering.",
+          tags: ["Adapters"],
+          summary: "Optional adapter: search Shopify Storefront products for checkout creation.",
           operationId: "searchShopifyProductsForAgent",
           parameters: [
             {
@@ -314,8 +413,8 @@ export function openApiSpec(origin: string) {
       },
       "/api/agent/shopify/orders": {
         post: {
-          tags: ["Agent"],
-          summary: "Create a Shopify checkout from a natural-language agent request.",
+          tags: ["Adapters"],
+          summary: "Optional adapter: create a Shopify checkout from a Personal Order Agent request.",
           operationId: "createShopifyAgentCheckout",
           requestBody: {
             required: true,
@@ -327,7 +426,7 @@ export function openApiSpec(origin: string) {
           },
           responses: {
             "201": {
-              description: "Jiagon order pass and Shopify checkout created.",
+              description: "Adapter Jiagon order pass and Shopify checkout created.",
               content: {
                 "application/json": {
                   schema: { $ref: "#/components/schemas/ShopifyAgentOrderResponse" },
@@ -339,6 +438,95 @@ export function openApiSpec(origin: string) {
             },
             "503": {
               description: "Shopify Storefront API is not configured.",
+            },
+          },
+        },
+      },
+      "/api/merchant/orders/{id}/action": {
+        post: {
+          tags: ["Adapters"],
+          summary: "Optional adapter: let a Merchant Take-Order Agent accept, reject, or mark an order paid and done.",
+          operationId: "runMerchantTakeOrderAgentAction",
+          parameters: [
+            {
+              name: "id",
+              in: "path",
+              required: true,
+              schema: { type: "string", pattern: "^ord-[a-f0-9]{16}$" },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    action: {
+                      type: "string",
+                      enum: ["accept", "preparing", "paid_done", "reject", "cancel"],
+                    },
+                    actor: {
+                      type: "string",
+                      description: "Merchant staff or take-order agent identity.",
+                    },
+                  },
+                  required: ["action"],
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Merchant-side action recorded; paid_done returns a claimable Jiagon receipt.",
+            },
+            "401": {
+              description: "Invalid merchant dashboard key.",
+            },
+            "409": {
+              description: "Order state cannot transition through the requested action.",
+            },
+          },
+        },
+      },
+      "/api/webhooks/shopify/orders-paid": {
+        post: {
+          tags: ["Adapters"],
+          summary: "Optional adapter: attach merchant-configured Shopify paid orders to Jiagon receipt memory.",
+          operationId: "receiveShopifyPaidOrderReceiptAdapter",
+          responses: {
+            "200": {
+              description: "Authenticated paid order accepted and converted into a claimable Jiagon receipt.",
+            },
+            "202": {
+              description: "Authenticated webhook accepted but ignored because it is not a paid order Jiagon can parse.",
+            },
+            "401": {
+              description: "Invalid Shopify HMAC signature.",
+            },
+            "503": {
+              description: "Shopify webhook secret or receipt persistence is not configured.",
+            },
+          },
+        },
+      },
+      "/api/webhooks/moonpay": {
+        post: {
+          tags: ["Adapters"],
+          summary: "Optional adapter: attach merchant-configured MoonPay Commerce payments to Jiagon receipt memory.",
+          operationId: "receiveMoonPayCommerceReceiptAdapter",
+          responses: {
+            "200": {
+              description: "Authenticated successful payment accepted and attached to a Jiagon order receipt.",
+            },
+            "202": {
+              description: "Authenticated webhook accepted but ignored because it is not a successful payment with a Jiagon orderId.",
+            },
+            "401": {
+              description: "Invalid MoonPay bearer token or HMAC signature.",
+            },
+            "503": {
+              description: "MoonPay shared token or receipt persistence is not configured.",
             },
           },
         },
@@ -487,9 +675,37 @@ export function openApiSpec(origin: string) {
           type: "object",
           properties: {
             name: { type: "string" },
+            title: { type: "string" },
             description: { type: "string" },
+            version: { type: "string" },
+            homepage: { type: "string", format: "uri" },
+            privacy: { type: "string" },
+            humanDocs: { type: "string", format: "uri" },
+            openapi: { type: "string", format: "uri" },
+            wellKnown: { type: "string", format: "uri" },
+            primaryUseCase: { type: "string" },
+            capabilityOrder: { type: "array", items: { type: "string" } },
+            adapterHandoff: { type: "object" },
+            exampleUserIntent: { type: "string" },
+            exampleProofCall: { $ref: "#/components/schemas/AgentExampleCall" },
+            exampleTrustCall: { $ref: "#/components/schemas/AgentExampleCall" },
+            exampleCreditEligibilityCall: { $ref: "#/components/schemas/AgentExampleCall" },
+            exampleRerankCall: { $ref: "#/components/schemas/AgentExampleCall" },
             endpoints: { type: "object" },
             proofLevels: { type: "object" },
+            architecture: { type: "object" },
+            howAgentsUseThis: { type: "array", items: { type: "string" } },
+            coffeeExample: { type: "object" },
+            trustExample: { type: "object" },
+            orderingExample: { type: "object" },
+          },
+        },
+        AgentExampleCall: {
+          type: "object",
+          properties: {
+            method: { type: "string", enum: ["GET", "POST"] },
+            url: { type: "string" },
+            body: { type: "object" },
           },
         },
         RecommendationResponse: {
@@ -725,7 +941,7 @@ export function openApiSpec(origin: string) {
       rerankCall: `POST ${origin}/api/agent/rerank with Google Places candidates`,
       trustCall: `GET ${origin}/api/agent/merchants/raposa-coffee/trust`,
       receiptProofCall: `GET ${origin}/api/agent/proofs/{receiptHash}`,
-      creditEligibilityCall: `GET ${origin}/api/agent/credit-eligibility?owner={solanaOwner}`,
+      creditEligibilityCall: `GET ${origin}/api/agent/credit-eligibility?owner=${sampleSolanaOwner}`,
       decision: "Use Google or another place graph for candidates; use Jiagon agentScore, trust profile, receipt proof, and credit eligibility as verified commerce memory.",
     },
   };

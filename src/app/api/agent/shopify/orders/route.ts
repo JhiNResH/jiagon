@@ -168,7 +168,7 @@ export async function POST(request: Request) {
 
     return Response.json(
       {
-        product: "Jiagon Shopify agent order",
+        product: "Jiagon Shopify checkout adapter",
         status: "shopify_checkout_created",
         configured: true,
         agent: {
@@ -181,6 +181,20 @@ export async function POST(request: Request) {
             "created Shopify checkout cart",
             "attached jiagon_order_id for paid-order receipt webhook",
           ],
+        },
+        adapterHandoff: {
+          personalOrderAgent: {
+            status: "checkout_intent_captured",
+            handled: ["Shopify catalog search", "variant selection", "spend policy", "Jiagon order pass"],
+          },
+          merchantTakeOrderAgent: {
+            status: "awaiting_shopify_paid_order_webhook",
+            channel: "/api/webhooks/shopify/orders-paid",
+          },
+          receiptPassport: {
+            status: "awaiting_paid_order",
+            next: "A merchant-configured Shopify orders/paid webhook turns the checkout into a claimable receipt.",
+          },
         },
         shopify: {
           shopDomain: config.shopDomain,

@@ -99,7 +99,7 @@ export async function buildMerchantTrustProfile(merchantId: string) {
     nextAgentActions: [
       "Use /api/agent/rerank to apply this merchant trust signal to external place candidates.",
       "Use /api/agent/proofs/{receiptHash} to inspect a public receipt proof.",
-      "Use /api/agent/credit-eligibility?owner={solanaOwner} for purpose-bound credit eligibility from minted receipts.",
+      "Use /api/agent/credit-eligibility?owner={validSolanaOwner} for purpose-bound credit eligibility from minted receipts.",
     ],
   };
 }

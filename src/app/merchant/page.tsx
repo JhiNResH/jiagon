@@ -38,7 +38,12 @@ type MerchantOrderItem = {
 };
 
 type MerchantOrderStatus = "pending" | "accepted" | "completed" | "cancelled";
-type MerchantOrderPaymentStatus = "waiting_counter_payment" | "merchant_attested_paid" | "cancelled";
+type MerchantOrderPaymentStatus =
+  "waiting_counter_payment" |
+  "merchant_attested_paid" |
+  "moonpay_verified_paid" |
+  "shopify_verified_paid" |
+  "cancelled";
 
 type MerchantOrder = {
   id: string;
@@ -52,7 +57,7 @@ type MerchantOrder = {
   items: MerchantOrderItem[];
   subtotalCents: number;
   subtotalUsd: string;
-  paymentProvider: "external_pos";
+  paymentProvider: "external_pos" | "moonpay_commerce" | "shopify";
   paymentStatus: MerchantOrderPaymentStatus;
   notes: string | null;
   proofLevel: string;
@@ -158,6 +163,8 @@ function statusLabel(status: MerchantOrderStatus) {
 
 function paymentStatusLabel(status: MerchantOrderPaymentStatus) {
   if (status === "merchant_attested_paid") return "Paid via counter POS";
+  if (status === "moonpay_verified_paid") return "MoonPay verified paid";
+  if (status === "shopify_verified_paid") return "Shopify verified paid";
   if (status === "cancelled") return "Cancelled";
   return "Waiting counter payment";
 }
@@ -324,13 +331,16 @@ export default function MerchantPage() {
     setOrdersError("");
 
     try {
-      const response = await fetch(`/api/merchant/orders/${encodeURIComponent(orderId)}/status`, {
-        method: "PATCH",
+      const response = await fetch(`/api/merchant/orders/${encodeURIComponent(orderId)}/action`, {
+        method: "POST",
         headers: {
           "content-type": "application/json",
           ...orderHeaders(),
         },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          action: status === "cancelled" ? "reject" : "accept",
+          actor: "Jiagon take-order agent",
+        }),
       });
       const payload = await response.json() as MerchantOrdersResponse;
       if (!response.ok) {
@@ -359,13 +369,17 @@ export default function MerchantPage() {
     setCopiedOrderId("");
 
     try {
-      const response = await fetch(`/api/merchant/orders/${encodeURIComponent(orderId)}/complete`, {
+      const response = await fetch(`/api/merchant/orders/${encodeURIComponent(orderId)}/action`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           ...orderHeaders(),
         },
-        body: JSON.stringify({ issuedBy: form.issuedBy }),
+        body: JSON.stringify({
+          action: "paid_done",
+          actor: form.issuedBy || "Jiagon take-order agent",
+          receiptPurpose: "agentic_take_order_receipt",
+        }),
       });
       const payload = await response.json() as MerchantOrdersResponse;
       if (!response.ok) {
@@ -523,14 +537,16 @@ export default function MerchantPage() {
 
         <div className="merchant-grid">
           <section className="merchant-copy">
-            <div className="merchant-kicker">Agent commerce terminal</div>
-            <h1>Fulfill agent-created orders.</h1>
+            <div className="merchant-kicker">Take-Order Agent Console</div>
+            <h1>Receive and fulfill doer-agent orders.</h1>
             <p>
-              Jiagon does not replace the merchant POS. It gives staff a lightweight terminal for agent-created orders:
-              confirm fulfillment, issue a verified receipt, and turn the receipt into credit memory.
+              Jiagon does not replace the merchant POS. It gives staff and merchant agents a lightweight action surface:
+              accept a doer-agent order, mark it paid and done, issue a verified receipt, and turn that receipt into
+              passport memory.
             </p>
             <div className="merchant-flow">
-              <span>Agent order</span>
+              <span>Order Agent</span>
+              <span>Take-Order Agent</span>
               <span>Payment approval</span>
               <span>Fulfilled receipt</span>
               <span>Credit memory</span>
@@ -681,11 +697,12 @@ export default function MerchantPage() {
         <section className="merchant-order-panel">
           <div className="merchant-order-top">
             <div>
-              <div className="merchant-kicker">Agent commerce queue</div>
+              <div className="merchant-kicker">Take-Order Agent Queue</div>
               <h2>Incoming orders</h2>
               <p>
-                Orders from agents, NFC tiles, or Telegram start as intent. Fulfillment is the merchant attestation that
-                lets Jiagon issue verified receipt memory.
+                Orders from personal agents, NFC tiles, Telegram, Shopify, or MoonPay-backed checkout adapters start as
+                intent or payment proof. The take-order action is the merchant-side attestation that lets Jiagon issue
+                verified receipt memory.
               </p>
             </div>
             <div className="merchant-order-controls">
@@ -815,7 +832,7 @@ export default function MerchantPage() {
                           disabled={Boolean(orderActionId)}
                           onClick={() => updateOrderStatus(order.id, "completed")}
                         >
-                          {orderActionId === `${order.id}:completed` ? "Completing..." : "Mark fulfilled"}
+                          {orderActionId === `${order.id}:completed` ? "Issuing receipt..." : "Paid + Done"}
                         </button>
                       )}
                       {canCancel && (

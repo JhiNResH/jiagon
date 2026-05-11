@@ -1,8 +1,20 @@
-# Jiagon Personal Agent Commerce Rail Spec
+# Historical Context: Jiagon Agentic POS Spec
+
+This document is future roadmap and historical planning context. It is not the
+current main product boundary.
+
+The current Jiagon frame is a Solana receipt passport and API layer for AI-agent
+commerce memory. The receipt passport, proof APIs, and optional adapters in
+`README.md` are the product-ready surface. The agentic POS/order-rail language
+below describes an earlier and possible future adapter direction, not the core
+capability being shipped now.
 
 ## Product Shape
 
-Jiagon is a personal agent commerce rail for real-world merchants. The product starts with order intake, external wallet payment approval, merchant fulfillment, verified receipts, and credit memory for future purpose-bound dining deposits.
+Jiagon can support agent ordering for real-world merchants as an adapter path.
+In this older planning frame, the flow starts with order intake, external wallet
+payment approval, merchant fulfillment, verified receipts, and credit memory for
+future purpose-bound dining deposits.
 
 ```text
 personal agent receives intent
@@ -16,7 +28,21 @@ personal agent receives intent
 -> purpose-bound dining deposit
 ```
 
-The goal is not to replace Square, Toast, or a full POS. The MVP proves that an agent-mediated purchase can become a merchant-fulfilled receipt memory object that future agents can use for underwriting.
+This roadmap does not replace Square, Toast, or a full POS. The useful primitive
+is that an agent-mediated or merchant-integrated purchase can become a
+merchant-fulfilled receipt memory object that future agents can use for trust,
+proof, and limited purpose-bound credit experiments.
+
+Current adapter wording:
+
+```text
+Personal Order Agent -> Merchant Take-Order Agent -> Jiagon Receipt Passport
+```
+
+The Personal Order Agent captures user intent and policy. The Merchant
+Take-Order Agent receives a Jiagon order pass, Shopify paid-order event, MoonPay
+Commerce payment event, Telegram message, or merchant dashboard action. The
+Passport remains the durable product output.
 
 ## Current Demo Links
 
@@ -176,10 +202,10 @@ Show the product in this order:
    purpose, not open-ended cash borrowing.
 ```
 
-The personal agent API is the product surface. Telegram remains the lightweight
+The personal agent API is an adapter surface. Telegram remains the lightweight
 merchant terminal for the pilot. NFC is the physical receipt-claim surface. The
 backend primitive is agent order intent plus merchant fulfillment plus receipt
-memory.
+memory, with the receipt passport and proof APIs as the current product surface.
 
 ## Onsite Raposa Plan
 

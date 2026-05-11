@@ -430,7 +430,7 @@ export default function AgentOrderDemoPage() {
             <div className="agent-order-mark">J</div>
             <div>
               <div className="agent-order-wordmark">Jiagon</div>
-              <div className="agent-order-sub">Personal agent commerce rail</div>
+              <div className="agent-order-sub">Optional receipt-source adapter</div>
             </div>
           </div>
           <nav className="agent-order-nav" aria-label="Agent order demo">
@@ -444,14 +444,14 @@ export default function AgentOrderDemoPage() {
 
         <section className="agent-order-hero">
           <div className="agent-order-card">
-            <div className="agent-order-kicker">Agent order &rarr; payment approval &rarr; fulfillment receipt</div>
-            <h1 className="agent-order-title">Tell your agent. The agent handles commerce.</h1>
+            <div className="agent-order-kicker">Adapter path &rarr; merchant fulfillment &rarr; receipt memory</div>
+            <h1 className="agent-order-title">Agent ordering can feed the receipt passport.</h1>
             <p className="agent-order-copy">
-              This is the demo spine: a personal agent calls Jiagon, creates the Raposa
-              order, prepares an external wallet payment request, tracks fulfillment, and
-              stores verified receipt memory for future purpose-bound dining deposits.
+              This optional adapter lets an agent call Jiagon, create a Raposa order,
+              prepare an external wallet payment request, and create receipt context after
+              merchant fulfillment. The core product remains the receipt passport and proof API.
             </p>
-            <div className="agent-order-script" aria-label="Personal agent commerce conversation">
+            <div className="agent-order-script" aria-label="Agent ordering adapter receipt flow">
               <div className="agent-order-bubble">Get me a coffee under $10.</div>
               <div className="agent-order-bubble agent">
                 I created a Raposa order, prepared wallet approval, and will track pickup and receipt memory.
