@@ -58,6 +58,18 @@ function moonPayDirectMerchantName(proof: { merchantName: string | null }) {
   ).trim();
 }
 
+function moonPayOrderAttachStatus(error: string | undefined) {
+  if (!error) return 409;
+  if (
+    error.includes("persistence failed") ||
+    error.includes("attachment failed") ||
+    error.includes("query failed")
+  ) {
+    return 503;
+  }
+  return 409;
+}
+
 export async function POST(request: Request) {
   const sharedToken = moonPayWebhookSharedToken();
   if (!sharedToken) {
@@ -129,6 +141,7 @@ export async function POST(request: Request) {
       paymentStatus: "moonpay_verified_paid",
       receiptPurpose: "moonpay_commerce_payment_receipt",
       receiptMemo: moonPayReceiptMemo(proof),
+      expectedSubtotalCents: amountCents,
     });
 
     if (result.order && result.updated) {
@@ -148,13 +161,27 @@ export async function POST(request: Request) {
     }
 
     if (result.order) {
+      const error = result.error || "MoonPay Commerce payment could not attach a Jiagon receipt.";
       return Response.json(
         {
-          error: result.error || "MoonPay Commerce payment could not attach a Jiagon receipt.",
+          error,
+          paymentProof: proof,
+          configured: result.configured,
+          order: publicMerchantOrder(result.order),
+        },
+        { status: moonPayOrderAttachStatus(error) },
+      );
+    }
+
+    if (result.error !== "Merchant order was not found.") {
+      const error = result.error || "MoonPay Commerce payment could not look up the Jiagon order.";
+      return Response.json(
+        {
+          error,
           paymentProof: proof,
           configured: result.configured,
         },
-        { status: 409 },
+        { status: moonPayOrderAttachStatus(error) },
       );
     }
   }

@@ -864,6 +864,7 @@ export async function completeMerchantOrderWithReceipt(input: {
   paymentStatus?: Exclude<MerchantOrderPaymentStatus, "waiting_counter_payment" | "cancelled">;
   receiptPurpose?: string | null;
   receiptMemo?: string | null;
+  expectedSubtotalCents?: number | null;
 }): Promise<{
   configured: boolean;
   updated: boolean;
@@ -889,6 +890,20 @@ export async function completeMerchantOrderWithReceipt(input: {
         receiptPersisted: false,
         order: null,
         error: "Merchant order was not found.",
+      };
+    }
+    if (
+      typeof input.expectedSubtotalCents === "number" &&
+      Number.isFinite(input.expectedSubtotalCents) &&
+      input.expectedSubtotalCents !== current.subtotalCents
+    ) {
+      return {
+        configured: false,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+        error: `Payment amount ${input.expectedSubtotalCents} cents does not match order subtotal ${current.subtotalCents} cents.`,
       };
     }
     if (current.receiptClaimUrl) {
@@ -997,6 +1012,21 @@ export async function completeMerchantOrderWithReceipt(input: {
         receiptPersisted: false,
         order: null,
         error: "Merchant order was not found.",
+      };
+    }
+    if (
+      typeof input.expectedSubtotalCents === "number" &&
+      Number.isFinite(input.expectedSubtotalCents) &&
+      input.expectedSubtotalCents !== current.subtotalCents
+    ) {
+      await client.query("rollback");
+      return {
+        configured: true,
+        updated: false,
+        receiptConfigured: false,
+        receiptPersisted: false,
+        order: current,
+        error: `Payment amount ${input.expectedSubtotalCents} cents does not match order subtotal ${current.subtotalCents} cents.`,
       };
     }
     if (current.receiptClaimUrl) {

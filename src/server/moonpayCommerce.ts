@@ -140,7 +140,7 @@ export function parseMoonPayCommercePaymentProof(payload: unknown): MoonPayComme
     recipientWallet: stringValue(meta?.recipientPK),
     amount: printableValue(root.amount) || printableValue(meta?.totalAmount) || printableValue(meta?.amount),
     currency: currencySymbol(currency),
-    rawIdempotencyKey: stringValue(root.webhookDeliveryIdempotencyKey) || stringValue(root.txIdempotencyKey),
+    rawIdempotencyKey: stringValue(root.txIdempotencyKey) || stringValue(root.webhookDeliveryIdempotencyKey),
   };
 }
 
@@ -163,10 +163,10 @@ export function moonPayPaymentAmountCents(proof: MoonPayCommercePaymentProof) {
 }
 
 export function moonPayDirectReceiptNumber(proof: MoonPayCommercePaymentProof) {
-  const stableId = proof.rawIdempotencyKey ||
-    (proof.transactionId !== "unknown" ? proof.transactionId : null) ||
+  const stableId = (proof.transactionId !== "unknown" ? proof.transactionId : null) ||
     proof.depositId ||
     proof.transactionSignature ||
-    proof.paylinkId;
+    proof.paylinkId ||
+    proof.rawIdempotencyKey;
   return stableId ? `moonpay:${stableId}` : null;
 }
