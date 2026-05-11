@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { PrivyProvider, usePrivy, type PrivyClientConfig } from "@privy-io/react-auth";
+import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 
 type CachedReceipt = {
   id?: string;
@@ -31,6 +33,46 @@ type CachedReceipt = {
   source?: string;
 };
 
+type ReceiptSourceStatus = {
+  label: string;
+  caveat: string;
+  source: "account" | "local" | "loading";
+};
+
+type AccountStateResponse = {
+  configured?: boolean;
+  state?: {
+    merchantReceipts?: unknown[];
+  } | null;
+  updatedAt?: string | null;
+  error?: string;
+};
+
+const privyConfig: PrivyClientConfig = {
+  loginMethods: ["wallet", "email", "google"],
+  appearance: {
+    theme: "light" as const,
+    accentColor: "#A9573D" as const,
+    showWalletLoginFirst: true,
+    walletChainType: "solana-only" as const,
+    walletList: [
+      "phantom",
+      "solflare",
+      "backpack",
+      "jupiter",
+      "detected_solana_wallets",
+      "wallet_connect_qr_solana",
+    ],
+  },
+  embeddedWallets: {
+    solana: { createOnLogin: "off" as const },
+    showWalletUIs: false,
+  },
+  externalWallets: {
+    solana: { connectors: toSolanaWalletConnectors({ shouldAutoConnect: false }) },
+  },
+};
+
 const proofLabels: Record<string, string> = {
   minted: "L5 Bubblegum minted",
   prepared: "L4 claim prepared",
@@ -48,6 +90,11 @@ function readCachedReceipts() {
   } catch {
     return [];
   }
+}
+
+function cleanCachedReceipts(value: unknown): CachedReceipt[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is CachedReceipt => Boolean(item && typeof item === "object"));
 }
 
 function currency(receipt: CachedReceipt) {
@@ -83,14 +130,110 @@ function formatDate(value?: string | null) {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export default function PassportPage() {
+function PassportContent({
+  authConfigured,
+  ready,
+  authenticated,
+  login,
+  getAccessToken,
+}: {
+  authConfigured: boolean;
+  ready: boolean;
+  authenticated: boolean;
+  login?: () => void | Promise<void>;
+  getAccessToken?: () => Promise<string | null>;
+}) {
   const [receipts, setReceipts] = useState<CachedReceipt[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<ReceiptSourceStatus>({
+    label: "Loading passport state",
+    caveat: "Checking account state before using the local receipt cache.",
+    source: "loading",
+  });
 
   useEffect(() => {
-    setReceipts(readCachedReceipts());
-    setLoaded(true);
-  }, []);
+    let cancelled = false;
+
+    function useLocalFallback(label: string, caveat: string) {
+      if (cancelled) return;
+      setReceipts(readCachedReceipts());
+      setStatus({ label, caveat, source: "local" });
+      setLoaded(true);
+    }
+
+    async function loadReceipts() {
+      if (!authConfigured) {
+        useLocalFallback(
+          "Local demo cache",
+          "Privy is not configured for this build, so Passport is showing receipts saved on this device.",
+        );
+        return;
+      }
+
+      if (!ready) {
+        setLoaded(false);
+        setStatus({
+          label: "Loading login state",
+          caveat: "Checking whether an authenticated account state is available.",
+          source: "loading",
+        });
+        return;
+      }
+
+      if (!authenticated) {
+        useLocalFallback(
+          "Local demo cache",
+          "Log in to sync server-side receipt state across devices; unauthenticated Passport only reads this device.",
+        );
+        return;
+      }
+
+      setLoaded(false);
+      setStatus({
+        label: "Syncing account state",
+        caveat: "Reading your authenticated Jiagon account receipts.",
+        source: "loading",
+      });
+
+      try {
+        const accessToken = await getAccessToken?.();
+        if (!accessToken) throw new Error("Privy access token is unavailable.");
+
+        const response = await fetch("/api/account/state", {
+          cache: "no-store",
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+          },
+        });
+        const payload = (await response.json()) as AccountStateResponse;
+        if (!response.ok) throw new Error(payload?.error || "Unable to read account state.");
+        if (payload.configured === false) {
+          throw new Error("Private account state is not configured.");
+        }
+
+        if (!cancelled) {
+          setReceipts(cleanCachedReceipts(payload.state?.merchantReceipts));
+          setStatus({
+            label: "Synced account state",
+            caveat: payload.updatedAt
+              ? `Showing receipts from your private account state, updated ${formatDate(payload.updatedAt)}.`
+              : "Showing receipts from your private account state.",
+            source: "account",
+          });
+          setLoaded(true);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Authenticated account-state fetch failed.";
+        useLocalFallback("Local fallback", `${message} Showing receipts saved on this device instead.`);
+      }
+    }
+
+    loadReceipts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authConfigured, ready, authenticated, getAccessToken]);
 
   const metrics = useMemo(() => {
     const claimed = receipts.filter((receipt) => receipt.status === "claimed").length;
@@ -144,12 +287,22 @@ export default function PassportPage() {
         .passport-copy { margin:16px 0 0; color:var(--ink-muted); font-size:16px; line-height:1.55; }
         .passport-card.dark .passport-copy { color:oklch(0.88 0.014 120); }
         .passport-cta { display:flex; flex-wrap:wrap; gap:10px; margin-top:24px; }
-        .passport-cta a {
+        .passport-cta a,.passport-cta button {
           min-height:42px; display:inline-flex; align-items:center; justify-content:center;
           border-radius:8px; padding:0 14px; border:.5px solid var(--verified);
           background:var(--verified); color:var(--panel-text); text-decoration:none; font-weight:900;
+          font-family:var(--ui); font-size:14px; cursor:pointer;
         }
+        .passport-cta button:disabled { opacity:.52; cursor:not-allowed; }
         .passport-cta a.secondary { background:var(--receipt); color:var(--ink); border-color:var(--rule); }
+        .passport-status {
+          display:grid; gap:6px; margin-top:14px; border:.5px solid oklch(0.44 0.034 135);
+          border-radius:8px; background:oklch(0.26 0.03 135 / .66); padding:11px 12px;
+        }
+        .passport-status strong { color:var(--panel-text); font-size:13px; }
+        .passport-status span { color:oklch(0.86 0.018 122); font-size:12px; line-height:1.45; }
+        .passport-status.account { border-color:oklch(0.65 0.09 145); }
+        .passport-status.local { border-color:oklch(0.62 0.05 70); }
         .passport-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:18px; }
         .passport-metric {
           border:.5px solid var(--rule); border-radius:8px; background:oklch(0.985 0.005 95 / .68);
@@ -214,13 +367,18 @@ export default function PassportPage() {
             <div className="passport-kicker">Receipt Passport</div>
             <h1 className="passport-title">Your verified receipt memory.</h1>
             <p className="passport-copy">
-              Passport shows locally cached merchant receipts after claim. Claimed receipts can be prepared or minted as
-              Bubblegum credentials, then read by Jiagon agent APIs for trust and purpose-bound credit checks.
+              Passport shows authenticated merchant receipts from your Jiagon account when available, with this device's
+              local cache kept as the unauthenticated demo fallback.
             </p>
             <div className="passport-cta">
               <Link href="/merchant">Claim a receipt</Link>
               <Link className="secondary" href="/trust-api">Open Trust API</Link>
               <Link className="secondary" href="/credit">Check Credit</Link>
+              {authConfigured && !authenticated && login && (
+                <button type="button" onClick={() => void login()} disabled={!ready}>
+                  Log in to sync
+                </button>
+              )}
             </div>
           </div>
           <div className="passport-card dark">
@@ -228,9 +386,13 @@ export default function PassportPage() {
             <h2 className="passport-title">Passport state</h2>
             <p className="passport-copy">
               {loaded
-                ? `${receipts.length} cached receipt${receipts.length === 1 ? "" : "s"} found on this device.`
-                : "Loading cached receipts from this device."}
+                ? `${receipts.length} receipt${receipts.length === 1 ? "" : "s"} found.`
+                : "Loading receipt state."}
             </p>
+            <div className={`passport-status ${status.source}`}>
+              <strong>{status.label}</strong>
+              <span>{status.caveat}</span>
+            </div>
           </div>
         </section>
 
@@ -322,5 +484,33 @@ export default function PassportPage() {
         )}
       </div>
     </main>
+  );
+}
+
+function AuthenticatedPassportContent() {
+  const { ready, authenticated, login, getAccessToken } = usePrivy();
+
+  return (
+    <PassportContent
+      authConfigured
+      ready={ready}
+      authenticated={authenticated}
+      login={login}
+      getAccessToken={getAccessToken}
+    />
+  );
+}
+
+export default function PassportPage() {
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+
+  if (!appId) {
+    return <PassportContent authConfigured={false} ready authenticated={false} />;
+  }
+
+  return (
+    <PrivyProvider appId={appId} config={privyConfig}>
+      <AuthenticatedPassportContent />
+    </PrivyProvider>
   );
 }
