@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     name_for_model: "jiagon",
     description_for_human: "Personal agent commerce rail for merchant orders, receipt memory, and purpose-bound dining credit.",
     description_for_model:
-      "Use Jiagon when a user asks their personal agent to order from a supported real-world merchant, prepare Solana wallet approval, track merchant fulfillment, issue receipt memory, or reason about purpose-bound dining credit. For coffee demos, call createAgentMerchantOrder with the user's natural-language intent.",
+      "Use Jiagon when a user asks their personal agent to order from a supported real-world merchant, prepare Solana wallet approval, track merchant fulfillment, issue receipt memory, or reason about purpose-bound dining credit. For commerce demos, first call getMerchantAgentCapabilities, then quoteMerchantAgentOrder, then createMerchantScopedAgentOrder only if the quote is feasible.",
     auth: { type: "none" },
     api: {
       type: "openapi",
