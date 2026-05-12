@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { knownMerchantProfileForId } from "@/lib/merchantCatalog";
+import { knownMerchantProfileForId, supportedMerchantIds } from "@/lib/merchantCatalog";
 import { quoteMerchantIntent } from "@/server/merchantNegotiation";
 import {
   createMerchantOrder,
@@ -94,7 +94,7 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
   const profile = knownMerchantProfileForId(merchant);
   if (!profile) {
     return Response.json(
-      { error: "Unknown merchant for agent ordering.", supportedMerchants: ["raposa-coffee", "solyd-cases"] },
+      { error: "Unknown merchant for agent ordering.", supportedMerchants: supportedMerchantIds },
       { status: 404 },
     );
   }
@@ -228,7 +228,16 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
     );
   }
 
-  const merchantNotify = await notifyMerchantGroup(result.order);
+  let merchantNotify = { sent: false, skipped: false };
+  try {
+    merchantNotify = await notifyMerchantGroup(result.order);
+  } catch (error) {
+    console.warn("Jiagon merchant notification dispatch failed after order creation.", {
+      merchantId: profile.id,
+      orderId: result.order.id,
+      error,
+    });
+  }
   const stationUrl = nfcStationUrl(origin, profile.id);
   const pairUrl = `${origin}/tile/${encodeURIComponent(profile.id)}?pass=${encodeURIComponent(order.pickupCode)}&source=agent`;
 

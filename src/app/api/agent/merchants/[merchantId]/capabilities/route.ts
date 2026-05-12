@@ -1,3 +1,4 @@
+import { supportedMerchantIds } from "@/lib/merchantCatalog";
 import { merchantCapabilities } from "@/server/merchantNegotiation";
 
 export const runtime = "nodejs";
@@ -11,7 +12,7 @@ export async function GET(_request: Request, context: { params: Promise<{ mercha
   const capabilities = merchantCapabilities(merchant);
   if (!capabilities) {
     return Response.json(
-      { error: "Unknown merchant for agent capabilities.", supportedMerchants: ["raposa-coffee", "solyd-cases"] },
+      { error: "Unknown merchant for agent capabilities.", supportedMerchants: supportedMerchantIds },
       { status: 404 },
     );
   }

@@ -86,6 +86,26 @@ export const merchantProfiles: Record<string, MerchantProfile> = {
   },
 };
 
+export const supportedMerchantIds = Object.freeze(Object.keys(merchantProfiles));
+
+function cloneMenuItem(item: MenuItem): MenuItem {
+  return {
+    ...item,
+    attributes: item.attributes ? { ...item.attributes } : undefined,
+  };
+}
+
+function cloneMenu(menu: MenuItem[]) {
+  return menu.map(cloneMenuItem);
+}
+
+function cloneMerchantProfile(profile: MerchantProfile): MerchantProfile {
+  return {
+    ...profile,
+    menu: cloneMenu(profile.menu),
+  };
+}
+
 export function titleFromSlug(slug: string) {
   const title = slug
     .split("-")
@@ -98,7 +118,7 @@ export function titleFromSlug(slug: string) {
 export function merchantProfileForId(merchantId: string): MerchantProfile {
   const profile = merchantProfiles[merchantId];
   if (profile) {
-    return { ...profile, menu: [...profile.menu] };
+    return cloneMerchantProfile(profile);
   }
   return {
     id: merchantId,
@@ -106,11 +126,11 @@ export function merchantProfileForId(merchantId: string): MerchantProfile {
     location: "Local",
     category: "Merchant",
     purpose: "merchant_receipt",
-    menu: [...fallbackMenu],
+    menu: cloneMenu(fallbackMenu),
   };
 }
 
 export function knownMerchantProfileForId(merchantId: string): MerchantProfile | null {
   const profile = merchantProfiles[merchantId];
-  return profile ? { ...profile, menu: [...profile.menu] } : null;
+  return profile ? cloneMerchantProfile(profile) : null;
 }

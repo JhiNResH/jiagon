@@ -45,7 +45,7 @@ function parseUsdCents(value: unknown) {
 }
 
 function centsFromUsd(value: string) {
-  return parseUsdCents(value) || 0;
+  return parseUsdCents(value);
 }
 
 function formatUsd(cents: number) {
@@ -199,7 +199,12 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
   }
 
   const quantity = quantityFrom(input.quantity);
-  const subtotalCents = centsFromUsd(item.amountUsd) * quantity;
+  const itemCents = centsFromUsd(item.amountUsd);
+  if (itemCents === null) {
+    return { ok: false as const, status: 500, error: `Catalog item ${item.id} has an invalid USD price.` };
+  }
+
+  const subtotalCents = itemCents * quantity;
   const maxSpendCents = parseUsdCents(input.maxSpendUsd);
   const budgetOk = maxSpendCents === null || subtotalCents <= maxSpendCents;
   const fulfillment = merchant.fulfillment || "pickup";
@@ -209,7 +214,9 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
   if (!budgetOk) {
     reasons.push(`Subtotal $${formatUsd(subtotalCents)} exceeds max spend $${formatUsd(maxSpendCents || 0)}.`);
     for (const candidate of merchant.menu) {
-      const candidateCents = centsFromUsd(candidate.amountUsd) * quantity;
+      const candidateUnitCents = centsFromUsd(candidate.amountUsd);
+      if (candidateUnitCents === null) continue;
+      const candidateCents = candidateUnitCents * quantity;
       if (maxSpendCents !== null && candidateCents <= maxSpendCents) {
         alternatives.push({
           itemId: candidate.id,
@@ -233,9 +240,9 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
     deliverByDays = deliverByDaysFrom(input);
     shippingDays = merchant.defaultShippingDays || 5;
     timeOk = deliverByDays === null || shippingDays <= deliverByDays;
-    stockOk = typeof item.inventory !== "number" || item.inventory > 0;
+    stockOk = typeof item.inventory !== "number" || item.inventory >= quantity;
     if (!timeOk) reasons.push(`Estimated delivery is ${shippingDays} days, outside the requested ${deliverByDays} day window.`);
-    if (!stockOk) reasons.push(`${item.name} is not marked in stock in the demo catalog.`);
+    if (!stockOk) reasons.push(`${item.name} has insufficient stock for requested quantity ${quantity}; demo catalog inventory is ${item.inventory}.`);
   } else {
     deadlineMinutes = deadlineMinutesFrom(input);
     queue = await openQueueDepth(merchant.id);
@@ -245,6 +252,7 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
     if (!timeOk) {
       reasons.push(`${item.name} is estimated at ${estimatedReadyMinutes} minutes, outside the requested ${deadlineMinutes} minute window.`);
       for (const candidate of merchant.menu) {
+        if (centsFromUsd(candidate.amountUsd) === null) continue;
         const candidateMinutes = queueDelay + (candidate.prepMinutes || merchant.defaultPrepMinutes || 8);
         if (deadlineMinutes !== null && candidateMinutes <= deadlineMinutes) {
           alternatives.push({
