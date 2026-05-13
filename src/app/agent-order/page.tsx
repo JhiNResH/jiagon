@@ -2,156 +2,251 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { HelioCheckout, type HelioEmbedConfig } from "@heliofi/checkout-react";
 
+type MerchantId = "raposa-coffee" | "solyd-cases";
 type PaymentMode = "crypto_pay" | "pay_at_counter";
 
-type AgentOrderResponse = {
+type QuoteResponse = {
+  ok?: boolean;
+  error?: string;
+  merchant?: {
+    id: string;
+    name: string;
+    fulfillment: string;
+  };
+  quote?: {
+    feasible: boolean;
+    decision: string;
+    item: {
+      id: string;
+      name: string;
+      quantity: number;
+      amountUsd: string;
+      subtotalUsd: string;
+    };
+    constraints: {
+      maxSpendUsd: string | null;
+      deadlineMinutes: number | null;
+      deliverByDays: number | null;
+    };
+    estimate: {
+      queueDepth: number;
+      queueConfigured: boolean;
+      readyInMinutes: number | null;
+      readyAt: string | null;
+      shippingDays: number | null;
+    };
+    reasons: string[];
+    alternatives: Array<{
+      itemId: string;
+      name: string;
+      amountUsd: string;
+      reason: string;
+    }>;
+  };
+  next?: string;
+};
+
+type OrderResponse = {
   status?: string;
   proofLevel?: string;
+  error?: string;
+  quote?: QuoteResponse["quote"];
   order?: {
     id: string;
-    pickupCode: string;
+    pickupCode?: string;
     subtotalUsd: string;
     receiptClaimUrl?: string | null;
   };
   pickup?: {
+    minutes: number | null;
+    readyAt: string | null;
     label: string;
-    readyAt: string;
+  };
+  shipping?: {
+    estimatedDays: number | null;
+    deliveryWindowSatisfied: boolean;
   };
   payment?: {
     mode?: PaymentMode;
     status?: string;
     provider?: string;
-    url?: string;
-    checkout?: HelioEmbedConfig;
-    missing?: string[];
     note?: string;
-    network?: string;
   };
-  paymentProof?: {
-    rail?: string;
-    currentLevel?: string;
-    verifiedPayment?: boolean;
-    nextUpgrade?: string;
+  adapterHandoff?: {
+    personalNegotiatorAgent?: {
+      status: string;
+      handled: string[];
+    };
+    merchantTakeOrderAgent?: {
+      status: string;
+      channels: string[];
+    };
+    receiptPassport?: {
+      status: string;
+      next: string;
+    };
   };
-  agentExecution?: {
-    userSaid?: string;
-    agentHandled?: string[];
-    userVisibleResult?: string[];
-    paymentApproval?: string;
-    merchantTerminal?: string;
-    receiptAutomation?: string;
-    futureCreditUse?: string;
-  };
-  creditPath?: string[];
-  staffDispatch?: string;
   customerInstructions?: string[];
   urls?: {
     nfcStation?: string;
     pairPhoneForNfcClaim?: string;
   };
   next?: string;
-  error?: string;
-  menu?: Array<{
-    id: string;
-    name: string;
-    amountUsd: string;
-  }>;
+};
+
+const merchants: Record<MerchantId, {
+  name: string;
+  mode: string;
+  defaultIntent: string;
+  maxSpendUsd: string;
+  deadlineMinutes: string;
+  deliverByDays: string;
+}> = {
+  "raposa-coffee": {
+    name: "Raposa Coffee",
+    mode: "Pickup",
+    defaultIntent: "Get me an iced latte from Raposa under $10, ready in 15 minutes.",
+    maxSpendUsd: "10.00",
+    deadlineMinutes: "15",
+    deliverByDays: "",
+  },
+  "solyd-cases": {
+    name: "SOLYD",
+    mode: "Shipping",
+    defaultIntent: "Find me a black MagSafe iPhone 16 case from SOLYD under $90 and ship it this week.",
+    maxSpendUsd: "90.00",
+    deadlineMinutes: "",
+    deliverByDays: "7",
+  },
 };
 
 const paymentModes: Array<{ id: PaymentMode; label: string; detail: string }> = [
   {
-    id: "crypto_pay",
-    label: "Agent wallet approval",
-    detail: "External Solana payment request prepared for an agent or user wallet.",
+    id: "pay_at_counter",
+    label: "Merchant payment",
+    detail: "Best for the live cafe demo. Staff collects payment and marks fulfillment.",
   },
   {
-    id: "pay_at_counter",
-    label: "Counter pilot fallback",
-    detail: "Merchant collects payment while the agent still tracks fulfillment and receipt memory.",
+    id: "crypto_pay",
+    label: "Agent wallet intent",
+    detail: "Prepares the route for Solana / checkout adapters when configured.",
   },
 ];
 
-function jiagonRequestBody(paymentMode: PaymentMode, userIntent: string, maxSpendUsd: string) {
+function requestBody(input: {
+  merchantId: MerchantId;
+  userIntent: string;
+  maxSpendUsd: string;
+  deadlineMinutes: string;
+  deliverByDays: string;
+  quantity: string;
+  paymentMode: PaymentMode;
+}) {
   return {
-    agentId: "seeker-demo-agent",
-    userIntent,
-    merchantId: "raposa-coffee",
-    maxSpendUsd,
-    paymentMode,
+    agentId: "yc-demo-agent",
+    userIntent: input.userIntent,
+    maxSpendUsd: input.maxSpendUsd,
+    quantity: Number(input.quantity) || 1,
+    ...(input.deadlineMinutes ? { deadlineMinutes: Number(input.deadlineMinutes) } : {}),
+    ...(input.deliverByDays ? { deliverByDays: Number(input.deliverByDays) } : {}),
+    paymentMode: input.paymentMode,
   };
 }
 
-function paymentStatusCopy(payment?: AgentOrderResponse["payment"]) {
-  if (!payment) return "No order yet";
-  if (payment.status === "checkout_config_created") return "Agent wallet checkout ready";
-  if (payment.status === "payment_request_created") return "External Solana approval ready";
-  if (payment.status === "setup_required") return `Setup required: ${(payment.missing || []).join(", ")}`;
-  if (payment.status === "blocked") return "Blocked by testnet guard";
-  return payment.status || "Payment handled at counter";
+function statusText(value: string | undefined) {
+  return value ? value.replace(/_/g, " ") : "not started";
 }
 
 export default function AgentOrderDemoPage() {
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>("crypto_pay");
-  const [userIntent, setUserIntent] = useState("Get me a coffee under $10 and use an external wallet approval if possible.");
-  const [maxSpendUsd, setMaxSpendUsd] = useState("10.00");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<AgentOrderResponse | null>(null);
+  const [merchantId, setMerchantId] = useState<MerchantId>("raposa-coffee");
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>("pay_at_counter");
+  const [userIntent, setUserIntent] = useState(merchants["raposa-coffee"].defaultIntent);
+  const [maxSpendUsd, setMaxSpendUsd] = useState(merchants["raposa-coffee"].maxSpendUsd);
+  const [deadlineMinutes, setDeadlineMinutes] = useState(merchants["raposa-coffee"].deadlineMinutes);
+  const [deliverByDays, setDeliverByDays] = useState(merchants["raposa-coffee"].deliverByDays);
+  const [quantity, setQuantity] = useState("1");
+  const [busy, setBusy] = useState<"quote" | "order" | null>(null);
+  const [quote, setQuote] = useState<QuoteResponse | null>(null);
+  const [order, setOrder] = useState<OrderResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const requestBody = useMemo(
-    () => jiagonRequestBody(paymentMode, userIntent, maxSpendUsd),
-    [maxSpendUsd, paymentMode, userIntent],
+  const body = useMemo(
+    () => requestBody({ merchantId, userIntent, maxSpendUsd, deadlineMinutes, deliverByDays, quantity, paymentMode }),
+    [deadlineMinutes, deliverByDays, maxSpendUsd, merchantId, paymentMode, quantity, userIntent],
   );
-  const helioConfig = result?.payment?.checkout;
-  const canOpenSolanaPay = Boolean(result?.payment?.url);
 
-  async function createOrder() {
-    setBusy(true);
+  function chooseMerchant(nextMerchantId: MerchantId) {
+    const merchant = merchants[nextMerchantId];
+    setMerchantId(nextMerchantId);
+    setUserIntent(merchant.defaultIntent);
+    setMaxSpendUsd(merchant.maxSpendUsd);
+    setDeadlineMinutes(merchant.deadlineMinutes);
+    setDeliverByDays(merchant.deliverByDays);
+    setQuote(null);
+    setOrder(null);
     setError(null);
-    setResult(null);
+  }
 
+  async function callJson<T>(path: string, nextBusy: "quote" | "order") {
+    setBusy(nextBusy);
+    setError(null);
     try {
-      const response = await fetch("/api/agent/orders", {
+      const response = await fetch(path, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify(body),
       });
-      const payload = await response.json() as AgentOrderResponse;
-      if (!response.ok) {
-        throw new Error(payload.error || "Agent order request failed.");
-      }
-      setResult(payload);
+      const payload = await response.json() as T & { error?: string };
+      if (!response.ok) throw new Error(payload.error || "Jiagon request failed.");
+      return payload;
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Agent order request failed.");
+      setError(requestError instanceof Error ? requestError.message : "Jiagon request failed.");
+      return null;
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
+  async function getQuote() {
+    setOrder(null);
+    const payload = await callJson<QuoteResponse>(`/api/agent/merchants/${merchantId}/quote`, "quote");
+    if (payload) setQuote(payload);
+  }
+
+  async function createOrder() {
+    const payload = await callJson<OrderResponse>(`/api/agent/merchants/${merchantId}/orders`, "order");
+    if (payload) {
+      setOrder(payload);
+      if (payload.quote) setQuote({ quote: payload.quote });
+    }
+  }
+
+  const quoteFeasible = quote?.quote?.feasible === true;
+
   return (
-    <main className="agent-order-page">
+    <main className="negotiator-page">
       <style>{`
-        .agent-order-page {
+        .negotiator-page {
           min-height: 100vh;
           padding: 28px clamp(18px, 4vw, 56px) 54px;
           background:
             radial-gradient(circle at 14% 0%, oklch(0.98 0.008 105) 0 260px, transparent 420px),
             linear-gradient(135deg, oklch(0.95 0.016 115) 0%, oklch(0.91 0.014 92) 58%, oklch(0.90 0.018 128) 100%);
         }
-        .agent-order-shell { max-width: 1360px; margin: 0 auto; }
-        .agent-order-top {
+        .negotiator-shell { max-width: 1360px; margin: 0 auto; }
+        .negotiator-top {
           display: flex;
           justify-content: space-between;
           align-items: center;
           gap: 18px;
           margin-bottom: 30px;
         }
-        .agent-order-brand { display: flex; align-items: center; gap: 14px; }
-        .agent-order-mark {
+        .negotiator-brand { display: flex; align-items: center; gap: 14px; }
+        .negotiator-mark {
           width: 52px;
           height: 52px;
+          position: relative;
           display: grid;
           place-items: center;
           border: 3px solid var(--verified);
@@ -163,24 +258,38 @@ export default function AgentOrderDemoPage() {
           font-weight: 800;
           line-height: .9;
         }
-        .agent-order-wordmark {
+        .negotiator-mark b {
+          position: absolute;
+          right: -7px;
+          top: -7px;
+          width: 22px;
+          height: 22px;
+          display: grid;
+          place-items: center;
+          border-radius: 999px;
+          background: oklch(0.16 0.01 95);
+          color: white;
+          font-size: 13px;
+          font-family: var(--ui);
+        }
+        .negotiator-wordmark {
           font-family: var(--display);
           font-size: 36px;
           line-height: .92;
           color: var(--verified);
         }
-        .agent-order-sub,
-        .agent-order-kicker,
-        .agent-order-label {
+        .negotiator-sub,
+        .negotiator-kicker,
+        .negotiator-label {
           font-family: var(--mono);
           font-size: 10px;
           letter-spacing: .9px;
           text-transform: uppercase;
           color: var(--ink-muted);
         }
-        .agent-order-sub { margin-top: 4px; }
-        .agent-order-nav { display: flex; flex-wrap: wrap; gap: 8px; }
-        .agent-order-nav a {
+        .negotiator-sub { margin-top: 4px; }
+        .negotiator-nav { display: flex; flex-wrap: wrap; gap: 8px; }
+        .negotiator-nav a {
           min-height: 34px;
           display: inline-flex;
           align-items: center;
@@ -193,21 +302,21 @@ export default function AgentOrderDemoPage() {
           font-size: 13px;
           font-weight: 800;
         }
-        .agent-order-nav a:hover { color: var(--verified); background: var(--verified-soft); }
-        .agent-order-hero {
+        .negotiator-nav a:hover { color: var(--verified); background: var(--verified-soft); }
+        .negotiator-hero {
           display: grid;
-          grid-template-columns: minmax(340px, .86fr) minmax(420px, 1.14fr);
+          grid-template-columns: minmax(340px, .88fr) minmax(420px, 1.12fr);
           gap: 18px;
           align-items: start;
         }
-        .agent-order-card {
+        .negotiator-card {
           border: .5px solid var(--rule);
           border-radius: 8px;
           background: var(--receipt);
           padding: 18px;
           box-shadow: 0 1px 0 rgba(24,24,24,.05), 0 8px 24px rgba(24,24,24,.045);
         }
-        .agent-order-title {
+        .negotiator-title {
           margin: 10px 0 0;
           font-family: var(--display);
           font-size: clamp(42px, 6vw, 78px);
@@ -216,21 +325,21 @@ export default function AgentOrderDemoPage() {
           line-height: .92;
           color: var(--ink);
         }
-        .agent-order-copy {
+        .negotiator-copy {
           margin: 16px 0 0;
           color: var(--ink-muted);
           font-size: 16px;
           line-height: 1.55;
         }
-        .agent-order-form { display: grid; gap: 14px; margin-top: 20px; }
-        .agent-order-field { display: grid; gap: 7px; }
-        .agent-order-field label {
+        .negotiator-form { display: grid; gap: 14px; margin-top: 20px; }
+        .negotiator-field { display: grid; gap: 7px; }
+        .negotiator-field label {
           color: var(--ink);
           font-size: 13px;
           font-weight: 900;
         }
-        .agent-order-field textarea,
-        .agent-order-field input {
+        .negotiator-field textarea,
+        .negotiator-field input {
           width: 100%;
           border: .5px solid var(--rule);
           border-radius: 8px;
@@ -240,11 +349,16 @@ export default function AgentOrderDemoPage() {
           padding: 12px;
           outline: none;
         }
-        .agent-order-field textarea { min-height: 112px; resize: vertical; line-height: 1.5; }
-        .agent-order-field textarea:focus,
-        .agent-order-field input:focus { border-color: var(--verified); box-shadow: 0 0 0 3px var(--verified-soft); }
-        .agent-order-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-        .agent-order-mode {
+        .negotiator-field textarea { min-height: 112px; resize: vertical; line-height: 1.5; }
+        .negotiator-field textarea:focus,
+        .negotiator-field input:focus { border-color: var(--verified); box-shadow: 0 0 0 3px var(--verified-soft); }
+        .negotiator-button-grid,
+        .negotiator-small-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .negotiator-choice {
           border: .5px solid var(--rule);
           border-radius: 8px;
           background: var(--surface);
@@ -253,29 +367,39 @@ export default function AgentOrderDemoPage() {
           text-align: left;
           cursor: pointer;
         }
-        .agent-order-mode[data-active="true"] {
+        .negotiator-choice[data-active="true"] {
           border-color: var(--verified);
           background: var(--verified-soft);
         }
-        .agent-order-mode strong { display: block; font-size: 13px; }
-        .agent-order-mode span {
+        .negotiator-choice strong { display: block; font-size: 13px; }
+        .negotiator-choice span {
           display: block;
           margin-top: 6px;
           color: var(--ink-muted);
           font-size: 11px;
           line-height: 1.35;
         }
-        .agent-order-primary {
+        .negotiator-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .negotiator-primary,
+        .negotiator-secondary {
           min-height: 46px;
-          border: .5px solid var(--verified);
           border-radius: 8px;
-          background: var(--verified);
-          color: var(--panel-text);
           font-weight: 900;
           cursor: pointer;
         }
-        .agent-order-primary:disabled { opacity: .58; cursor: wait; }
-        .agent-order-code {
+        .negotiator-primary {
+          border: .5px solid var(--verified);
+          background: var(--verified);
+          color: var(--panel-text);
+        }
+        .negotiator-secondary {
+          border: .5px solid var(--rule);
+          background: var(--surface);
+          color: var(--ink);
+        }
+        .negotiator-primary:disabled,
+        .negotiator-secondary:disabled { opacity: .58; cursor: wait; }
+        .negotiator-code {
           margin: 0;
           padding: 14px;
           border-radius: 8px;
@@ -287,51 +411,20 @@ export default function AgentOrderDemoPage() {
           overflow: auto;
           white-space: pre-wrap;
         }
-        .agent-order-script {
-          margin-top: 16px;
+        .negotiator-result { display: grid; gap: 14px; }
+        .negotiator-summary {
           display: grid;
-          gap: 8px;
-        }
-        .agent-order-bubble {
-          max-width: 92%;
-          padding: 12px 14px;
-          border-radius: 8px;
-          border: .5px solid var(--rule);
-          background: var(--surface);
-          color: var(--ink);
-          line-height: 1.45;
-        }
-        .agent-order-bubble.agent {
-          margin-left: auto;
-          background: var(--verified);
-          border-color: var(--verified);
-          color: var(--panel-text);
-        }
-        .agent-order-handoff {
-          display: grid;
-          grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 10px;
         }
-        .agent-order-handoff-panel {
-          padding: 14px;
-          border-radius: 8px;
-          border: .5px solid var(--rule);
-          background: var(--surface);
-        }
-        .agent-order-result { display: grid; gap: 14px; }
-        .agent-order-summary {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 10px;
-        }
-        .agent-order-stat {
+        .negotiator-stat {
           min-height: 88px;
           padding: 13px;
           border-radius: 8px;
           border: .5px solid var(--rule);
           background: var(--surface);
         }
-        .agent-order-stat span {
+        .negotiator-stat span {
           display: block;
           color: var(--ink-muted);
           font-family: var(--mono);
@@ -339,27 +432,19 @@ export default function AgentOrderDemoPage() {
           letter-spacing: .6px;
           text-transform: uppercase;
         }
-        .agent-order-stat strong {
+        .negotiator-stat strong {
           display: block;
           margin-top: 10px;
           color: var(--ink);
           font-size: 20px;
         }
-        .agent-order-payment {
-          min-height: 214px;
+        .negotiator-panel {
           border-radius: 8px;
           border: .5px solid var(--rule);
           background: var(--surface);
           padding: 14px;
         }
-        .agent-order-payment-top {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 12px;
-          margin-bottom: 12px;
-        }
-        .agent-order-pill {
+        .negotiator-pill {
           display: inline-flex;
           align-items: center;
           min-height: 28px;
@@ -373,8 +458,8 @@ export default function AgentOrderDemoPage() {
           letter-spacing: .4px;
           text-transform: uppercase;
         }
-        .agent-order-link-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-        .agent-order-link {
+        .negotiator-link-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .negotiator-link {
           min-height: 40px;
           display: inline-flex;
           align-items: center;
@@ -388,16 +473,16 @@ export default function AgentOrderDemoPage() {
           font-weight: 900;
           cursor: pointer;
         }
-        .agent-order-link.primary { background: var(--verified); color: var(--panel-text); border-color: var(--verified); }
-        .agent-order-empty {
+        .negotiator-link.primary { background: var(--verified); color: var(--panel-text); border-color: var(--verified); }
+        .negotiator-empty {
           border: .5px dashed var(--rule);
           border-radius: 8px;
           padding: 18px;
           color: var(--ink-muted);
           line-height: 1.5;
         }
-        .agent-order-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-        .agent-order-list li {
+        .negotiator-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+        .negotiator-list li {
           padding: 10px 12px;
           border-radius: 8px;
           background: oklch(0.985 0.005 95 / .7);
@@ -405,7 +490,7 @@ export default function AgentOrderDemoPage() {
           font-size: 13px;
           line-height: 1.45;
         }
-        .agent-order-error {
+        .negotiator-error {
           padding: 12px;
           border-radius: 8px;
           border: .5px solid oklch(0.67 0.15 35);
@@ -414,53 +499,65 @@ export default function AgentOrderDemoPage() {
           font-weight: 800;
         }
         @media (max-width: 980px) {
-          .agent-order-top,
-          .agent-order-hero { display: block; }
-          .agent-order-nav { margin-top: 18px; }
-          .agent-order-card + .agent-order-card { margin-top: 18px; }
-          .agent-order-handoff,
-          .agent-order-summary,
-          .agent-order-mode-grid { grid-template-columns: 1fr; }
+          .negotiator-top,
+          .negotiator-hero { display: block; }
+          .negotiator-nav { margin-top: 18px; }
+          .negotiator-card + .negotiator-card { margin-top: 18px; }
+          .negotiator-summary,
+          .negotiator-button-grid,
+          .negotiator-small-grid,
+          .negotiator-actions { grid-template-columns: 1fr; }
         }
       `}</style>
 
-      <div className="agent-order-shell">
-        <header className="agent-order-top">
-          <div className="agent-order-brand">
-            <div className="agent-order-mark">J</div>
+      <div className="negotiator-shell">
+        <header className="negotiator-top">
+          <div className="negotiator-brand">
+            <div className="negotiator-mark">J<b>✓</b></div>
             <div>
-              <div className="agent-order-wordmark">Jiagon</div>
-              <div className="agent-order-sub">Optional receipt-source adapter</div>
+              <div className="negotiator-wordmark">Jiagon</div>
+              <div className="negotiator-sub">Call My Agent demo</div>
             </div>
           </div>
-          <nav className="agent-order-nav" aria-label="Agent order demo">
-            <Link href="/passport">Passport</Link>
-            <Link href="/trust-api">Trust API</Link>
-            <Link href="/credit">Credit</Link>
-            <Link href="/passport#receipt-sources">Receipt Sources</Link>
-            <Link href="/merchant">Merchant Tools</Link>
+          <nav className="negotiator-nav" aria-label="Agent negotiator demo">
+            <Link href="/">Overview</Link>
+            <Link href="/merchant">Merchant Queue</Link>
+            <Link href="/passport">Receipt Proof</Link>
+            <Link href="/api/agent">Agent API</Link>
           </nav>
         </header>
 
-        <section className="agent-order-hero">
-          <div className="agent-order-card">
-            <div className="agent-order-kicker">Adapter path &rarr; merchant fulfillment &rarr; receipt memory</div>
-            <h1 className="agent-order-title">Agent orders are a receipt source.</h1>
-            <p className="agent-order-copy">
-              This optional adapter lets an agent call Jiagon, create a Raposa order,
-              prepare an external wallet payment request, and create receipt context after
-              merchant fulfillment. The core product remains Passport and the proof API.
+        <section className="negotiator-hero">
+          <div className="negotiator-card">
+            <div className="negotiator-kicker">Natural language &rarr; quote &rarr; order handoff</div>
+            <h1 className="negotiator-title">Ask for the outcome. Jiagon handles the merchant.</h1>
+            <p className="negotiator-copy">
+              This YC demo is intentionally narrow: Jiagon acts as a real-world merchant
+              negotiator. It checks whether the merchant can satisfy the request before it
+              creates an order, and it leaves a receipt trail after fulfillment.
             </p>
-            <div className="agent-order-script" aria-label="Agent ordering adapter receipt flow">
-              <div className="agent-order-bubble">Get me a coffee under $10.</div>
-              <div className="agent-order-bubble agent">
-                I created a Raposa order, prepared wallet approval, and will track pickup and receipt memory.
-              </div>
-            </div>
 
-            <div className="agent-order-form">
-              <div className="agent-order-field">
-                <label htmlFor="agent-intent">Instruction to personal agent</label>
+            <div className="negotiator-form">
+              <div className="negotiator-field">
+                <label>Merchant target</label>
+                <div className="negotiator-button-grid">
+                  {(Object.keys(merchants) as MerchantId[]).map((id) => (
+                    <button
+                      className="negotiator-choice"
+                      data-active={merchantId === id}
+                      key={id}
+                      type="button"
+                      onClick={() => chooseMerchant(id)}
+                    >
+                      <strong>{merchants[id].name}</strong>
+                      <span>{merchants[id].mode}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="negotiator-field">
+                <label htmlFor="agent-intent">What the user tells their agent</label>
                 <textarea
                   id="agent-intent"
                   value={userIntent}
@@ -468,22 +565,56 @@ export default function AgentOrderDemoPage() {
                 />
               </div>
 
-              <div className="agent-order-field">
-                <label htmlFor="agent-max">Max spend</label>
-                <input
-                  id="agent-max"
-                  inputMode="decimal"
-                  value={maxSpendUsd}
-                  onChange={(event) => setMaxSpendUsd(event.target.value)}
-                />
+              <div className="negotiator-small-grid">
+                <div className="negotiator-field">
+                  <label htmlFor="agent-max">Max spend</label>
+                  <input
+                    id="agent-max"
+                    inputMode="decimal"
+                    value={maxSpendUsd}
+                    onChange={(event) => setMaxSpendUsd(event.target.value)}
+                  />
+                </div>
+                <div className="negotiator-field">
+                  <label htmlFor="agent-quantity">Quantity</label>
+                  <input
+                    id="agent-quantity"
+                    inputMode="numeric"
+                    value={quantity}
+                    onChange={(event) => setQuantity(event.target.value)}
+                  />
+                </div>
               </div>
 
-              <div className="agent-order-field">
+              <div className="negotiator-small-grid">
+                <div className="negotiator-field">
+                  <label htmlFor="agent-deadline">Pickup deadline minutes</label>
+                  <input
+                    id="agent-deadline"
+                    inputMode="numeric"
+                    value={deadlineMinutes}
+                    onChange={(event) => setDeadlineMinutes(event.target.value)}
+                    placeholder="15"
+                  />
+                </div>
+                <div className="negotiator-field">
+                  <label htmlFor="agent-delivery">Delivery days</label>
+                  <input
+                    id="agent-delivery"
+                    inputMode="numeric"
+                    value={deliverByDays}
+                    onChange={(event) => setDeliverByDays(event.target.value)}
+                    placeholder="7"
+                  />
+                </div>
+              </div>
+
+              <div className="negotiator-field">
                 <label>Payment route</label>
-                <div className="agent-order-mode-grid">
+                <div className="negotiator-button-grid">
                   {paymentModes.map((mode) => (
                     <button
-                      className="agent-order-mode"
+                      className="negotiator-choice"
                       data-active={paymentMode === mode.id}
                       key={mode.id}
                       type="button"
@@ -496,151 +627,108 @@ export default function AgentOrderDemoPage() {
                 </div>
               </div>
 
-              <button className="agent-order-primary" type="button" disabled={busy} onClick={createOrder}>
-                {busy ? "Agent is handling order..." : "Let agent order coffee"}
-              </button>
+              <div className="negotiator-actions">
+                <button className="negotiator-secondary" type="button" disabled={busy !== null} onClick={getQuote}>
+                  {busy === "quote" ? "Checking merchant..." : "1. Get quote"}
+                </button>
+                <button
+                  className="negotiator-primary"
+                  type="button"
+                  disabled={busy !== null || quoteFeasible === false}
+                  onClick={createOrder}
+                >
+                  {busy === "order" ? "Creating handoff..." : "2. Create order"}
+                </button>
+              </div>
 
-              <pre className="agent-order-code">{JSON.stringify(requestBody, null, 2)}</pre>
+              <pre className="negotiator-code">{JSON.stringify(body, null, 2)}</pre>
             </div>
           </div>
 
-          <div className="agent-order-card agent-order-result">
+          <div className="negotiator-card negotiator-result">
             <div>
-              <div className="agent-order-kicker">Agent result</div>
-              {error && <div className="agent-order-error">{error}</div>}
+              <div className="negotiator-kicker">Negotiator result</div>
+              {error && <div className="negotiator-error">{error}</div>}
             </div>
 
-            {!result && !error && (
-              <div className="agent-order-empty">
-                Start the agent run to see the commerce handoff: pickup result,
-                wallet approval, merchant fulfillment, receipt memory, and future credit use.
+            {!quote && !order && !error && (
+              <div className="negotiator-empty">
+                Start with a quote. Jiagon should refuse impossible constraints instead of blindly
+                placing the order. That is the core Call My Agent demo.
               </div>
             )}
 
-            {result && (
-              <>
-                <div className="agent-order-summary">
-                  <div className="agent-order-stat">
-                    <span>Pickup code</span>
-                    <strong>{result.order?.pickupCode || "..."}</strong>
+            {quote?.quote && (
+              <section className="negotiator-panel" aria-label="Quote">
+                <span className="negotiator-pill">{quote.quote.feasible ? "feasible" : "needs negotiation"}</span>
+                <div className="negotiator-summary" style={{ marginTop: 12 }}>
+                  <div className="negotiator-stat">
+                    <span>Item</span>
+                    <strong>{quote.quote.item.name}</strong>
                   </div>
-                  <div className="agent-order-stat">
+                  <div className="negotiator-stat">
                     <span>Total</span>
-                    <strong>${result.order?.subtotalUsd || "0.00"}</strong>
+                    <strong>${quote.quote.item.subtotalUsd}</strong>
                   </div>
-                  <div className="agent-order-stat">
-                    <span>Pickup</span>
-                    <strong>{result.pickup?.label || "..."}</strong>
-                  </div>
-                  <div className="agent-order-stat">
-                    <span>Staff</span>
-                    <strong>{result.staffDispatch || "..."}</strong>
+                  <div className="negotiator-stat">
+                    <span>ETA</span>
+                    <strong>
+                      {quote.quote.estimate.readyInMinutes !== null
+                        ? `${quote.quote.estimate.readyInMinutes} min`
+                        : quote.quote.estimate.shippingDays !== null
+                          ? `${quote.quote.estimate.shippingDays} days`
+                          : "pending"}
+                    </strong>
                   </div>
                 </div>
-
-                <section className="agent-order-payment">
-                  <div className="agent-order-payment-top">
-                    <div>
-                      <div className="agent-order-label">Payment</div>
-                      <strong>{paymentStatusCopy(result.payment)}</strong>
-                    </div>
-                    <span className="agent-order-pill">{result.payment?.network || "demo"}</span>
-                  </div>
-
-                  {helioConfig && (
-                    <HelioCheckout
-                      config={{
-                        ...helioConfig,
-                        customTexts: {
-                          mainButtonTitle: "Pay Raposa order",
-                          payButtonTitle: "Pay on Solana",
-                        },
-                        theme: { themeMode: "light" },
-                      }}
-                    />
-                  )}
-
-                  {canOpenSolanaPay && (
-                    <div className="agent-order-link-row">
-                      <a className="agent-order-link primary" href={result.payment?.url}>
-                        Open external Solana approval
-                      </a>
-                      <button
-                        className="agent-order-link"
-                        type="button"
-                        onClick={() => navigator.clipboard.writeText(result.payment?.url || "")}
-                      >
-                        Copy payment URL
-                      </button>
-                    </div>
-                  )}
-
-                  {!helioConfig && !canOpenSolanaPay && (
-                    <p className="agent-order-copy">
-                      {result.payment?.note || "Payment is handled at the counter."}
-                    </p>
-                  )}
-                </section>
-
-                {result.agentExecution && (
-                  <section className="agent-order-handoff">
-                    <div className="agent-order-handoff-panel">
-                      <div className="agent-order-label">What the agent returns</div>
-                      <ul className="agent-order-list">
-                        {(result.agentExecution.userVisibleResult || []).map((item, index) => (
-                          <li key={`visible-${index}-${item}`}>{item}</li>
-                        ))}
-                      </ul>
-                      {result.agentExecution.paymentApproval && (
-                        <p className="agent-order-copy">{result.agentExecution.paymentApproval}</p>
-                      )}
-                    </div>
-                    <div className="agent-order-handoff-panel">
-                      <div className="agent-order-label">What the agent handled</div>
-                      <ul className="agent-order-list">
-                        {(result.agentExecution.agentHandled || []).map((item, index) => (
-                          <li key={`handled-${index}-${item}`}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </section>
+                <ul className="negotiator-list">
+                  {quote.quote.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+                {quote.quote.alternatives.length > 0 && (
+                  <>
+                    <div className="negotiator-label" style={{ marginTop: 14 }}>Alternatives</div>
+                    <ul className="negotiator-list">
+                      {quote.quote.alternatives.map((alternative) => (
+                        <li key={alternative.itemId}>
+                          {alternative.name} · ${alternative.amountUsd} · {alternative.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
+              </section>
+            )}
 
-                <section>
-                  <div className="agent-order-label">Receipt memory to credit path</div>
-                  <ul className="agent-order-list">
-                    {(result.creditPath || []).map((step, index) => (
-                      <li key={`credit-${index}-${step}`}>{step}</li>
-                    ))}
-                  </ul>
-                </section>
-
-                <section>
-                  <div className="agent-order-label">Agent/user instructions</div>
-                  <ul className="agent-order-list">
-                    {(result.customerInstructions || []).map((instruction, index) => (
-                      <li key={`instruction-${index}-${instruction}`}>{instruction}</li>
-                    ))}
-                  </ul>
-                  <div className="agent-order-link-row">
-                    {result.urls?.nfcStation && (
-                      <Link className="agent-order-link" href={result.urls.nfcStation}>
-                        Open NFC station
-                      </Link>
-                    )}
-                    {result.urls?.pairPhoneForNfcClaim && (
-                      <Link className="agent-order-link" href={result.urls.pairPhoneForNfcClaim}>
-                        Pair phone for claim
-                      </Link>
-                    )}
-                    <Link className="agent-order-link" href="/merchant">
-                      Open merchant queue
-                    </Link>
+            {order && (
+              <section className="negotiator-panel" aria-label="Order">
+                <span className="negotiator-pill">{statusText(order.status)}</span>
+                <div className="negotiator-summary" style={{ marginTop: 12 }}>
+                  <div className="negotiator-stat">
+                    <span>Order</span>
+                    <strong>{order.order?.pickupCode || order.order?.id?.slice(0, 8) || "created"}</strong>
                   </div>
-                </section>
-
-                <pre className="agent-order-code">{JSON.stringify(result, null, 2)}</pre>
-              </>
+                  <div className="negotiator-stat">
+                    <span>Payment</span>
+                    <strong>{statusText(order.payment?.status)}</strong>
+                  </div>
+                  <div className="negotiator-stat">
+                    <span>Proof</span>
+                    <strong>{statusText(order.proofLevel)}</strong>
+                  </div>
+                </div>
+                <ul className="negotiator-list">
+                  {(order.customerInstructions || []).map((instruction) => (
+                    <li key={instruction}>{instruction}</li>
+                  ))}
+                </ul>
+                <div className="negotiator-link-row">
+                  {order.urls?.nfcStation && <a className="negotiator-link" href={order.urls.nfcStation}>NFC station</a>}
+                  {order.urls?.pairPhoneForNfcClaim && (
+                    <a className="negotiator-link primary" href={order.urls.pairPhoneForNfcClaim}>Pair receipt claim</a>
+                  )}
+                  <Link className="negotiator-link" href="/merchant">Open merchant queue</Link>
+                </div>
+              </section>
             )}
           </div>
         </section>

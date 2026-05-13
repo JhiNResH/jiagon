@@ -534,29 +534,27 @@ export default function MerchantPage() {
             <span>Jiagon</span>
           </a>
           <nav>
-            <a href="/passport">Passport</a>
-            <a href="/trust-api">Trust API</a>
-            <a href="/credit">Credit</a>
-            <a href="/passport#receipt-sources">Receipt Sources</a>
-            <a href="/merchant">Merchant Tools</a>
+            <a href="/agent-order">Agent Demo</a>
+            <a href="/merchant">Merchant Queue</a>
+            <a href="/passport">Receipt Proof</a>
           </nav>
         </header>
 
         <div className="merchant-grid">
           <section className="merchant-copy">
-            <div className="merchant-kicker">Merchant Tools</div>
-            <h1>Create the receipt source behind Passport.</h1>
+            <div className="merchant-kicker">Merchant terminal</div>
+            <h1>Fulfill the agent's real-world order.</h1>
             <p>
-              Jiagon does not replace the merchant POS. It gives staff and merchant agents a lightweight action surface:
-              accept a doer-agent order, mark it paid and done, issue a verified receipt, and turn that receipt into
-              passport memory.
+              Jiagon does not replace the merchant POS. It gives staff a lightweight action surface:
+              receive a negotiated agent order, mark it paid and done, issue proof, and let the
+              customer claim the receipt after fulfillment.
             </p>
             <div className="merchant-flow">
-              <span>Order Agent</span>
-              <span>Take-Order Agent</span>
-              <span>Payment approval</span>
-              <span>Fulfilled receipt</span>
-              <span>Credit memory</span>
+              <span>User agent</span>
+              <span>Jiagon quote</span>
+              <span>Merchant handoff</span>
+              <span>Paid + Done</span>
+              <span>Receipt proof</span>
             </div>
           </section>
 
@@ -622,10 +620,10 @@ export default function MerchantPage() {
           <div className="merchant-readiness-top">
             <div>
               <div className="merchant-kicker">Demo readiness</div>
-              <h2>Consensus operator checks</h2>
+              <h2>Call My Agent operator checks</h2>
               <p>
-                Verify the live demo can run from agent order to merchant fulfillment, receipt memory, Bubblegum mint,
-                and optional purpose-bound credit before standing at the counter.
+                Verify the live demo can run from agent request to quote, merchant order, staff fulfillment,
+                and receipt claim. Optional Solana/payment proof checks are secondary for this hackathon.
               </p>
             </div>
             <button type="button" onClick={loadDemoReadiness} disabled={readinessBusy}>
@@ -666,7 +664,7 @@ export default function MerchantPage() {
                   <span>Checks</span>
                   <strong>{readinessBusy ? "Loading" : "Not loaded"}</strong>
                 </div>
-                <p>Refresh to inspect Telegram, Bubblegum, and devnet credit vault configuration.</p>
+                <p>Refresh to inspect Telegram, persistence, receipt signing, and optional proof-adapter configuration.</p>
               </article>
             )}
           </div>
@@ -675,10 +673,10 @@ export default function MerchantPage() {
         <section className="merchant-setup-panel">
           <div>
             <div className="merchant-kicker">Merchant onboarding</div>
-            <h2>Set up a pilot without code changes</h2>
+            <h2>Set up a merchant negotiator pilot</h2>
             <p>
-              Use these URLs for a new cafe or restaurant pilot. Put the NFC station URL on a sticker, let agents create
-              order passes, and keep this terminal open for fulfillment.
+              Use these URLs for a cafe or commerce pilot. Let agents create negotiated order passes,
+              then keep this terminal open so staff can mark fulfillment and issue proof.
             </p>
           </div>
           <div className="merchant-setup-grid">
@@ -704,12 +702,11 @@ export default function MerchantPage() {
         <section className="merchant-order-panel">
           <div className="merchant-order-top">
             <div>
-              <div className="merchant-kicker">Receipt source queue</div>
-              <h2>Incoming orders</h2>
+              <div className="merchant-kicker">Agent order queue</div>
+              <h2>Incoming negotiated orders</h2>
               <p>
-                Orders from personal agents, NFC tiles, Telegram, merchant-configured Shopify or MoonPay adapters, and
-                SPL-verified Solana Pay flows start as intent or payment proof. The merchant action is the attestation
-                that lets Jiagon issue verified receipt memory into Passport.
+                Orders from personal agents start as quote-checked intent. The merchant action is the
+                real-world attestation that lets Jiagon say the agent actually got the job done.
               </p>
             </div>
             <div className="merchant-order-controls">
@@ -774,7 +771,7 @@ export default function MerchantPage() {
           {creditMemo && (
             <section className="merchant-credit-memo">
               <div>
-                <div className="merchant-kicker">Event credit memo</div>
+                <div className="merchant-kicker">Post-demo memo</div>
                 <h3>{creditMemo.proofLevel}</h3>
                 <p>{creditMemo.note}</p>
               </div>
@@ -784,7 +781,7 @@ export default function MerchantPage() {
                   <strong>{creditMemo.suggestedNextProofUpgrade}</strong>
                 </div>
                 <div>
-                  <span>Purpose credit</span>
+                  <span>Future credit</span>
                   <strong>{creditMemo.suggestedPurposeCredit}</strong>
                 </div>
               </div>

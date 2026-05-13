@@ -1,7 +1,7 @@
 const product = {
   name: "Jiagon",
-  title: "Jiagon verified commerce memory for AI agents",
-  description: "Agent-readable receipt proofs, merchant trust signals, and purpose-bound credit eligibility on Solana.",
+  title: "Jiagon merchant negotiator agent",
+  description: "Quote-first real-world merchant ordering, fulfillment handoff, and receipt proof for personal agents.",
   version: "0.1.0",
 };
 
@@ -18,7 +18,7 @@ const privacy =
 const sampleSolanaOwner = "11111111111111111111111111111111";
 
 const adapterHandoff = {
-  boundary: "Order execution is an adapter path that feeds Jiagon's receipt passport; the core product is verified receipt memory and agent-readable proof.",
+  boundary: "For the YC Call My Agent demo, merchant negotiation is the core path. Receipt memory is the proof that the agent completed useful work.",
   orderAgent: {
     role: "Personal Order Agent",
     responsibility: "Captures user intent, checks merchant capabilities, asks for a feasible quote, then creates an order or checkout pass only after constraints are satisfied.",
@@ -38,7 +38,7 @@ const adapterHandoff = {
   },
   receiptPassport: {
     role: "Receipt Passport",
-    responsibility: "Turns paid or merchant-fulfilled events into claimable receipt memory that proof, trust, rerank, and credit APIs can read.",
+    responsibility: "Turns paid or merchant-fulfilled events into claimable receipt proof after the real-world task is complete.",
     entrypoints: ["/claim/{token}", "/passport", "/api/agent/proofs/{receiptHash}", "/api/agent/credit-eligibility"],
   },
 };
@@ -57,26 +57,26 @@ export function agentDiscovery(origin: string) {
     openapi: `${origin}/openapi.json`,
     wellKnown: `${origin}/.well-known/jiagon-agent.json`,
     primaryUseCase:
-      "Let a personal agent use verified receipts as portable commerce memory for proof checks, merchant trust, recommendations, review unlocks, and future purpose-bound dining deposits.",
+      "Let a personal agent negotiate real-world merchant orders by checking budget, time, stock, and fulfillment constraints before creating an order handoff.",
     capabilityOrder: [
-      "/api/agent/proofs/{receiptHash}",
-      "/api/agent/merchants/{merchantId}/trust",
       "/api/agent/merchants/{merchantId}/capabilities",
       "/api/agent/merchants/{merchantId}/quote",
       "/api/agent/merchants/{merchantId}/orders",
+      "/api/merchant/orders/{id}/action",
+      "/api/agent/proofs/{receiptHash}",
+      "/api/agent/merchants/{merchantId}/trust",
       "/api/agent/credit-eligibility",
       "/api/agent/rerank",
       "/api/agent/recommendations",
       "/api/agent/orders",
       "/api/agent/orders/{id}/verify-solana-pay",
-      "/api/merchant/orders/{id}/action",
       "/api/agent/shopify/products",
       "/api/agent/shopify/orders",
       "/api/webhooks/shopify/orders-paid",
       "/api/webhooks/moonpay",
     ],
     adapterHandoff,
-    exampleUserIntent: "I want coffee near Irvine. Recommend somewhere reliable and explain the proof.",
+    exampleUserIntent: "Get me an iced latte from Raposa under $10, ready in 15 minutes.",
     exampleProofCall: {
       method: "GET",
       url: `${origin}/api/agent/proofs/{receiptHash}`,

@@ -266,7 +266,7 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
     deadlineMinutes = deadlineMinutesFrom(input);
     queue = await openQueueDepth(merchant.id);
     const prepMinutes = item.prepMinutes || merchant.defaultPrepMinutes || 8;
-    const queueAvailable = queue.configured && !queue.error;
+    const queueAvailable = !queue.error;
     const queueDelay = queueAvailable ? queue.openOrders * 2 : 0;
     estimatedReadyMinutes = queueDelay + prepMinutes;
     timeOk = deadlineMinutes === null || (queueAvailable && estimatedReadyMinutes <= deadlineMinutes);
