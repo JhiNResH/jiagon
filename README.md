@@ -48,6 +48,15 @@ User: "Find me a black MagSafe iPhone case under $90 and ship this week."
 -> Shopify / MoonPay Commerce can later upgrade the receipt proof
 ```
 
+Raposa Shop ecommerce flow:
+
+```txt
+User: "Ship me Raposa whole bean coffee, ideally Sunrise Blend, under $25 this week."
+-> Jiagon checks Raposa Shop catalog, stock, price, and shipping estimate
+-> if feasible, Jiagon returns checkout-adapter-required handoff
+-> merchant checkout / payment proof can later upgrade the receipt proof
+```
+
 ## Core Surfaces
 
 - `/` — YC-focused product overview.
@@ -95,8 +104,27 @@ CLI demo:
 
 ```bash
 pnpm agent "Get me an iced latte from Raposa under 10 dollars, ready in 15 minutes"
+pnpm agent "Ship me Raposa whole bean Sunrise Blend under $25 this week"
+pnpm agent "Order the Raposa nitro cold brew starter pack under $40"
 pnpm agent "Find me a black MagSafe iPhone 16 case from SOLYD under $90 and ship this week"
+pnpm agent "Get me an Orbit iced coffee at the theme park cafe under $10, ready in 15 minutes"
 ```
+
+## Merchant Adapter Framework
+
+The demo merchants use one small negotiator-agent adapter contract instead of
+one-off route logic:
+
+| Merchant | Adapter kind | Mode | Rails |
+| --- | --- | --- | --- |
+| Raposa Coffee | offline pickup | pickup | counter POS, Solana Pay adapter |
+| Raposa Shop | online shipping | shipping | merchant checkout, Shopify webhook, MoonPay Commerce |
+| SOLYD | online shipping | shipping | merchant checkout, Shopify webhook, MoonPay Commerce |
+| Theme Park Cafe | venue pickup | venue | venue counter POS, Solana Pay adapter |
+
+Agents read `/api/agent/merchants/{merchantId}/capabilities` to learn the
+adapter kind, channels, payment rails, proof policy, and pickup/shipping/venue
+mode before asking for a quote or creating an order.
 
 ## Negotiation Behavior
 
@@ -162,7 +190,9 @@ the hackathon demo, but persisted merchant queues need Postgres.
 | Merchant | Demo role | Status |
 | --- | --- | --- |
 | Raposa Coffee | pickup order negotiator | best live demo path |
+| Raposa Shop | ecommerce coffee product shipping negotiator | mock shipping adapter for online coffee orders |
 | SOLYD | ecommerce stock / shipping negotiator | adapter mock until checkout webhook is connected |
+| Theme Park Cafe | generic venue pickup negotiator | demo adapter for theme park pickup, no venue partnership claimed |
 | MUME Taipei | future dining deposit / premium booking | out of YC demo scope |
 
 ## What To Say

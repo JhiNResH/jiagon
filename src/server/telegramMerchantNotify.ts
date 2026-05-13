@@ -54,7 +54,7 @@ function staffOrderCallbackData(action: "paid_done" | "cancel", orderId: string)
 }
 
 export function nfcStationUrl(origin: string, merchantId: string) {
-  return `${origin}/tile/${encodeURIComponent(merchantId)}?station=raposa-counter`;
+  return `${origin}/tile/${encodeURIComponent(merchantId)}?nfc=1&station=${encodeURIComponent(`${merchantId}-station`)}`;
 }
 
 export async function notifyMerchantGroup(order: MerchantOrder) {

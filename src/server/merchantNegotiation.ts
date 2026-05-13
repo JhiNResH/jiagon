@@ -3,12 +3,14 @@ import {
   type MenuItem,
   type MerchantProfile,
 } from "@/lib/merchantCatalog";
+import { merchantAdapterMetadata, type MerchantAdapterMetadata } from "@/lib/merchantAdapters";
 import { countMerchantOrders } from "@/server/merchantOrderStore";
 
 type MerchantCapability = {
   merchant: Pick<MerchantProfile, "id" | "name" | "location" | "category" | "purpose"> & {
     fulfillment: NonNullable<MerchantProfile["fulfillment"]>;
   };
+  adapter: MerchantAdapterMetadata;
   catalog: Array<MenuItem & {
     estimatedPrepMinutes?: number;
     stockStatus?: "in_stock" | "low_stock" | "out_of_stock" | "unknown";
@@ -106,20 +108,33 @@ function deliverByDaysFrom(input: QuoteRequest) {
   return null;
 }
 
-function itemMatchesIntent(item: MenuItem, intent: string) {
-  const normalized = ` ${intent.toLowerCase().replace(/[_-]/g, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim()} `;
+function normalizedIntentText(intent: string) {
+  return ` ${intent.toLowerCase().replace(/[_-]/g, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim()} `;
+}
+
+function itemIntentScore(item: MenuItem, intent: string) {
+  const normalized = normalizedIntentText(intent);
   const itemName = item.name.toLowerCase();
   const itemId = item.id.replace(/-/g, " ");
-  if (normalized.includes(` ${itemName} `) || normalized.includes(` ${itemId} `)) return true;
+  let score = 0;
+
+  if (normalized.includes(` ${itemName} `) || normalized.includes(` ${itemId} `)) score += 100;
 
   const terms = itemName.split(/\s+/).filter((term) => term.length > 3);
-  if (terms.some((term) => normalized.includes(` ${term} `))) return true;
+  for (const term of terms) {
+    if (normalized.includes(` ${term} `)) score += 12;
+  }
 
   const attributes = item.attributes || {};
-  return Object.values(attributes).some((value) => {
-    if (typeof value === "boolean") return value && normalized.includes("magsafe");
-    return normalized.includes(` ${String(value).toLowerCase().replace(/-/g, " ")} `);
-  });
+  for (const value of Object.values(attributes)) {
+    if (typeof value === "boolean") {
+      if (value && normalized.includes(" magsafe ")) score += 5;
+      continue;
+    }
+    if (normalized.includes(` ${String(value).toLowerCase().replace(/-/g, " ")} `)) score += 5;
+  }
+
+  return score;
 }
 
 function chooseItem(merchant: MerchantProfile, input: QuoteRequest) {
@@ -133,11 +148,16 @@ function chooseItem(merchant: MerchantProfile, input: QuoteRequest) {
 
   if (!intent) return null;
 
-  const direct = merchant.menu.find((item) => itemMatchesIntent(item, intent));
-  if (direct) return direct;
+  const scored = merchant.menu
+    .map((item) => ({ item, score: itemIntentScore(item, intent) }))
+    .sort((left, right) => right.score - left.score);
+  if (scored[0]?.score > 0) return scored[0].item;
 
   if (merchant.id === "raposa-coffee" && /\b(coffee|cafe|咖啡)\b/i.test(intent)) {
     return merchant.menu.find((item) => item.id === "iced-latte") || merchant.menu[0] || null;
+  }
+  if (merchant.id === "theme-park-cafe" && /\b(theme park|park|venue|cafe|coffee|snack|pretzel)\b/i.test(intent)) {
+    return merchant.menu.find((item) => item.id === "orbit-iced-coffee") || merchant.menu[0] || null;
   }
 
   return null;
@@ -158,6 +178,8 @@ async function openQueueDepth(merchantId: string) {
 export function merchantCapabilities(merchantId: string): MerchantCapability | null {
   const merchant = knownMerchantProfileForId(merchantId);
   if (!merchant) return null;
+  const adapter = merchantAdapterMetadata(merchant.id);
+  if (!adapter) return null;
 
   const fulfillment = merchant.fulfillment || "pickup";
   return {
@@ -169,6 +191,7 @@ export function merchantCapabilities(merchantId: string): MerchantCapability | n
       purpose: merchant.purpose,
       fulfillment,
     },
+    adapter,
     catalog: merchant.menu.map((item) => ({
       ...item,
       estimatedPrepMinutes: item.prepMinutes || merchant.defaultPrepMinutes,
@@ -189,10 +212,13 @@ export function merchantCapabilities(merchantId: string): MerchantCapability | n
       `POST /api/agent/merchants/${encodeURIComponent(merchant.id)}/orders`,
     ],
     caveats: [
+      "This merchant is exposed through a Jiagon negotiator/doer adapter: agents ask for capability, quote constraints, then create an order only after a feasible quote.",
       "Quotes are merchant capability estimates for agent decisioning, not a final merchant promise until an order is accepted or payment is verified.",
       fulfillment === "shipping"
         ? "Shipping estimates are demo capability data until a merchant Shopify or inventory adapter is configured."
-        : "Pickup estimates use current Jiagon queue depth and item prep-time hints.",
+        : adapter.mode === "venue"
+          ? "Venue pickup estimates use current Jiagon queue depth and item prep-time hints for a generic theme park demo merchant."
+          : "Pickup estimates use current Jiagon queue depth and item prep-time hints.",
     ],
   };
 }
@@ -201,6 +227,10 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
   const merchant = knownMerchantProfileForId(merchantId);
   if (!merchant) {
     return { ok: false as const, status: 404, error: "Unknown merchant for agent negotiation." };
+  }
+  const adapter = merchantAdapterMetadata(merchant.id);
+  if (!adapter) {
+    return { ok: false as const, status: 404, error: "Unknown merchant adapter for agent negotiation." };
   }
 
   const item = chooseItem(merchant, input);
@@ -303,6 +333,7 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
       name: merchant.name,
       category: merchant.category,
       fulfillment,
+      adapter,
     },
     quote: {
       feasible,
