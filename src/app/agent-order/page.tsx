@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 
-type MerchantId = "raposa-coffee" | "solyd-cases";
+type MerchantId = "raposa-coffee" | "raposa-shop" | "solyd-cases";
 type PaymentMode = "crypto_pay" | "pay_at_counter";
 
 type QuoteResponse = {
@@ -110,6 +110,14 @@ const merchants: Record<MerchantId, {
     maxSpendUsd: "10.00",
     deadlineMinutes: "15",
     deliverByDays: "",
+  },
+  "raposa-shop": {
+    name: "Raposa Shop",
+    mode: "Shipping",
+    defaultIntent: "Ship me Raposa Nitro Cold Brew Caramel Latte under $20 this week.",
+    maxSpendUsd: "20.00",
+    deadlineMinutes: "",
+    deliverByDays: "7",
   },
   "solyd-cases": {
     name: "SOLYD",

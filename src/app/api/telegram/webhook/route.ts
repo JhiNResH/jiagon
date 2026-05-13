@@ -243,6 +243,49 @@ function isAmbiguousCoffeeRequest(text: string) {
   return asksCoffee && !picksSpecificDrink;
 }
 
+function inferMerchantIdFromNaturalText(text: string) {
+  const normalized = normalizedNaturalText(text);
+  const mentionsRaposa = normalized.includes(" raposa ");
+  const shippingTerms =
+    normalized.includes(" ship ") ||
+    normalized.includes(" shipping ") ||
+    normalized.includes(" delivery ") ||
+    normalized.includes(" deliver ") ||
+    normalized.includes(" online ") ||
+    normalized.includes(" beans ") ||
+    normalized.includes(" bean ") ||
+    normalized.includes(" whole bean ") ||
+    normalized.includes(" nitro ") ||
+    normalized.includes(" cold brew ") ||
+    normalized.includes(" matcha ") ||
+    normalized.includes(" starter pack ") ||
+    normalized.includes(" caramel latte ") ||
+    normalized.includes(" cafe latte ") ||
+    normalized.includes(" extra kick ") ||
+    normalized.includes(" dark roast ") ||
+    normalized.includes(" iced tea ") ||
+    normalized.includes(" hibiscus ") ||
+    normalized.includes(" tonic ") ||
+    normalized.includes(" flat white ") ||
+    normalized.includes(" yirgacheffe ") ||
+    normalized.includes(" ethiopia ") ||
+    normalized.includes(" sunrise ");
+
+  if (mentionsRaposa && shippingTerms) return "raposa-shop";
+  if (normalized.includes(" solyd ") || normalized.includes(" iphone ") || normalized.includes(" magsafe ")) {
+    return "solyd-cases";
+  }
+  if (
+    normalized.includes(" theme park ") ||
+    normalized.includes(" park cafe ") ||
+    normalized.includes(" starport ") ||
+    normalized.includes(" pretzel ")
+  ) {
+    return "theme-park-cafe";
+  }
+  return DEFAULT_MERCHANT_ID;
+}
+
 function itemAliases(item: MenuItem) {
   const aliases = new Set<string>([
     item.id.replace(/-/g, " "),
@@ -250,6 +293,12 @@ function itemAliases(item: MenuItem) {
     ...item.name.split(/\s+/),
     ...item.id.split("-"),
   ]);
+  for (const value of Object.values(item.attributes || {})) {
+    if (typeof value === "string") {
+      aliases.add(value);
+      aliases.add(value.replace(/-/g, " "));
+    }
+  }
 
   if (item.id === "iced-latte") {
     aliases.add("latte");
@@ -265,6 +314,20 @@ function itemAliases(item: MenuItem) {
     aliases.add("croissant");
     aliases.add("可頌");
     aliases.add("麵包");
+  }
+  if (item.id.includes("nitro")) {
+    aliases.add("nitro");
+    aliases.add("cold brew");
+    aliases.add("nitro cold brew");
+  }
+  if (item.id.includes("cafe")) aliases.add("cafe latte");
+  if (item.id.includes("cafe") || item.name.toLowerCase().includes("cafe")) aliases.add("café latte");
+  if (item.id.includes("matcha")) aliases.add("抹茶");
+  if (item.id.includes("ethiopia") || item.id.includes("sunrise")) {
+    aliases.add("beans");
+    aliases.add("whole bean");
+    aliases.add("coffee beans");
+    aliases.add("咖啡豆");
   }
 
   return [...aliases]
@@ -317,11 +380,12 @@ function parseCommand(text: string): ParsedCommand {
     return { kind: "help", merchantId };
   }
 
-  if (isAmbiguousCoffeeRequest(trimmed)) {
+  const naturalMerchantId = inferMerchantIdFromNaturalText(trimmed);
+  if (naturalMerchantId === DEFAULT_MERCHANT_ID && isAmbiguousCoffeeRequest(trimmed)) {
     return { kind: "clarify", merchantId: DEFAULT_MERCHANT_ID, text: trimmed };
   }
 
-  const merchant = knownMerchantProfileForId(DEFAULT_MERCHANT_ID);
+  const merchant = knownMerchantProfileForId(naturalMerchantId);
   const matchedItem = merchant ? matchNaturalOrderItem(trimmed, merchant) : null;
   if (merchant && matchedItem) {
     return {
@@ -364,29 +428,37 @@ function menuText(merchant: MerchantProfile) {
   const items = merchant.menu
     .map((item) => `- ${item.id} · ${item.name} · $${item.amountUsd}`)
     .join("\n");
+  const isShipping = merchant.fulfillment === "shipping";
 
   return [
     `${merchant.name} menu`,
     items,
     "",
     "Type naturally, like:",
-    " one iced latte",
-    " can I get an espresso",
+    isShipping ? " ship me Nitro Caramel Latte under $20 this week" : " one iced latte",
+    isShipping ? " Raposa Sunrise Blend under $20" : " can I get an espresso",
     "",
     "Or tap an item below / use:",
     ` /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
-    "Jiagon will create an Order Pass. It becomes a receipt only after Raposa confirms payment at the counter.",
+    isShipping
+      ? "Jiagon drafts the order and returns checkout handoff. A receipt is issued only after payment or fulfillment proof arrives."
+      : "Jiagon will create an Order Pass. It becomes a receipt only after Raposa confirms payment at the counter.",
   ].join("\n");
 }
 
 function helpText(merchant: MerchantProfile) {
+  const isShipping = merchant.fulfillment === "shipping";
   return [
-    "Jiagon Telegram POS",
+    "Jiagon Telegram Order Agent",
     "",
-    `${merchant.name}: type a natural order, like "one iced latte".`,
+    isShipping
+      ? `${merchant.name}: type a natural order, like "ship me Raposa Nitro Caramel Latte under $20 this week".`
+      : `${merchant.name}: type a natural order, like "one iced latte".`,
     `Manual fallback: /order ${merchant.id} ${merchant.menu[0]?.id || "coffee"} 1`,
     "",
-    "After Raposa confirms fulfillment, NFC lets the agent/user claim the verified receipt.",
+    isShipping
+      ? "Jiagon quotes first, creates checkout handoff second, and waits for payment or fulfillment proof before issuing receipt memory."
+      : "After Raposa confirms fulfillment, NFC lets the agent/user claim the verified receipt.",
   ].join("\n");
 }
 
@@ -563,14 +635,17 @@ function sameTelegramChat(left: number | string | null, right: string) {
 function orderDraftText(merchant: MerchantProfile, menuItem: MenuItem, quantity: number, noteCode = "") {
   const note = noteTextFromCode(noteCode);
   const total = (Number(menuItem.amountUsd) * quantity).toFixed(2);
+  const isShipping = merchant.fulfillment === "shipping";
   return [
     "I found this order:",
     "",
     `${quantity}x ${menuItem.name} · $${total}`,
     note ? `Notes: ${note}` : "",
     "",
-    "Payment is handled at the Raposa counter.",
-    "I will only create an Order Pass after you confirm.",
+    isShipping
+      ? "I will create a checkout handoff after you confirm. This is not a paid receipt yet."
+      : "Payment is handled at the Raposa counter.",
+    isShipping ? "Payment or fulfillment proof upgrades it into Jiagon receipt memory." : "I will only create an Order Pass after you confirm.",
   ].filter(Boolean).join("\n");
 }
 
@@ -819,6 +894,50 @@ async function createTelegramOrderReply({
   }
 
   const order = publicMerchantOrder(result.order);
+  const isShipping = merchant.fulfillment === "shipping";
+  if (isShipping) {
+    try {
+      const pilotEvent = await recordMerchantPilotEvent({
+        merchantId: merchant.id,
+        eventName: "order_started",
+        source: "telegram-order",
+      });
+      if (!pilotEvent.recorded) {
+        console.warn("Jiagon Telegram shipping order_started pilot event was not recorded.", {
+          merchantId: merchant.id,
+          error: pilotEvent.error,
+        });
+      }
+    } catch (error) {
+      console.warn("Jiagon Telegram shipping order_started pilot event failed.", {
+        merchantId: merchant.id,
+        error,
+      });
+    }
+    const merchantNotify = await notifyMerchantGroup(result.order);
+    if (!merchantNotify.sent && !merchantNotify.skipped) {
+      console.warn("Jiagon Telegram shipping merchant dispatch failed.", {
+        orderId: order.id,
+        pickupCode: order.pickupCode,
+        merchantId: merchant.id,
+      });
+    }
+    return telegramResponse(
+      chatId,
+      [
+        `Your ${merchant.name} checkout handoff is ready`,
+        "",
+        `${item.quantity}x ${item.name} · $${order.subtotalUsd}`,
+        `Order: ${order.id}`,
+        "",
+        "Status: checkout adapter required",
+        "Next: complete merchant checkout or connect Shopify / MoonPay Commerce webhook.",
+        "This is not a receipt yet. Payment or fulfillment proof upgrades it into Jiagon Passport receipt memory.",
+      ].join("\n"),
+      200,
+    );
+  }
+
   try {
     const pilotEvent = await recordMerchantPilotEvent({
       merchantId: merchant.id,
