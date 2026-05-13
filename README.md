@@ -61,6 +61,10 @@ Primary app surfaces:
 
 Optional adapter paths:
 
+- **Merchant negotiation**: `GET /api/agent/merchants/{merchantId}/capabilities`
+  and `POST /api/agent/merchants/{merchantId}/quote` let a personal agent
+  check budget, pickup-window, stock, or delivery constraints before creating
+  an order.
 - **Agent ordering**: `/api/agent/orders` can create a Raposa order pass and
   prepare an external wallet approval request.
 - **Shopify checkout creation**: Shopify product search and cart creation can
@@ -78,7 +82,9 @@ product into another repo or becoming a POS.
 ```txt
 Personal Order Agent
 -> captures user intent, policy, max spend, and payment preference
--> calls a Jiagon adapter such as /api/agent/orders or /api/agent/shopify/orders
+-> calls merchant capabilities and quote APIs before execution
+-> calls a Jiagon adapter such as /api/agent/merchants/{merchantId}/orders,
+   /api/agent/orders, or /api/agent/shopify/orders
 -> Merchant Take-Order Agent receives the order pass, checkout, or payment event
 -> merchant fulfillment or verified payment issues a claimable Jiagon receipt
 -> user claims the receipt into Passport
@@ -176,21 +182,25 @@ Optional agent ordering setup:
 
 ```txt
 1. Give the agent this OpenAPI URL: https://jiagon.vercel.app/openapi.json
-2. Tell it to call createAgentMerchantOrder when the user asks to order coffee,
-   food, or a supported merchant item.
-3. The user can speak naturally. The agent sends that text as userIntent.
-4. The agent returns only the pickup code, ETA, payment approval URL, and claim
+2. Tell it to call getMerchantAgentCapabilities and quoteMerchantAgentOrder
+   before creating an order, so it can negotiate budget/time/stock constraints.
+3. Tell it to call createMerchantScopedAgentOrder only when the quote is
+   feasible or after the user accepts an alternative.
+4. The user can speak naturally. The agent sends that text as userIntent.
+5. The agent returns only the pickup code, ETA, payment approval URL, and claim
    instructions.
 ```
 
 Example natural-language agent instruction:
 
 ```txt
-You are my personal commerce agent. When I ask you to order coffee from Raposa,
-call Jiagon's createAgentMerchantOrder action. Preserve my natural-language
-request as userIntent, enforce my maxSpendUsd policy, prefer crypto_pay, and
-show me the pickup code plus payment approval step. Do not say a receipt exists
-until the merchant has fulfilled the order and Jiagon returns a claim URL.
+You are my personal commerce agent. When I ask you to buy or order from a
+supported merchant, call Jiagon's capabilities and quote actions first. Preserve
+my natural-language request as userIntent, enforce my maxSpendUsd, pickup
+deadline, delivery deadline, stock, and preference constraints, and only create
+the order if the quote is feasible or I accept an alternative. Prefer crypto_pay
+when requested. Do not say a receipt exists until payment verification or
+merchant fulfillment creates a claim URL.
 ```
 
 CLI natural-language demo:
@@ -203,18 +213,22 @@ The CLI calls the same agent order API and prints the fields needed for the live
 demo: `order.pickupCode`, `payment.url`, `urls.nfcStation`, and
 `urls.pairPhoneForNfcClaim`.
 
-Create a merchant order through the optional agent-ordering adapter:
+Quote first, then create a merchant-scoped order:
 
 ```txt
-POST /api/agent/orders
+GET /api/agent/merchants/raposa-coffee/capabilities
+POST /api/agent/merchants/raposa-coffee/quote
+POST /api/agent/merchants/raposa-coffee/orders
 ```
 
-The request can be as loose as "I want a coffee" or structured with menu items.
-This is an adapter path that creates receipt context for the passport; it is not
-the core product boundary. The response returns the agent's commerce handoff:
-pickup result, order pass, pickup code, pickup estimate, merchant dispatch
-status, receipt-memory path, and optional external Solana wallet payment
-request. Supported demo payment modes are `crypto_pay` and `pay_at_counter`.
+The quote can be as loose as "get me a coffee within 15 minutes" or structured
+with an item id, budget, pickup deadline, delivery deadline, or quantity. This
+is a merchant negotiation adapter that feeds receipt context into the passport;
+it is not the core product boundary. The order response returns the commerce
+handoff: pickup result, order pass, pickup code, pickup estimate, merchant
+dispatch status, receipt-memory path, and optional external Solana wallet
+payment request. Supported demo payment modes are `crypto_pay` and
+`pay_at_counter`.
 Legacy `helio_pay` and `solana_pay` aliases are accepted as `crypto_pay`.
 
 Browser demo:

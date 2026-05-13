@@ -21,8 +21,15 @@ const adapterHandoff = {
   boundary: "Order execution is an adapter path that feeds Jiagon's receipt passport; the core product is verified receipt memory and agent-readable proof.",
   orderAgent: {
     role: "Personal Order Agent",
-    responsibility: "Captures user intent, applies spend and merchant policy, and asks Jiagon to create an order or checkout pass.",
-    entrypoints: ["/api/agent/orders", "/api/agent/orders/{id}/verify-solana-pay", "/api/agent/shopify/orders"],
+    responsibility: "Captures user intent, checks merchant capabilities, asks for a feasible quote, then creates an order or checkout pass only after constraints are satisfied.",
+    entrypoints: [
+      "/api/agent/merchants/{merchantId}/capabilities",
+      "/api/agent/merchants/{merchantId}/quote",
+      "/api/agent/merchants/{merchantId}/orders",
+      "/api/agent/orders",
+      "/api/agent/orders/{id}/verify-solana-pay",
+      "/api/agent/shopify/orders",
+    ],
   },
   takeOrderAgent: {
     role: "Merchant Take-Order Agent",
@@ -54,6 +61,9 @@ export function agentDiscovery(origin: string) {
     capabilityOrder: [
       "/api/agent/proofs/{receiptHash}",
       "/api/agent/merchants/{merchantId}/trust",
+      "/api/agent/merchants/{merchantId}/capabilities",
+      "/api/agent/merchants/{merchantId}/quote",
+      "/api/agent/merchants/{merchantId}/orders",
       "/api/agent/credit-eligibility",
       "/api/agent/rerank",
       "/api/agent/recommendations",
@@ -118,6 +128,50 @@ export function agentDiscovery(origin: string) {
           "aggregate verified receipt and review memory",
           "whether the merchant should be boosted in an agent recommendation",
           "purpose-bound credit eligibility caveats",
+        ],
+      },
+      merchantCapabilities: {
+        method: "GET",
+        url: `${origin}/api/agent/merchants/{merchantId}/capabilities`,
+        capability: "merchant negotiation capability API",
+        returns: [
+          "merchant catalog and fulfillment mode",
+          "which constraints the merchant adapter can quote",
+          "available negotiation and order actions",
+          "caveats separating estimates from final merchant acceptance",
+        ],
+      },
+      merchantQuote: {
+        method: "POST",
+        url: `${origin}/api/agent/merchants/{merchantId}/quote`,
+        capability: "merchant negotiation quote API",
+        body: {
+          userIntent: "Natural-language request. Example: get me an iced latte within 15 minutes under $10.",
+          itemId: "Optional exact catalog item id.",
+          maxSpendUsd: "Optional budget constraint.",
+          deadlineMinutes: "Optional pickup deadline for local merchants.",
+          deliverByDays: "Optional shipping deadline for ecommerce merchants.",
+        },
+        returns: [
+          "whether the request is feasible",
+          "matched item and subtotal",
+          "pickup queue / ready-time or shipping estimate",
+          "reasons and alternatives when constraints cannot be met",
+        ],
+      },
+      merchantScopedOrder: {
+        method: "POST",
+        url: `${origin}/api/agent/merchants/{merchantId}/orders`,
+        capability: "merchant-scoped order execution after quote",
+        body: {
+          agentId: "Stable id for the user's personal agent.",
+          userIntent: "Natural order request already checked with the quote endpoint.",
+          maxSpendUsd: "Optional user spending policy enforced before order creation.",
+          paymentMode: "Optional: crypto_pay for external wallet approval, or pay_at_counter for a pilot fallback.",
+        },
+        returns: [
+          "same order pass, payment intent, pickup estimate, and receipt-source handoff as /api/agent/orders",
+          "merchantId is pinned from the URL to avoid the agent drifting after quote",
         ],
       },
       creditEligibility: {
@@ -289,6 +343,9 @@ export function openApiSpec(origin: string) {
     "x-capability-order": [
       "/api/agent/proofs/{receiptHash}",
       "/api/agent/merchants/{merchantId}/trust",
+      "/api/agent/merchants/{merchantId}/capabilities",
+      "/api/agent/merchants/{merchantId}/quote",
+      "/api/agent/merchants/{merchantId}/orders",
       "/api/agent/credit-eligibility",
       "/api/agent/rerank",
       "/api/agent/recommendations",
@@ -374,11 +431,152 @@ export function openApiSpec(origin: string) {
                 },
               },
             },
+            "400": {
+              description: "Invalid JSON body, unknown merchant, or demo order cap exceeded.",
+            },
             "409": {
               description: "Order exceeds user agent spending policy.",
             },
+            "413": {
+              description: "Order payload exceeds the body size cap.",
+            },
+            "415": {
+              description: "Request content type must be application/json.",
+            },
             "422": {
               description: "Agent request needs clarification before an order can be created.",
+            },
+            "429": {
+              description: "Agent order rate limit exceeded.",
+            },
+            "503": {
+              description: "Order persistence failed after order creation.",
+            },
+          },
+        },
+      },
+      "/api/agent/merchants/{merchantId}/capabilities": {
+        get: {
+          tags: ["Adapters"],
+          summary: "Negotiator API: describe what a merchant adapter can quote and execute.",
+          operationId: "getMerchantAgentCapabilities",
+          parameters: [
+            {
+              name: "merchantId",
+              in: "path",
+              required: true,
+              schema: { type: "string", examples: ["raposa-coffee", "solyd-cases"] },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Merchant catalog, fulfillment mode, quote inputs, and action endpoints.",
+            },
+            "400": {
+              description: "merchantId path parameter is missing or invalid.",
+            },
+            "404": {
+              description: "Unknown merchant.",
+            },
+          },
+        },
+      },
+      "/api/agent/merchants/{merchantId}/quote": {
+        post: {
+          tags: ["Adapters"],
+          summary: "Negotiator API: quote feasibility before creating an order.",
+          operationId: "quoteMerchantAgentOrder",
+          parameters: [
+            {
+              name: "merchantId",
+              in: "path",
+              required: true,
+              schema: { type: "string", examples: ["raposa-coffee", "solyd-cases"] },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/MerchantQuoteRequest" },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Feasibility quote with item match, timing/shipping estimate, reasons, and alternatives.",
+            },
+            "400": {
+              description: "Invalid JSON body or missing merchantId path parameter.",
+            },
+            "413": {
+              description: "Quote payload exceeds the body size cap.",
+            },
+            "415": {
+              description: "Request content type must be application/json.",
+            },
+            "404": {
+              description: "Unknown merchant.",
+            },
+            "422": {
+              description: "No catalog item matched the user intent.",
+            },
+          },
+        },
+      },
+      "/api/agent/merchants/{merchantId}/orders": {
+        post: {
+          tags: ["Adapters"],
+          summary: "Negotiator API: execute a merchant-scoped order after quote.",
+          operationId: "createMerchantScopedAgentOrder",
+          parameters: [
+            {
+              name: "merchantId",
+              in: "path",
+              required: true,
+              schema: { type: "string", examples: ["raposa-coffee", "solyd-cases"] },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/AgentOrderRequest" },
+              },
+            },
+          },
+          responses: {
+            "201": {
+              description: "Pickup order pass created after a feasible merchant quote.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/AgentOrderResponse" },
+                },
+              },
+            },
+            "202": {
+              description: "Shipping or ecommerce checkout order accepted, but external checkout/payment adapter is still required.",
+            },
+            "400": {
+              description: "Invalid JSON body or missing merchantId path parameter.",
+            },
+            "409": {
+              description: "Merchant quote is infeasible; the agent must ask the user to accept an alternative before ordering.",
+            },
+            "413": {
+              description: "Order payload exceeds the body size cap.",
+            },
+            "415": {
+              description: "Request content type must be application/json.",
+            },
+            "404": {
+              description: "Unknown merchant.",
+            },
+            "422": {
+              description: "Quoted item cannot be converted into an order item.",
+            },
+            "503": {
+              description: "Order persistence failed after quote validation.",
             },
           },
         },
@@ -830,6 +1028,25 @@ export function openApiSpec(origin: string) {
             },
             maxSpendUsd: { type: "string", examples: ["10.00"] },
             paymentMode: { type: "string", enum: ["crypto_pay", "pay_at_counter", "helio_pay", "solana_pay"] },
+          },
+        },
+        MerchantQuoteRequest: {
+          type: "object",
+          properties: {
+            userIntent: {
+              type: "string",
+              examples: [
+                "Get me an iced latte within 15 minutes under $10.",
+                "Find me a black MagSafe iPhone 16 case under $80 delivered this week.",
+              ],
+            },
+            itemId: { type: "string", examples: ["iced-latte", "iphone-16-black-magsafe"] },
+            maxSpendUsd: { type: "string", examples: ["10.00", "80.00"] },
+            deadlineMinutes: { type: "integer", minimum: 1, maximum: 1440 },
+            readyBy: { type: "string", format: "date-time" },
+            deliverByDays: { type: "integer", minimum: 1, maximum: 60 },
+            quantity: { type: "integer", minimum: 1, maximum: 20 },
+            fulfillment: { type: "string", examples: ["pickup", "shipping"] },
           },
         },
         AgentOrderResponse: {

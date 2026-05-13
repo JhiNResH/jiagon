@@ -600,6 +600,52 @@ export async function listMerchantOrders(input: {
   }
 }
 
+export async function countMerchantOrders(input: {
+  merchantId?: string | null;
+  status?: MerchantOrderStatus | null;
+}): Promise<{
+  configured: boolean;
+  count: number;
+  error?: string;
+}> {
+  const memoryCount = () => Array.from(merchantOrderMemory().values())
+    .filter((order) => !input.merchantId || order.merchantId === input.merchantId)
+    .filter((order) => !input.status || order.status === input.status)
+    .length;
+
+  const pool = getPool();
+  if (!pool) {
+    return { configured: false, count: memoryCount() };
+  }
+
+  try {
+    await ensureMerchantOrderSchema(pool);
+    const clauses = [];
+    const values: unknown[] = [];
+    if (input.merchantId) {
+      values.push(input.merchantId);
+      clauses.push(`merchant_id = $${values.length}`);
+    }
+    if (input.status) {
+      values.push(input.status);
+      clauses.push(`status = $${values.length}`);
+    }
+    const where = clauses.length > 0 ? `where ${clauses.join(" and ")}` : "";
+    const result = await pool.query(
+      `
+        select count(*)::integer as count
+        from jiagon_merchant_orders
+        ${where}
+      `,
+      values,
+    );
+
+    return { configured: true, count: Number(result.rows[0]?.count) || 0 };
+  } catch {
+    return { configured: true, count: 0, error: "Merchant order count failed." };
+  }
+}
+
 export async function findMerchantOrderByPickupCode(input: {
   merchantId: string;
   pickupCode: string;
