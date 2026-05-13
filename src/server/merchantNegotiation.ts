@@ -116,7 +116,7 @@ function chooseItem(merchant: MerchantProfile, input: QuoteRequest) {
   if (itemId) {
     const item = merchant.menu.find((menuItem) => menuItem.id === itemId);
     if (item) return item;
-    if (!intent) return null;
+    return null;
   }
 
   if (!intent) return null;
@@ -169,8 +169,8 @@ export function merchantCapabilities(merchantId: string): MerchantCapability | n
         : "unknown",
     })),
     negotiationInputs: fulfillment === "shipping"
-      ? ["userIntent", "itemId", "maxSpendUsd", "deliverByDays", "fulfillment"]
-      : ["userIntent", "itemId", "maxSpendUsd", "deadlineMinutes", "readyBy", "fulfillment"],
+      ? ["userIntent", "itemId", "quantity", "maxSpendUsd", "deliverByDays", "fulfillment"]
+      : ["userIntent", "itemId", "quantity", "maxSpendUsd", "deadlineMinutes", "readyBy", "fulfillment"],
     actions: [
       `GET /api/agent/merchants/${encodeURIComponent(merchant.id)}/capabilities`,
       `POST /api/agent/merchants/${encodeURIComponent(merchant.id)}/quote`,
@@ -244,10 +244,15 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
   } else {
     deadlineMinutes = deadlineMinutesFrom(input);
     queue = await openQueueDepth(merchant.id);
-    const queueDelay = queue.openOrders * 2;
-    estimatedReadyMinutes = queueDelay + (item.prepMinutes || merchant.defaultPrepMinutes || 8);
-    timeOk = deadlineMinutes === null || estimatedReadyMinutes <= deadlineMinutes;
-    if (!timeOk) {
+    const prepMinutes = item.prepMinutes || merchant.defaultPrepMinutes || 8;
+    const queueAvailable = queue.configured && !queue.error;
+    const queueDelay = queueAvailable ? queue.openOrders * 2 : 0;
+    estimatedReadyMinutes = queueDelay + prepMinutes;
+    timeOk = deadlineMinutes === null || (queueAvailable && estimatedReadyMinutes <= deadlineMinutes);
+    if (deadlineMinutes !== null && !queueAvailable) {
+      reasons.push(`${merchant.name} queue depth is unavailable, so Jiagon cannot safely promise the requested ${deadlineMinutes} minute pickup window.`);
+    }
+    if (!timeOk && queueAvailable) {
       reasons.push(`${item.name} is estimated at ${estimatedReadyMinutes} minutes, outside the requested ${deadlineMinutes} minute window.`);
       for (const candidate of merchant.menu) {
         const candidateUnitCents = centsFromUsd(candidate.amountUsd);
