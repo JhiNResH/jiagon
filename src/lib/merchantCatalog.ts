@@ -134,6 +134,20 @@ export const merchantProfiles: Record<string, MerchantProfile> = {
       },
     ],
   },
+  "theme-park-cafe": {
+    id: "theme-park-cafe",
+    name: "Theme Park Cafe",
+    location: "Theme Park Demo",
+    category: "Venue pickup",
+    purpose: "venue_pickup_purchase",
+    fulfillment: "pickup",
+    defaultPrepMinutes: 7,
+    menu: [
+      { id: "orbit-iced-coffee", name: "Orbit iced coffee", amountUsd: "7.50", prepMinutes: 6 },
+      { id: "starport-pretzel", name: "Starport pretzel", amountUsd: "8.00", prepMinutes: 4 },
+      { id: "park-snack-combo", name: "Park snack combo", amountUsd: "14.00", prepMinutes: 9 },
+    ],
+  },
   "mume-taipei": {
     id: "mume-taipei",
     name: "MUME Taipei",

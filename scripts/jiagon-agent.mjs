@@ -32,6 +32,16 @@ function inferMaxSpendUsd(text) {
 
 function inferMerchantId(text) {
   const normalized = text.toLowerCase();
+  if (
+    normalized.includes("theme park") ||
+    normalized.includes("tomorrowland") ||
+    normalized.includes("venue pickup") ||
+    normalized.includes("park cafe") ||
+    normalized.includes("starport") ||
+    normalized.includes("pretzel")
+  ) {
+    return "theme-park-cafe";
+  }
   if (normalized.includes("solyd") || normalized.includes("case") || normalized.includes("iphone")) return "solyd-cases";
   const mentionsRaposa = normalized.includes("raposa");
   if (
