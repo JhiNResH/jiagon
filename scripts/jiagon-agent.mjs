@@ -53,8 +53,20 @@ function inferMerchantId(text) {
     (mentionsRaposa && normalized.includes("ship ")) ||
     (mentionsRaposa &&
       (normalized.includes("beans") ||
+        normalized.includes("bean") ||
         normalized.includes("whole bean") ||
-        normalized.includes("accelerate") ||
+        normalized.includes("matcha") ||
+        normalized.includes("rogueai") ||
+        normalized.includes("caramel latte") ||
+        normalized.includes("cafe latte") ||
+        normalized.includes("café latte") ||
+        normalized.includes("extra kick") ||
+        normalized.includes("dark roast") ||
+        normalized.includes("iced tea") ||
+        normalized.includes("hibiscus") ||
+        normalized.includes("tonic") ||
+        normalized.includes("flat white") ||
+        normalized.includes("starter pack") ||
         normalized.includes("sunrise") ||
         normalized.includes("ethiopia") ||
         normalized.includes("yirgacheffe") ||

@@ -60,7 +60,8 @@ User: "Ship me Raposa whole bean coffee, ideally Sunrise Blend, under $25 this w
 ## Core Surfaces
 
 - `/` — YC-focused product overview.
-- `/agent-order` — live negotiator demo: natural language, quote, order handoff.
+- Telegram bot — customer-facing order entry for natural-language Raposa pickup or Raposa Shop checkout handoff.
+- `/agent-order` — web fallback for live negotiator demo: natural language, quote, order handoff.
 - `/merchant` — merchant terminal for order fulfillment and receipt issuance.
 - `/passport` — receipt proof destination after fulfillment.
 - `/api/agent` and `/openapi.json` — agent-readable discovery.
@@ -100,7 +101,16 @@ curl -X POST https://jiagon.vercel.app/api/agent/merchants/raposa-coffee/orders 
   }'
 ```
 
-CLI demo:
+Customer-facing demo through Telegram:
+
+```txt
+User: Ship me Raposa Nitro Cold Brew Caramel Latte under $20 this week
+Jiagon: I found this order ... [Confirm order]
+User taps Confirm order
+Jiagon: checkout handoff ready; Shopify / MoonPay Commerce webhook can later upgrade receipt proof
+```
+
+The CLI is only for developer smoke tests and agent debugging:
 
 ```bash
 pnpm agent "Get me an iced latte from Raposa under 10 dollars, ready in 15 minutes"
