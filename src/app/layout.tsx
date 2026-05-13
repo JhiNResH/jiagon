@@ -22,8 +22,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Jiagon — Receipt Passport for AI Agents",
-  description: "Solana receipt passport and agent trust API for verified commerce memory and purpose-bound credit eligibility.",
+  title: "Jiagon — Merchant Negotiator Agent",
+  description: "A real-world merchant negotiator agent that quotes, orders, coordinates fulfillment, and leaves receipt proof.",
 };
 
 export default function RootLayout({
