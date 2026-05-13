@@ -3,7 +3,7 @@ import {
   type MenuItem,
   type MerchantProfile,
 } from "@/lib/merchantCatalog";
-import { listMerchantOrders } from "@/server/merchantOrderStore";
+import { countMerchantOrders } from "@/server/merchantOrderStore";
 
 type MerchantCapability = {
   merchant: Pick<MerchantProfile, "id" | "name" | "location" | "category" | "purpose"> & {
@@ -40,12 +40,18 @@ function parseUsdCents(value: unknown) {
     : typeof value === "string"
       ? value.trim().replace(/[$,\s]/g, "")
       : "";
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    throw new Error("Invalid USD amount.");
+  }
   return Math.round(Number(normalized) * 100);
 }
 
 function centsFromUsd(value: string) {
-  return parseUsdCents(value);
+  try {
+    return parseUsdCents(value);
+  } catch {
+    return null;
+  }
 }
 
 function formatUsd(cents: number) {
@@ -62,8 +68,14 @@ function parsePositiveInteger(value: unknown) {
 }
 
 function quantityFrom(value: unknown) {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true as const, quantity: 1 };
+  }
   const parsed = parsePositiveInteger(value);
-  return Math.max(1, Math.min(parsed || 1, 20));
+  if (parsed === null || parsed < 1 || parsed > 20) {
+    return { ok: false as const, error: "quantity must be an integer from 1 to 20." };
+  }
+  return { ok: true as const, quantity: parsed };
 }
 
 function deadlineMinutesFrom(input: QuoteRequest) {
@@ -134,11 +146,11 @@ function chooseItem(merchant: MerchantProfile, input: QuoteRequest) {
 async function openQueueDepth(merchantId: string) {
   const statuses = ["pending", "accepted", "preparing"] as const;
   const results = await Promise.all(
-    statuses.map((status) => listMerchantOrders({ merchantId, status, limit: 100 })),
+    statuses.map((status) => countMerchantOrders({ merchantId, status })),
   );
   return {
     configured: results.some((result) => result.configured),
-    openOrders: results.reduce((total, result) => total + result.orders.length, 0),
+    openOrders: results.reduce((total, result) => total + result.count, 0),
     error: results.find((result) => result.error)?.error,
   };
 }
@@ -196,14 +208,23 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
     return { ok: false as const, status: 422, error: "No catalog item matched the user intent." };
   }
 
-  const quantity = quantityFrom(input.quantity);
+  const quantityResult = quantityFrom(input.quantity);
+  if (!quantityResult.ok) {
+    return { ok: false as const, status: 400, error: quantityResult.error };
+  }
+  const quantity = quantityResult.quantity;
   const itemCents = centsFromUsd(item.amountUsd);
   if (itemCents === null) {
     return { ok: false as const, status: 500, error: `Catalog item ${item.id} has an invalid USD price.` };
   }
 
   const subtotalCents = itemCents * quantity;
-  const maxSpendCents = parseUsdCents(input.maxSpendUsd);
+  let maxSpendCents: number | null;
+  try {
+    maxSpendCents = parseUsdCents(input.maxSpendUsd);
+  } catch {
+    return { ok: false as const, status: 400, error: "maxSpendUsd must be a USD amount with up to 2 decimals." };
+  }
   const budgetOk = maxSpendCents === null || subtotalCents <= maxSpendCents;
   const fulfillment = merchant.fulfillment || "pickup";
   const reasons: string[] = [];
