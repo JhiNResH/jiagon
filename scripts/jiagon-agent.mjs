@@ -41,14 +41,15 @@ function inferMerchantId(text) {
     (mentionsRaposa && normalized.includes("ecommerce")) ||
     (mentionsRaposa && normalized.includes("shipping")) ||
     (mentionsRaposa && normalized.includes("ship ")) ||
-    normalized.includes("beans") ||
-    normalized.includes("whole bean") ||
-    normalized.includes("accelerate") ||
-    normalized.includes("sunrise") ||
-    normalized.includes("ethiopia") ||
-    normalized.includes("yirgacheffe") ||
-    normalized.includes("nitro") ||
-    normalized.includes("cold brew")
+    (mentionsRaposa &&
+      (normalized.includes("beans") ||
+        normalized.includes("whole bean") ||
+        normalized.includes("accelerate") ||
+        normalized.includes("sunrise") ||
+        normalized.includes("ethiopia") ||
+        normalized.includes("yirgacheffe") ||
+        normalized.includes("nitro") ||
+        normalized.includes("cold brew")))
   ) {
     return "raposa-shop";
   }
