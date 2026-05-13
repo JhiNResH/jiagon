@@ -132,16 +132,14 @@ function chooseItem(merchant: MerchantProfile, input: QuoteRequest) {
 }
 
 async function openQueueDepth(merchantId: string) {
-  const result = await listMerchantOrders({ merchantId, limit: 50 });
-  const openOrders = result.orders.filter((order) => (
-    order.status === "pending" ||
-    order.status === "accepted" ||
-    order.status === "preparing"
-  ));
+  const statuses = ["pending", "accepted", "preparing"] as const;
+  const results = await Promise.all(
+    statuses.map((status) => listMerchantOrders({ merchantId, status, limit: 100 })),
+  );
   return {
-    configured: result.configured,
-    openOrders: openOrders.length,
-    error: result.error,
+    configured: results.some((result) => result.configured),
+    openOrders: results.reduce((total, result) => total + result.orders.length, 0),
+    error: results.find((result) => result.error)?.error,
   };
 }
 
@@ -252,13 +250,16 @@ export async function quoteMerchantIntent(merchantId: string, input: QuoteReques
     if (!timeOk) {
       reasons.push(`${item.name} is estimated at ${estimatedReadyMinutes} minutes, outside the requested ${deadlineMinutes} minute window.`);
       for (const candidate of merchant.menu) {
-        if (centsFromUsd(candidate.amountUsd) === null) continue;
+        const candidateUnitCents = centsFromUsd(candidate.amountUsd);
+        if (candidateUnitCents === null) continue;
+        const candidateSubtotalCents = candidateUnitCents * quantity;
+        if (maxSpendCents !== null && candidateSubtotalCents > maxSpendCents) continue;
         const candidateMinutes = queueDelay + (candidate.prepMinutes || merchant.defaultPrepMinutes || 8);
         if (deadlineMinutes !== null && candidateMinutes <= deadlineMinutes) {
           alternatives.push({
             itemId: candidate.id,
             name: candidate.name,
-            amountUsd: candidate.amountUsd,
+            amountUsd: formatUsd(candidateSubtotalCents),
             reason: `Estimated ready in ${candidateMinutes} minutes.`,
           });
         }
