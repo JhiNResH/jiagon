@@ -119,6 +119,7 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
 
   const agentId = cleanText(parsed.body.agentId, "personal-agent");
   const fulfillment = profile.fulfillment || "pickup";
+  const adapter = quote.merchant.adapter;
   const requestedPaymentMode = paymentMode(parsed.body);
   const userIntent = cleanLongText(parsed.body.userIntent ?? parsed.body.intent ?? parsed.body.message ?? parsed.body.instruction);
   const notes = [
@@ -196,8 +197,11 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
           role: "personal_negotiator_agent",
           policy: {
             merchantId: profile.id,
+            adapterId: adapter.id,
+            adapterKind: adapter.kind,
+            adapterMode: adapter.mode,
             paymentMode: requestedPaymentMode,
-            receiptPolicy: "receipt_memory_requires_merchant_payment_webhook_or_fulfillment_proof",
+            receiptPolicy: adapter.proofPolicy.receiptPolicy,
           },
         },
         merchant: {
@@ -205,6 +209,7 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
           name: profile.name,
           location: profile.location,
           fulfillment,
+          adapter,
         },
         quote: quote.quote,
         order,
@@ -215,7 +220,7 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
         payment,
         receiptPassport: {
           status: "awaiting_payment_or_fulfillment_webhook",
-          next: "Shopify or MoonPay Commerce payment proof upgrades this order into claimable receipt memory.",
+          next: adapter.proofPolicy.proofUpgrade,
         },
         customerInstructions: [
           `${profile.name} can satisfy the quoted order; checkout/payment adapter is required before fulfillment.`,
@@ -254,8 +259,11 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
         role: "personal_negotiator_agent",
         policy: {
           merchantId: profile.id,
+          adapterId: adapter.id,
+          adapterKind: adapter.kind,
+          adapterMode: adapter.mode,
           paymentMode: requestedPaymentMode,
-          receiptPolicy: "receipt_memory_requires_merchant_fulfillment",
+          receiptPolicy: adapter.proofPolicy.receiptPolicy,
         },
       },
       merchant: {
@@ -263,6 +271,7 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
         name: profile.name,
         location: profile.location,
         fulfillment,
+        adapter,
       },
       quote: quote.quote,
       order,
@@ -281,11 +290,13 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
         },
         merchantTakeOrderAgent: {
           status: merchantNotify.sent ? "dispatch_sent" : merchantNotify.skipped ? "dispatch_skipped" : "dispatch_failed",
-          channels: ["merchant queue", "telegram terminal", "nfc receipt station"],
+          channels: adapter.channels,
+          adapterKind: adapter.kind,
+          mode: adapter.mode,
         },
         receiptPassport: {
           status: "awaiting_merchant_fulfillment",
-          next: "Fulfillment creates the claimable receipt for Passport.",
+          next: adapter.proofPolicy.proofUpgrade,
         },
       },
       staffDispatch: merchantNotify.sent ? "sent" : merchantNotify.skipped ? "skipped" : "failed",

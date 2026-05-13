@@ -142,7 +142,7 @@ export default function TilePage() {
       setClaimMessage(
         isNfcStation
           ? "NFC station detected. Checking your paired Order Pass..."
-          : "Order Pass paired with this phone. Tap the Raposa NFC station after staff confirms payment.",
+          : `Order Pass paired with this phone. Tap the ${merchant.name} NFC station after staff confirms payment.`,
       );
       return;
     }
@@ -156,7 +156,7 @@ export default function TilePage() {
       setClaimMessage(
         isNfcStation
           ? "NFC station detected. Checking your paired Order Pass..."
-          : "Found your paired Order Pass on this phone. Tap the Raposa NFC station after payment to claim.",
+          : `Found your paired Order Pass on this phone. Tap the ${merchant.name} NFC station after payment to claim.`,
       );
       return;
     }
@@ -236,7 +236,7 @@ export default function TilePage() {
       setPickupCode(cleanedCode);
     }
     if (!isNfcStation) {
-      setClaimMessage("Order Pass paired with this phone. Tap the Raposa NFC station to claim after staff confirms payment.");
+      setClaimMessage(`Order Pass paired with this phone. Tap the ${merchant.name} NFC station to claim after staff confirms payment.`);
       return;
     }
     await lookupReceiptClaimByCode(cleanedCode);
@@ -341,7 +341,7 @@ export default function TilePage() {
               <p>
                 {isNfcStation
                   ? activePass
-                    ? "Jiagon will open the receipt claim only after Raposa confirms fulfillment."
+                    ? `Jiagon will open the receipt claim only after ${merchant.name} confirms fulfillment.`
                     : "Open the pairing link from Telegram first, then tap this NFC station again."
                   : "This link only stores the Order Pass on this phone. The receipt pickup still requires the physical NFC station."}
               </p>
