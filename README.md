@@ -48,6 +48,15 @@ User: "Find me a black MagSafe iPhone case under $90 and ship this week."
 -> Shopify / MoonPay Commerce can later upgrade the receipt proof
 ```
 
+Raposa Shop ecommerce flow:
+
+```txt
+User: "Ship me Raposa whole bean coffee, ideally Sunrise Blend, under $25 this week."
+-> Jiagon checks Raposa Shop catalog, stock, price, and shipping estimate
+-> if feasible, Jiagon returns checkout-adapter-required handoff
+-> merchant checkout / payment proof can later upgrade the receipt proof
+```
+
 ## Core Surfaces
 
 - `/` — YC-focused product overview.
@@ -95,6 +104,8 @@ CLI demo:
 
 ```bash
 pnpm agent "Get me an iced latte from Raposa under 10 dollars, ready in 15 minutes"
+pnpm agent "Ship me Raposa whole bean Sunrise Blend under $25 this week"
+pnpm agent "Order the Raposa nitro cold brew starter pack under $40"
 pnpm agent "Find me a black MagSafe iPhone 16 case from SOLYD under $90 and ship this week"
 ```
 
@@ -162,6 +173,7 @@ the hackathon demo, but persisted merchant queues need Postgres.
 | Merchant | Demo role | Status |
 | --- | --- | --- |
 | Raposa Coffee | pickup order negotiator | best live demo path |
+| Raposa Shop | ecommerce coffee product shipping negotiator | mock shipping adapter for online coffee orders |
 | SOLYD | ecommerce stock / shipping negotiator | adapter mock until checkout webhook is connected |
 | MUME Taipei | future dining deposit / premium booking | out of YC demo scope |
 

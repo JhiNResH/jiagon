@@ -33,6 +33,25 @@ function inferMaxSpendUsd(text) {
 function inferMerchantId(text) {
   const normalized = text.toLowerCase();
   if (normalized.includes("solyd") || normalized.includes("case") || normalized.includes("iphone")) return "solyd-cases";
+  const mentionsRaposa = normalized.includes("raposa");
+  if (
+    normalized.includes("raposa shop") ||
+    normalized.includes("raposa online") ||
+    (mentionsRaposa && normalized.includes("online shop")) ||
+    (mentionsRaposa && normalized.includes("ecommerce")) ||
+    (mentionsRaposa && normalized.includes("shipping")) ||
+    (mentionsRaposa && normalized.includes("ship ")) ||
+    normalized.includes("beans") ||
+    normalized.includes("whole bean") ||
+    normalized.includes("accelerate") ||
+    normalized.includes("sunrise") ||
+    normalized.includes("ethiopia") ||
+    normalized.includes("yirgacheffe") ||
+    normalized.includes("nitro") ||
+    normalized.includes("cold brew")
+  ) {
+    return "raposa-shop";
+  }
   return "raposa-coffee";
 }
 
@@ -111,13 +130,22 @@ async function main() {
 
   console.log("Order handoff created");
   console.log(`Status: ${order.status || "unknown"}`);
-  console.log(`Pickup code: ${pickupCode || "n/a"}`);
+  if (order.shipping) {
+    console.log(`Shipping: ${order.shipping.estimatedDays || "n/a"} days`);
+  } else {
+    console.log(`Pickup code: ${pickupCode || "n/a"}`);
+  }
   console.log(`Payment: ${order?.payment?.status || "merchant handoff"}`);
   console.log("");
-  console.log("Required demo fields");
-  console.log(`order.pickupCode=${pickupCode}`);
-  console.log(`urls.nfcStation=${nfcStation}`);
-  console.log(`urls.pairPhoneForNfcClaim=${pairPhoneForNfcClaim}`);
+  console.log(order.shipping ? "Required checkout fields" : "Required demo fields");
+  if (order.shipping) {
+    console.log(`order.id=${order?.order?.id || ""}`);
+    console.log(`payment.status=${order?.payment?.status || ""}`);
+  } else {
+    console.log(`order.pickupCode=${pickupCode}`);
+    console.log(`urls.nfcStation=${nfcStation}`);
+    console.log(`urls.pairPhoneForNfcClaim=${pairPhoneForNfcClaim}`);
+  }
   console.log("");
   console.log("Next");
   for (const instruction of order.customerInstructions || []) {

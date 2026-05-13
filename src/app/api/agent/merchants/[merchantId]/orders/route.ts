@@ -171,7 +171,7 @@ export async function POST(request: Request, context: { params: Promise<{ mercha
         status: "checkout_adapter_required",
         provider: "shopify_or_moonpay_commerce",
         rail: requestedPaymentMode === "crypto_pay" ? "solana_or_card_checkout" : "merchant_checkout",
-        note: "Solyd is currently a mock ecommerce adapter. A Shopify or MoonPay Commerce webhook should upgrade payment proof into claimable receipt memory.",
+        note: `${profile.name} is currently a mock ecommerce adapter. A Shopify or MoonPay Commerce webhook should upgrade payment proof into claimable receipt memory.`,
       }
     : {
         mode: requestedPaymentMode,

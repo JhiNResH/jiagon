@@ -36,6 +36,24 @@ export async function GET(request: Request) {
         "Return pickup code and merchant handoff status, not a fake receipt.",
       ],
     },
+    ecommerceCoffeeExample: {
+      userIntent: "Ship me Raposa whole bean Sunrise Blend under $25 this week.",
+      agentRequest: {
+        method: "POST",
+        url: `${origin}/api/agent/merchants/raposa-shop/quote`,
+        body: {
+          userIntent: "Ship me Raposa whole bean Sunrise Blend under $25 this week.",
+          maxSpendUsd: "25.00",
+          deliverByDays: 7,
+        },
+      },
+      agentDecisionProcess: [
+        "Read Raposa Shop shipping capabilities.",
+        "Quote the requested coffee product against budget, inventory, and shipping deadline.",
+        "If feasible, call the merchant-scoped order endpoint with the same constraints.",
+        "Return checkout-adapter-required status, not a fake payment-backed receipt.",
+      ],
+    },
     trustExample: {
       userIntent: "Can I trust Raposa Coffee enough to order through my agent?",
       agentRequest: {

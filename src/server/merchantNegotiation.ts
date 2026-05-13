@@ -106,20 +106,33 @@ function deliverByDaysFrom(input: QuoteRequest) {
   return null;
 }
 
-function itemMatchesIntent(item: MenuItem, intent: string) {
-  const normalized = ` ${intent.toLowerCase().replace(/[_-]/g, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim()} `;
+function normalizedIntentText(intent: string) {
+  return ` ${intent.toLowerCase().replace(/[_-]/g, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim()} `;
+}
+
+function itemIntentScore(item: MenuItem, intent: string) {
+  const normalized = normalizedIntentText(intent);
   const itemName = item.name.toLowerCase();
   const itemId = item.id.replace(/-/g, " ");
-  if (normalized.includes(` ${itemName} `) || normalized.includes(` ${itemId} `)) return true;
+  let score = 0;
+
+  if (normalized.includes(` ${itemName} `) || normalized.includes(` ${itemId} `)) score += 100;
 
   const terms = itemName.split(/\s+/).filter((term) => term.length > 3);
-  if (terms.some((term) => normalized.includes(` ${term} `))) return true;
+  for (const term of terms) {
+    if (normalized.includes(` ${term} `)) score += 12;
+  }
 
   const attributes = item.attributes || {};
-  return Object.values(attributes).some((value) => {
-    if (typeof value === "boolean") return value && normalized.includes("magsafe");
-    return normalized.includes(` ${String(value).toLowerCase().replace(/-/g, " ")} `);
-  });
+  for (const value of Object.values(attributes)) {
+    if (typeof value === "boolean") {
+      if (value && normalized.includes(" magsafe ")) score += 5;
+      continue;
+    }
+    if (normalized.includes(` ${String(value).toLowerCase().replace(/-/g, " ")} `)) score += 5;
+  }
+
+  return score;
 }
 
 function chooseItem(merchant: MerchantProfile, input: QuoteRequest) {
@@ -133,8 +146,10 @@ function chooseItem(merchant: MerchantProfile, input: QuoteRequest) {
 
   if (!intent) return null;
 
-  const direct = merchant.menu.find((item) => itemMatchesIntent(item, intent));
-  if (direct) return direct;
+  const scored = merchant.menu
+    .map((item) => ({ item, score: itemIntentScore(item, intent) }))
+    .sort((left, right) => right.score - left.score);
+  if (scored[0]?.score > 0) return scored[0].item;
 
   if (merchant.id === "raposa-coffee" && /\b(coffee|cafe|咖啡)\b/i.test(intent)) {
     return merchant.menu.find((item) => item.id === "iced-latte") || merchant.menu[0] || null;

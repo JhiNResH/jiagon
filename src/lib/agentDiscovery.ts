@@ -465,7 +465,7 @@ export function openApiSpec(origin: string) {
               name: "merchantId",
               in: "path",
               required: true,
-              schema: { type: "string", examples: ["raposa-coffee", "solyd-cases"] },
+              schema: { type: "string", examples: ["raposa-coffee", "raposa-shop", "solyd-cases"] },
             },
           ],
           responses: {
@@ -491,7 +491,7 @@ export function openApiSpec(origin: string) {
               name: "merchantId",
               in: "path",
               required: true,
-              schema: { type: "string", examples: ["raposa-coffee", "solyd-cases"] },
+              schema: { type: "string", examples: ["raposa-coffee", "raposa-shop", "solyd-cases"] },
             },
           ],
           requestBody: {
@@ -534,7 +534,7 @@ export function openApiSpec(origin: string) {
               name: "merchantId",
               in: "path",
               required: true,
-              schema: { type: "string", examples: ["raposa-coffee", "solyd-cases"] },
+              schema: { type: "string", examples: ["raposa-coffee", "raposa-shop", "solyd-cases"] },
             },
           ],
           requestBody: {
@@ -1037,11 +1037,12 @@ export function openApiSpec(origin: string) {
               type: "string",
               examples: [
                 "Get me an iced latte within 15 minutes under $10.",
+                "Ship me Raposa whole bean Sunrise Blend under $25 this week.",
                 "Find me a black MagSafe iPhone 16 case under $80 delivered this week.",
               ],
             },
-            itemId: { type: "string", examples: ["iced-latte", "iphone-16-black-magsafe"] },
-            maxSpendUsd: { type: "string", examples: ["10.00", "80.00"] },
+            itemId: { type: "string", examples: ["iced-latte", "sunrise-blend-250g", "iphone-16-black-magsafe"] },
+            maxSpendUsd: { type: "string", examples: ["10.00", "25.00", "80.00"] },
             deadlineMinutes: { type: "integer", minimum: 1, maximum: 1440 },
             readyBy: { type: "string", format: "date-time" },
             deliverByDays: { type: "integer", minimum: 1, maximum: 60 },
